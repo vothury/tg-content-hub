@@ -1,0 +1,11 @@
+# Секреты и локальные данные — никогда не коммитить
+.env
+sessions/
+media/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/

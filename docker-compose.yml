@@ -1,0 +1,136 @@
+name: tg-content-hub
+
+# Лимит логов обязателен на диске 10 GiB (дублирует daemon.json как страховка)
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    mem_limit: 512m
+    logging: *default-logging
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-content_hub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Задайте POSTGRES_PASSWORD в .env}
+      POSTGRES_DB: ${POSTGRES_DB:-content_hub}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    mem_limit: 128m
+    logging: *default-logging
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  # Одноразовое применение миграций перед стартом сервисов
+  migrate:
+    build: .
+    image: tg-content-hub:latest
+    restart: "no"
+    command: alembic upgrade head
+    env_file: .env
+    mem_limit: 256m
+    logging: *default-logging
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Этап 1: чтение источников через Telethon
+  reader:
+    image: tg-content-hub:latest
+    restart: unless-stopped
+    command: python -m app.workers.reader
+    env_file: .env
+    mem_limit: 256m
+    logging: *default-logging
+    volumes:
+      - ./sessions:/app/sessions
+      - media:/app/media
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  # Этапы 2–3: предфильтр, классификация, рерайт, карточка ревью
+  pipeline:
+    image: tg-content-hub:latest
+    restart: unless-stopped
+    command: python -m app.workers.pipeline
+    env_file: .env
+    mem_limit: 320m
+    logging: *default-logging
+    volumes:
+      - media:/app/media
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  # Этап 5: очередь публикаций, лимиты, расписание, ретраи
+  scheduler:
+    image: tg-content-hub:latest
+    restart: unless-stopped
+    command: python -m app.workers.scheduler
+    env_file: .env
+    mem_limit: 256m
+    logging: *default-logging
+    volumes:
+      - media:/app/media
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  # Этап 4: бот ревью (лонг-поллинг — входящие порты не нужны)
+  bot:
+    image: tg-content-hub:latest
+    restart: unless-stopped
+    command: python -m app.bot.main
+    env_file: .env
+    mem_limit: 256m
+    logging: *default-logging
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  # Веб-админка. ВАРИАНТ А: только 127.0.0.1, наружу не публикуется.
+  # Доступ с домашнего ПК — через туннель PuTTY (8000 -> 127.0.0.1:8000).
+  api:
+    image: tg-content-hub:latest
+    restart: unless-stopped
+    command: uvicorn app.web.main:app --host 0.0.0.0 --port 8000
+    env_file: .env
+    mem_limit: 256m
+    logging: *default-logging
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:
+  redisdata:
+  media:

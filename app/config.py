@@ -1,0 +1,63 @@
+"""Централизованная конфигурация. Все секреты — только из окружения."""
+from __future__ import annotations
+
+from functools import lru_cache
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        case_sensitive=False,
+    )
+
+    # Среда
+    environment: str = "dev"
+    log_level: str = "INFO"
+
+    # Хранилища
+    database_url: str = "postgresql+asyncpg://curator:curator@postgres:5432/curator"
+    redis_url: str = "redis://redis:6379/0"
+    media_dir: str = "media"
+
+    # Telegram: чтение источников (отдельный аккаунт)
+    telegram_api_id: int = 0
+    telegram_api_hash: str = ""
+    reader_session_path: str = "sessions/reader"
+    reader_poll_interval_sec: int = 30
+    reader_backfill_limit: int = 20
+
+    # Telegram: бот (публикация и ревью)
+    bot_token: str = ""
+    allowed_owner_ids: list[int] = Field(default_factory=list)
+
+    # LLM / OpenRouter
+    openrouter_api_key: str = ""
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    prefilter_model: str = "deepseek/deepseek-v4-flash-0731"
+    classify_model: str = "deepseek/deepseek-v4-flash-0731"
+    rewrite_model: str = "openai/gpt-5.6-luna"
+    revision_model: str = ""  # пусто = модель рерайта
+
+    # Предохранители
+    max_llm_budget_usd_per_day: float = 1.0
+    max_candidates_per_day: int = 30
+
+    # Админка (этап 6)
+    admin_password: str = ""
+
+    @property
+    def effective_revision_model(self) -> str:
+        return self.revision_model or self.rewrite_model
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
+
+
+settings = get_settings()

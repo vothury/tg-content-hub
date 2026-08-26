@@ -1,0 +1,43 @@
+tg-curator/
+├── docker-compose.yml
+├── Dockerfile
+├── .env.example
+├── .gitignore
+├── Makefile
+├── README.md
+├── pyproject.toml
+├── alembic.ini
+├── alembic/
+│   ├── env.py
+│   ├── script.py.mako
+│   └── versions/
+│       └── 0001_initial.py
+├── app/
+│   ├── __init__.py
+│   ├── config.py
+│   ├── redis_client.py
+│   ├── common/
+│   │   ├── __init__.py
+│   │   └── logging.py
+│   ├── db/
+│   │   ├── __init__.py
+│   │   ├── base.py
+│   │   ├── enums.py
+│   │   ├── session.py
+│   │   └── models.py
+│   ├── services/
+│   │   ├── __init__.py
+│   │   └── settings.py
+│   ├── web/
+│   │   ├── __init__.py
+│   │   └── main.py
+│   ├── workers/
+│   │   ├── __init__.py
+│   │   ├── reader.py
+│   │   ├── pipeline.py
+│   │   └── scheduler.py
+│   └── bot/
+│       ├── __init__.py
+│       └── main.py
+└── tests/
+    └── test_smoke.py
