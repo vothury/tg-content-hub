@@ -82,8 +82,8 @@ async def run_prefilter(post_id: int) -> None:
             duplicate_id = (
                 await session.execute(
                     select(Post.id)
-                    .where(Post.text_hash == post.text_hash, Post.id != post.id)
-                    .order_by(Post.id)
+                    .where(Post.text_hash == post.text_hash, Post.id < post.id)
+                    .order_by(Post.id.desc())
                     .limit(1)
                 )
             ).scalar_one_or_none()
