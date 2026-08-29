@@ -21,7 +21,7 @@ from pathlib import Path
 
 from sqlalchemy import select
 from telethon import TelegramClient, errors
-from telethon.tl.types import Document, PeerChannel, Photo, Video
+from telethon.tl.types import Document, DocumentAttributeVideo, PeerChannel, Photo
 
 from app.common.logging import setup_logging
 from app.config import settings
@@ -92,7 +92,7 @@ def _photo_dimensions(photo: Photo) -> tuple[int | None, int | None]:
 def _video_dimensions(doc: Document) -> tuple[int | None, int | None, int | None]:
     try:
         for attr in doc.attributes:
-            if isinstance(attr, Video):
+            if isinstance(attr, DocumentAttributeVideo):
                 return getattr(attr, "w", None), getattr(attr, "h", None), getattr(attr, "duration", None)
     except Exception:  # noqa: BLE001
         pass
