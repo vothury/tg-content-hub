@@ -44,3 +44,6 @@ source-disable: ## пример: make source-disable USERNAME=@some_channel
 
 source-delete: ## пример: make source-delete USERNAME=@канал [CASCADE]
 	docker compose run --rm migrate python -m app.cli.sources delete $(USERNAME) $(MODE)
+
+sources-sync:  ## применить sources.yaml к базе
+	docker compose run --rm migrate python -m app.cli.sources sync

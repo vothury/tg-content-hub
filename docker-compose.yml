@@ -51,6 +51,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      - ./sources.yaml:/app/sources.yaml:ro
 
   # Этап 1: чтение источников через Telethon
   reader:
@@ -63,6 +65,7 @@ services:
     volumes:
       - ./sessions:/app/sessions
       - media:/app/media
+      - ./sources.yaml:/app/sources.yaml:ro
     depends_on:
       migrate:
         condition: service_completed_successfully

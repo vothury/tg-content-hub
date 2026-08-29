@@ -30,6 +30,7 @@ from app.db.models import MediaItem, Post, PostEvent, Source
 from app.db.session import session_scope
 from app.services.queue import enqueue_post
 from app.services.text import make_text_hash, normalize_text
+from app.services.sources_sync import SourcesFileError, sync_sources
 
 log = setup_logging("reader")
 
@@ -362,6 +363,12 @@ async def main() -> None:
 
     me = await client.get_me()
     log.info("reader запущен (Этап 1); аккаунт-читатель: id=%s username=%s", me.id, me.username)
+
+    # Декларативные источники: при наличии файла он — источник истины
+    try:
+        await sync_sources()
+    except SourcesFileError as exc:
+        log.error("ошибка в sources.yaml: %s — продолжаю с источниками из БД", exc)
 
     try:
         while True:

@@ -1,8 +1,11 @@
 """Управление источниками из командной строки (до админки из Этапа 6).
 
+Основной способ — файл sources.yaml + `make sources-sync`.
+CLI-команды удобны для быстрых правок и диагностики.
+
 Примеры:
+  make sources-sync
   make source-add USERNAME=@my_test_lab KIND=test
-  make source-add USERNAME=@some_public_channel KIND=external
   make source-list
   make source-disable USERNAME=@some_public_channel
   make source-delete USERNAME=@some_public_channel          # только источник
@@ -43,7 +46,7 @@ async def list_sources() -> None:
     async with session_scope() as session:
         rows = (await session.execute(select(Source).order_by(Source.id))).scalars().all()
         if not rows:
-            print("Источников нет. Добавьте: make source-add USERNAME=@канал KIND=test|external")
+            print("Источников нет. Заполните sources.yaml и выполните make sources-sync")
             return
         for r in rows:
             print(
@@ -75,7 +78,6 @@ async def delete_source(username: str, cascade: bool) -> None:
             return
         sid = source.id
         if cascade:
-            # Каскад по FK удалит media_items и post_events автоматически
             deleted_posts = (
                 await session.execute(sa_delete(Post).where(Post.source_id == sid))
             ).rowcount
@@ -88,6 +90,17 @@ async def delete_source(username: str, cascade: bool) -> None:
             print(f"Удалён источник #{sid} @{username} (посты остались в базе)")
 
 
+def do_sync() -> None:
+    from app.services.sources_sync import SourcesFileError, sync_sources
+
+    try:
+        asyncio.run(sync_sources())
+        print("Синхронизация завершена. См. make source-list")
+    except SourcesFileError as exc:
+        print(f"Ошибка: {exc}")
+        raise SystemExit(1)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Управление источниками")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -97,6 +110,7 @@ def main() -> None:
     p_add.add_argument("--kind", choices=["external", "test"], default="external")
 
     sub.add_parser("list")
+    sub.add_parser("sync")
 
     p_set = sub.add_parser("set-enabled")
     p_set.add_argument("username")
@@ -112,6 +126,8 @@ def main() -> None:
         asyncio.run(add(_norm(args.username), SourceKind(args.kind)))
     elif args.cmd == "list":
         asyncio.run(list_sources())
+    elif args.cmd == "sync":
+        do_sync()
     elif args.cmd == "set-enabled":
         asyncio.run(set_enabled(_norm(args.username), args.enabled == "true"))
     elif args.cmd == "delete":

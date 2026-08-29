@@ -1,0 +1,26 @@
+# Источники TG Content Hub.
+#
+# Этот файл — единое место управления источниками. Порядок применения:
+#   правка файла -> git push -> git pull на сервере ->
+#   либо `docker compose restart reader`, либо `make sources-sync`.
+#
+# Поля:
+#   username          — публичный юзернейм канала, @ можно не писать (обязательно)
+#   kind              — test (канал-лаборатория) | external (внешний канал)
+#   enabled           — false = пауза опроса без удаления из базы
+#   poll_interval_sec — интервал опроса, сек (по умолчанию из .env)
+#   backfill_limit    — сколько последних постов прочитать при первом подключении
+#   filters           — точечные переопределения предфильтра для источника
+#
+# Источник, удалённый из файла, отключается, но НЕ удаляется из базы.
+
+sources:
+  - username: go_tests
+    kind: test
+
+  - username: kino_filmach
+    kind: external
+    # poll_interval_sec: 300
+    # filters:
+    #   min_text_len: 150
+    #   blacklist_words: ["#реклама", "# реклама"]
