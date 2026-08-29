@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # Хранилища
-    database_url: str = "postgresql+asyncpg://curator:curator@postgres:5432/curator"
+    database_url: str = "postgresql+asyncpg://content_hub:content_hub@postgres:5432/content_hub"
     redis_url: str = "redis://redis:6379/0"
     media_dir: str = "media"
 
@@ -49,6 +49,11 @@ class Settings(BaseSettings):
 
     # Админка (этап 6)
     admin_password: str = ""
+
+    # Читатель: интервал опроса источника по умолчанию (если не задан у источника)
+    reader_default_source_interval_sec: int = 120
+    # Предохранитель: медиа крупнее не скачиваются (Этап 1)
+    max_media_download_mb: int = 25
 
     @property
     def effective_revision_model(self) -> str:

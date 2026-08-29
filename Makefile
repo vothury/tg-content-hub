@@ -1,4 +1,4 @@
-.PHONY: up down restart logs ps migrate revision psql health test
+.PHONY: up down restart logs ps migrate revision psql health test login source-add source-list source-disable
 
 up:            ## собрать и запустить всё
 	docker compose up -d --build
@@ -29,3 +29,15 @@ health:        ## проверка этапа 0
 
 test:          ## локальные тесты без docker (нужен venv с зависимостями)
 	pytest -q
+
+login:         ## одноразовый интерактивный вход аккаунта-читателя
+	docker compose run --rm reader python -m app.auth.login
+
+source-add:    ## пример: make source-add USERNAME=@my_test_lab KIND=test
+	docker compose run --rm migrate python -m app.cli.sources add $(USERNAME) --kind $(KIND)
+
+source-list:   ## список источников
+	docker compose run --rm migrate python -m app.cli.sources list
+
+source-disable: ## пример: make source-disable USERNAME=@some_channel
+	docker compose run --rm migrate python -m app.cli.sources set-enabled $(USERNAME) false
