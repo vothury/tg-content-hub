@@ -1,7 +1,7 @@
 """Эффективные настройки: переопределения из app_settings поверх дефолтов из .env.
 
-Здесь же ключи предохранителей и моделей — админка (этап 6) будет писать сюда
-без рестарта сервисов.
+Админка (этап 6) будет писать сюда модели, предохранители и параметры
+предфильтра без рестарта сервисов.
 """
 from __future__ import annotations
 
@@ -19,6 +19,8 @@ class Keys:
     REVISION_MODEL = "llm.revision_model"
     MAX_LLM_BUDGET_USD_PER_DAY = "limits.max_llm_budget_usd_per_day"
     MAX_CANDIDATES_PER_DAY = "limits.max_candidates_per_day"
+    PREFILTER_MIN_TEXT_LEN = "prefilter.min_text_len"
+    PREFILTER_BLACKLIST_WORDS = "prefilter.blacklist_words"
 
 
 _ENV_DEFAULTS: dict[str, Any] = {
@@ -28,6 +30,8 @@ _ENV_DEFAULTS: dict[str, Any] = {
     Keys.REVISION_MODEL: settings.effective_revision_model,
     Keys.MAX_LLM_BUDGET_USD_PER_DAY: settings.max_llm_budget_usd_per_day,
     Keys.MAX_CANDIDATES_PER_DAY: settings.max_candidates_per_day,
+    Keys.PREFILTER_MIN_TEXT_LEN: settings.prefilter_min_text_len,
+    Keys.PREFILTER_BLACKLIST_WORDS: settings.prefilter_blacklist_words,
 }
 
 

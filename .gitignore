@@ -1,6 +1,7 @@
 # Секреты и локальные данные — никогда не коммитить
 .env
-sessions/
+sessions/*
+!sessions/.gitkeep
 media/
 
 # Python

@@ -41,3 +41,6 @@ source-list:   ## список источников
 
 source-disable: ## пример: make source-disable USERNAME=@some_channel
 	docker compose run --rm migrate python -m app.cli.sources set-enabled $(USERNAME) false
+
+source-delete: ## пример: make source-delete USERNAME=@канал [CASCADE]
+	docker compose run --rm migrate python -m app.cli.sources delete $(USERNAME) $(MODE)

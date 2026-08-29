@@ -55,6 +55,10 @@ class Settings(BaseSettings):
     # Предохранитель: медиа крупнее не скачиваются (Этап 1)
     max_media_download_mb: int = 25
 
+    # Предфильтр (Этап 2)
+    prefilter_min_text_len: int = 200
+    prefilter_blacklist_words: list[str] = Field(default_factory=list)
+
     @property
     def effective_revision_model(self) -> str:
         return self.revision_model or self.rewrite_model
