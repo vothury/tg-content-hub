@@ -30,6 +30,7 @@ class OpenRouterError(Exception):
 class LLMResponse:
     content: str
     model: str
+    provider: str | None
     input_tokens: int | None
     output_tokens: int | None
     cost_usd: float | None
@@ -78,6 +79,7 @@ async def chat_completion(
     model: str,
     max_tokens: int,
     temperature: float = 0.4,
+    provider: dict | None = None,
 ) -> LLMResponse:
     """Вызов чат-комплишена с одной повторной попыткой. Бросает OpenRouterError."""
     payload = {
@@ -86,6 +88,9 @@ async def chat_completion(
         "max_tokens": max_tokens,
         "temperature": temperature,
     }
+    # Предпочтения провайдеров передаются как есть; пусто = авто-маршрутизация
+    if provider:
+        payload["provider"] = provider
     headers = {"Authorization": f"Bearer {settings.openrouter_api_key}"}
     started = time.monotonic()
     last_error: Exception | None = None
@@ -137,6 +142,7 @@ async def chat_completion(
     return LLMResponse(
         content=content,
         model=answer_model,
+        provider=data.get("provider"),
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cost_usd=_price_book.cost(answer_model, input_tokens, output_tokens),

@@ -30,7 +30,7 @@ from app.services.llm.prompts import (
 )
 from app.services.llm.schemas import ClassifyResult, LLMParseError, RewriteResult
 from app.services.prefilter import run_prefilter
-from app.services.settings import Keys, get_setting
+from app.services.settings import Keys, get_providers, get_setting
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +46,10 @@ async def _get_status(post_id: int) -> PostStatus | None:
 async def _model_for(key: str) -> str:
     async with session_scope() as session:
         return str(await get_setting(session, key))
+
+async def _providers_for(key: str) -> dict | None:
+    async with session_scope() as session:
+        return await get_providers(session, key)
 
 
 async def _get_default_profile(session) -> StyleProfile:
@@ -69,7 +73,7 @@ def _make_call_row(post_id, stage, model, prompt_version, messages, resp, parsed
         model=model,
         prompt_version=prompt_version,
         request={"messages": messages},
-        response={"content": resp.content, "parsed": parsed} if resp is not None else None,
+        response={"content": resp.content, "parsed": parsed, "provider": resp.provider} if resp is not None else None,
         status=status,
         error=error,
         input_tokens=resp.input_tokens if resp is not None else None,
@@ -79,14 +83,14 @@ def _make_call_row(post_id, stage, model, prompt_version, messages, resp, parsed
     )
 
 
-async def _call_and_parse(messages, model, max_tokens, temperature, schema):
+async def _call_and_parse(messages, model, max_tokens, temperature, schema, provider=None):
     """Вызов модели + парсинг. Возвращает (ответ, результат, статус, текст ошибки)."""
     resp: LLMResponse | None = None
     result = None
     call_status = LLMCallStatus.OK
     error_text: str | None = None
     try:
-        resp = await chat_completion(messages, model, max_tokens, temperature=temperature)
+        resp = await chat_completion(messages, model, max_tokens, temperature=temperature, provider=provider)
         result = schema.from_response(resp.content)
     except OpenRouterError as exc:
         call_status, error_text = LLMCallStatus.ERROR, str(exc)
@@ -107,12 +111,14 @@ async def classify_post(post_id: int) -> None:
         await session.commit()
 
     model = await _model_for(Keys.CLASSIFY_MODEL)
+    providers = await _providers_for(Keys.CLASSIFY_PROVIDERS)
     messages = [
         {"role": "system", "content": CLASSIFY_SYSTEM},
         {"role": "user", "content": CLASSIFY_USER.format(text=original_text)},
     ]
     resp, result, call_status, error_text = await _call_and_parse(
-        messages, model, settings.llm_classify_max_tokens, temperature=0.2, schema=ClassifyResult
+        messages, model, settings.llm_classify_max_tokens, temperature=0.2,
+        schema=ClassifyResult, provider=providers,
     )
     if resp is not None and resp.cost_usd:
         await guards.add_llm_cost(resp.cost_usd)
@@ -172,13 +178,15 @@ async def rewrite_post(post_id: int) -> None:
         await session.commit()
 
     model = await _model_for(Keys.REWRITE_MODEL)
+    providers = await _providers_for(Keys.REWRITE_PROVIDERS)
     system_prompt = REWRITE_SYSTEM_TEMPLATE.format(style_instructions=style_instructions)
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": REWRITE_USER.format(text=original_text)},
     ]
     resp, result, call_status, error_text = await _call_and_parse(
-        messages, model, settings.llm_rewrite_max_tokens, temperature=0.7, schema=RewriteResult
+        messages, model, settings.llm_rewrite_max_tokens, temperature=0.7,
+        schema=RewriteResult, provider=providers,
     )
     if resp is not None and resp.cost_usd:
         await guards.add_llm_cost(resp.cost_usd)

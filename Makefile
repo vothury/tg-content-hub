@@ -50,3 +50,6 @@ sources-sync:  ## применить sources.yaml к базе
 
 llm-check:     ## проверить OpenRouter и слаги моделей (до обработки постов)
 	docker compose run --rm migrate python -m app.cli.llm_check
+
+llm-models:    ## эндпоинты модели: провайдеры и цены: make llm-models MODEL=openai/gpt-5.6-luna
+	docker compose run --rm migrate python -m app.cli.llm_models $(MODEL)
