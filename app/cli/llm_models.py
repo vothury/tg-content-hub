@@ -1,7 +1,10 @@
 """Эндпоинты модели в OpenRouter: провайдеры, цены, квантования.
 
 Использование: make llm-models MODEL=openai/gpt-5.6-luna
-Нужно для подбора имён провайдеров в настройки *_PROVIDERS.
+Нужно для подбора слагов провайдеров в настройки *_PROVIDERS.
+
+Точный слаг для конкретного эндпоинта лучше всего брать кнопкой копирования
+на странице модели в каталоге openrouter.ai/models — команда лишь подсказка.
 """
 from __future__ import annotations
 
@@ -26,9 +29,16 @@ async def main(model: str) -> None:
         print(f"Сетевая ошибка: {exc}")
         raise SystemExit(1)
 
+    if resp.status_code == 403:
+        print("HTTP 403: этот ключ не может запрашивать список эндпоинтов.")
+        print("Откройте модель в каталоге и используйте кнопку копирования слага рядом с провайдером:")
+        print(f"  https://openrouter.ai/models/{model}")
+        raise SystemExit(1)
+    if resp.status_code == 404:
+        print(f"HTTP 404: модель '{model}' не найдена — проверьте слаг в каталоге")
+        raise SystemExit(1)
     if resp.status_code != 200:
-        print(f"HTTP {resp.status_code}: не удалось получить эндпоинты '{model}' — проверьте слаг")
-        print(resp.text[:500])
+        print(f"HTTP {resp.status_code}: {resp.text[:500]}")
         raise SystemExit(1)
 
     payload = resp.json().get("data") or {}
@@ -36,8 +46,8 @@ async def main(model: str) -> None:
     print(f"Модель: {model} — эндпоинтов: {len(endpoints)}")
     for ep in endpoints:
         provider = ep.get("provider_name") or "?"
-        name = ep.get("name") or provider
-        quant = ep.get("quantization") or ep.get("quantizations") or "—"
+        tag = ep.get("tag") or ""
+        quant = ep.get("quantization") or "—"
         ctx = ep.get("context_length")
         pricing = ep.get("pricing") or {}
         try:
@@ -46,11 +56,13 @@ async def main(model: str) -> None:
             price = f"${price_in:.3f} / ${price_out:.3f} за 1M"
         except (TypeError, ValueError):
             price = "цена не указана"
-        print(f"- провайдер: {provider:<14} квантование: {str(quant):<10} контекст: {ctx} | {price} | {name}")
+        slug_hint = f" | слаг: {tag}" if tag else ""
+        print(f"- провайдер: {provider:<22} квантование: {str(quant):<8} контекст: {ctx} | {price}{slug_hint} | {ep.get('name', '')}")
 
     print()
-    print("Имена провайдеров из этого списка используйте в поле 'order' настроек *_PROVIDERS.")
-    print("Список может отличаться от документации — ориентируйтесь на фактический вывод.")
+    print("Слаги для поля 'order': базовый (например 'azure') покрывает все регионы провайдера,")
+    print("а региональные/тировые варианты указывайте целиком: 'amazon-bedrock/us-east-1', 'openai/flex'.")
+    print("Сервисные тиры (flex и т.п.) базовым слагом НЕ покрываются — только полный слаг.")
 
 
 if __name__ == "__main__":
