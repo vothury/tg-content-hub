@@ -1,11 +1,9 @@
-"""LLM-пайплайн.
+"""LLM-пайплайн (Этап 3).
 
-Этап 2: дедупликация по хешу содержимого + правилный предфильтр (чёрный список,
-минимальная длина текста, визуальное ревью для постов с медиа и коротким текстом).
-Посты в статусе PREFILTERED ждут Этап 3 (LLM-классификация и рерайт).
-
-При старте разбираются необработанные посты со статусом NEW (бэклог),
-далее новые посты берутся из очереди Redis.
+Конвейер: NEW -> предфильтр -> классификация -> рерайт -> ожидание ревью.
+Источники работы: очередь новых постов от reader'а и периодический рескан
+постов в «промежуточных» статусах (бэклог, остановленные предохранителями,
+прерванные перезапуском).
 """
 import asyncio
 
@@ -17,59 +15,69 @@ from app.db.enums import PostStatus
 from app.db.models import Post
 from app.db.session import session_scope
 from app.redis_client import get_redis
-from app.services.prefilter import run_prefilter
+from app.services.llm_pipeline import advance_post
 from app.services.queue import PIPELINE_QUEUE
 
 log = setup_logging("pipeline")
 
+RESCAN_STATUSES = (
+    PostStatus.NEW,
+    PostStatus.PREFILTERED,
+    PostStatus.LLM_CLASSIFYING,
+    PostStatus.CANDIDATE,
+    PostStatus.REWRITING,
+)
 
-async def process_post(post_id: int) -> None:
-    try:
-        await run_prefilter(post_id)
-        # Этап 3: классификация (дешёвая модель) и рерайт (сильная модель)
-        # будут выполняться здесь для постов в статусе PREFILTERED.
-    except Exception:  # noqa: BLE001 — пост останется в NEW, повторим при следующем старте
-        log.exception("ошибка обработки поста %s", post_id)
 
-
-async def pending_new_post_ids() -> list[int]:
-    """Посты, созданные раньше, чем пайплайн научился их обрабатывать."""
+async def pending_post_ids(limit: int = 50) -> list[int]:
     async with session_scope() as session:
         rows = await session.execute(
-            select(Post.id).where(Post.status == PostStatus.NEW).order_by(Post.id)
+            select(Post.id).where(Post.status.in_(RESCAN_STATUSES)).order_by(Post.id).limit(limit)
         )
         return list(rows.scalars().all())
 
 
 async def main() -> None:
-    if not settings.openrouter_api_key:
-        log.warning("OPENROUTER_API_KEY не задан — LLM-этапы (Этап 3) не запустятся")
     log.info(
-        "pipeline запущен (Этап 2: дедупликация + предфильтр); предохранители: бюджет $%.2f/день, не более %d кандидатов/день",
+        "pipeline запущен (Этап 3: LLM-классификация + рерайт); модели: classify=%s, rewrite=%s; "
+        "предохранители: бюджет $%.2f/день, не более %d кандидатов/день",
+        settings.classify_model,
+        settings.rewrite_model,
         settings.max_llm_budget_usd_per_day,
         settings.max_candidates_per_day,
     )
+    if not settings.openrouter_api_key:
+        log.warning("OPENROUTER_API_KEY не задан — LLM-этапы выполняться не будут")
 
-    # Бэклог: ваши посты из Этапа 1 ещё в статусе NEW
-    pending = await pending_new_post_ids()
-    if pending:
-        log.info("бэклог: %d необработанных постов", len(pending))
-    for post_id in pending:
-        await process_post(post_id)
+    # Бэклог и незавершённые посты прошлых запусков
+    backlog = await pending_post_ids(limit=200)
+    if backlog:
+        log.info("бэклог: %d пост(ов) в работе", len(backlog))
+    for post_id in backlog:
+        await advance_post(post_id)
 
-    # Основной цикл: очередь от reader'а
     redis = get_redis()
+    idle_seconds = 0
     while True:
         raw = await redis.lpop(PIPELINE_QUEUE)
-        if raw is None:
-            await asyncio.sleep(5)
+        if raw is not None:
+            idle_seconds = 0
+            try:
+                post_id = int(raw)
+            except ValueError:
+                log.warning("не числовой элемент в очереди, пропущен: %r", raw)
+                continue
+            await advance_post(post_id)
             continue
-        try:
-            post_id = int(raw)
-        except ValueError:
-            log.warning("не числовой элемент в очереди, пропущен: %r", raw)
-            continue
-        await process_post(post_id)
+        await asyncio.sleep(5)
+        idle_seconds += 5
+        if idle_seconds >= settings.pipeline_rescan_interval_sec:
+            idle_seconds = 0
+            pending = await pending_post_ids()
+            if pending:
+                log.info("рескан: %d пост(ов) в работе", len(pending))
+                for post_id in pending:
+                    await advance_post(post_id)
 
 
 if __name__ == "__main__":

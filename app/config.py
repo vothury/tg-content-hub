@@ -59,6 +59,13 @@ class Settings(BaseSettings):
     prefilter_min_text_len: int = 200
     prefilter_blacklist_words: list[str] = Field(default_factory=list)
 
+    # LLM (Этап 3)
+    openrouter_request_timeout_sec: int = 90
+    llm_classify_max_tokens: int = 400
+    llm_rewrite_max_tokens: int = 1500
+    # Как часто пайплайн пересматривает «застрявшие» посты при пустой очереди
+    pipeline_rescan_interval_sec: int = 300
+
     @property
     def effective_revision_model(self) -> str:
         return self.revision_model or self.rewrite_model

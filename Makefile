@@ -47,3 +47,6 @@ source-delete: ## пример: make source-delete USERNAME=@канал [CASCADE
 
 sources-sync:  ## применить sources.yaml к базе
 	docker compose run --rm migrate python -m app.cli.sources sync
+
+llm-check:     ## проверить OpenRouter и слаги моделей (до обработки постов)
+	docker compose run --rm migrate python -m app.cli.llm_check
