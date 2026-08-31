@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from app.db.enums import DraftOrigin, EventActor, PostStatus
 from app.db.models import Post, PostDraftVersion, PostEvent, TargetChannel
 from app.db.session import session_scope
+from app.services.queue import enqueue_post
 
 log = logging.getLogger(__name__)
 
@@ -94,6 +95,7 @@ async def media_approve(post_id: int) -> ActionResult:
         _event(session, post_id, EventActor.OWNER, "media_approved",
                PostStatus.NEEDS_MEDIA_REVIEW.value, PostStatus.CANDIDATE.value)
         await session.commit()
+    await enqueue_post(post_id)  # пайплайн заберёт сразу, не ожидая рескана
     log.info("пост %s подтверждён визуально -> рерайт", post_id)
     return ActionResult(True, "подтверждено — черновик готовится, придёт новой карточкой")
 
@@ -109,6 +111,7 @@ async def retry_manual(post_id: int) -> ActionResult:
         _event(session, post_id, EventActor.OWNER, "retried",
                PostStatus.NEEDS_MANUAL_REVIEW.value, PostStatus.PREFILTERED.value)
         await session.commit()
+    await enqueue_post(post_id)
     return ActionResult(True, "возвращён в пайплайн")
 
 

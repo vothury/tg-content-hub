@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     llm_classify_max_tokens: int = 800
     llm_rewrite_max_tokens: int = 1500
     # Как часто пайплайн пересматривает «застрявшие» посты при пустой очереди
-    pipeline_rescan_interval_sec: int = 300
+    pipeline_rescan_interval_sec: int = 60
 
     # Предпочтения провайдеров OpenRouter (JSON; пусто = авто-маршрутизация)
     # Пример: {"order": ["OpenAI"], "allow_fallbacks": false, "quantizations": ["fp8"]}

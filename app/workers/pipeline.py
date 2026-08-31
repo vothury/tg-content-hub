@@ -6,6 +6,7 @@
 прерванные перезапуском).
 """
 import asyncio
+import time
 
 from sqlalchemy import select
 
@@ -57,11 +58,10 @@ async def main() -> None:
         await advance_post(post_id)
 
     redis = get_redis()
-    idle_seconds = 0
+    next_rescan = time.monotonic() + settings.pipeline_rescan_interval_sec
     while True:
         raw = await redis.lpop(PIPELINE_QUEUE)
         if raw is not None:
-            idle_seconds = 0
             try:
                 post_id = int(raw)
             except ValueError:
@@ -70,9 +70,8 @@ async def main() -> None:
             await advance_post(post_id)
             continue
         await asyncio.sleep(5)
-        idle_seconds += 5
-        if idle_seconds >= settings.pipeline_rescan_interval_sec:
-            idle_seconds = 0
+        if time.monotonic() >= next_rescan:
+            next_rescan = time.monotonic() + settings.pipeline_rescan_interval_sec
             pending = await pending_post_ids()
             if pending:
                 log.info("рескан: %d пост(ов) в работе", len(pending))
