@@ -261,4 +261,4 @@ class AppSetting(Base):
 
     key: Mapped[str] = mapped_column(String(128), primary_key=True)
     value: Mapped[dict | list | str | int | float | bool | None] = mapped_column(JSONB)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
