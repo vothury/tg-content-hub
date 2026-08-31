@@ -23,6 +23,8 @@ targets:
     title: "Кино тест"
     # daily_limit: 6          # максимум публикаций в день (Этап 5)
     # min_interval_min: 60    # минимальный интервал между публикациями (Этап 5)
+    # лаборатория: берём всё свежее за 3 часа, без фолбэка вглубь
+    # fresh_window_min: 180
 
   - username: testimfoto
     title: "Фото тест"
@@ -40,3 +42,6 @@ sources:
     # filters:
     #   min_text_len: 150
     #   blacklist_words: ["#реклама", "# реклама"]
+    # fresh_window_min: 60
+    # fallback_count: 2
+    # fallback_max_age_hours: 48

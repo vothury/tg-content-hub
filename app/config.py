@@ -75,6 +75,11 @@ class Settings(BaseSettings):
     # Ревью (Этап 4): период поиска постов без отправленной карточки
     review_poll_interval_sec: int = 30
 
+    # Политика свежести постов (Этап 4+)
+    reader_fresh_window_min: int = 60          # окно свежести, минуты
+    reader_fallback_count: int = 2             # если свежих нет: взять последних
+    reader_fallback_max_age_hours: int = 48    # но не старше этого возраста
+
     @property
     def effective_revision_model(self) -> str:
         return self.revision_model or self.rewrite_model

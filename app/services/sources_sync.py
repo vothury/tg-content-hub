@@ -83,6 +83,9 @@ def load_sources_file(path: Path = SOURCES_FILE):
             "backfill_limit": raw.get("backfill_limit"),
             "filters": raw.get("filters"),
             "target": _norm_username(raw["target"]) if raw.get("target") else None,
+            "fresh_window_min": raw.get("fresh_window_min"),
+            "fallback_count": raw.get("fallback_count"),
+            "fallback_max_age_hours": raw.get("fallback_max_age_hours"),
         })
     return targets, sources
 
@@ -155,6 +158,9 @@ async def sync_sources(path: Path = SOURCES_FILE) -> None:
                     backfill_limit=e["backfill_limit"],
                     filters=e["filters"],
                     target_channel_id=target_id,
+                    fresh_window_min=e["fresh_window_min"],
+                    fallback_count=e["fallback_count"],
+                    fallback_max_age_hours=e["fallback_max_age_hours"],
                 ))
                 s_created += 1
                 continue
@@ -169,6 +175,12 @@ async def sync_sources(path: Path = SOURCES_FILE) -> None:
                 src.backfill_limit = e["backfill_limit"]; changed = True
             if src.filters != e["filters"]:
                 src.filters = e["filters"]; changed = True
+            if src.fresh_window_min != e["fresh_window_min"]:
+                src.fresh_window_min = e["fresh_window_min"]; changed = True
+            if src.fallback_count != e["fallback_count"]:
+                src.fallback_count = e["fallback_count"]; changed = True
+            if src.fallback_max_age_hours != e["fallback_max_age_hours"]:
+                src.fallback_max_age_hours = e["fallback_max_age_hours"]; changed = True
             if src.target_channel_id != target_id:
                 src.target_channel_id = target_id; changed = True
             if changed:

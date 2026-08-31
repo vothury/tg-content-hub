@@ -63,6 +63,10 @@ class Source(Base):
 
     target_channel_id: Mapped[int | None] = mapped_column(ForeignKey("target_channels.id"), index=True)
 
+    # Политика свежести (пусто = глобальные значения из .env)
+    fresh_window_min: Mapped[int | None] = mapped_column(Integer)
+    fallback_count: Mapped[int | None] = mapped_column(Integer)
+    fallback_max_age_hours: Mapped[int | None] = mapped_column(Integer)
 
 class StyleProfile(Base):
     """Стилевой профиль целевого канала: промпты, примеры, режим сохранения тона."""

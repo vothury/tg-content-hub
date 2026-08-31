@@ -1,27 +1,26 @@
-"""Source Reader — Этап 1.
+"""Source Reader — чтение источников + политика свежести.
 
 Читает новые посты из подключённых источников (внешние публичные каналы и
 тестовый канал-лаборатория) одним механизмом на Telethon под отдельным
 аккаунтом-читателем. ТОЛЬКО чтение: никаких отправок, реакций, вступлений.
 
-Поведение:
-- цикл с шагом READER_POLL_INTERVAL_SEC;
-- у каждого источника свой интервал опроса (по умолчанию 120 сек);
-- первый опрос источника — ограниченный бэкфил (READER_BACKFILL_LIMIT);
-- посты сохраняются с дедупликацией (source_id, source_message_id);
-- медиа скачиваются в локальный том (лимит размера — предохранитель);
-- каждый новый пост ставится в очередь пайплайна в Redis.
+Политика свежести:
+- в работу берутся посты не старше окна свежести (fresh_window_min);
+- если свежих нет — последние `fallback_count` постов, но не старше
+  `fallback_max_age_hours`;
+- устаревшие посты не сохраняются, но курсор чтения двигается вперёд.
+Параметры глобальные (.env) и на источник (sources.yaml).
 """
 from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from sqlalchemy import select
 from telethon import TelegramClient, errors
-from telethon.tl.types import Document, DocumentAttributeVideo, PeerChannel, Photo
+from telethon.tl.types import Document, PeerChannel, Photo, Video
 
 from app.common.logging import setup_logging
 from app.config import settings
@@ -29,8 +28,8 @@ from app.db.enums import EventActor, MediaType, PostStatus
 from app.db.models import MediaItem, Post, PostEvent, Source
 from app.db.session import session_scope
 from app.services.queue import enqueue_post
-from app.services.text import make_text_hash, normalize_text
 from app.services.sources_sync import SourcesFileError, sync_sources
+from app.services.text import make_text_hash, normalize_text
 
 log = setup_logging("reader")
 
@@ -40,7 +39,7 @@ if not MEDIA_ROOT.is_absolute():
 
 MAX_MESSAGES_PER_CYCLE = 200
 
-# После этих ошибок продолжать опрос бессмысленно — ждём вмешательства
+# Ошибки, после которых продолжать опрос бессмысленно
 FATAL_ERRORS = (
     errors.AuthKeyUnregisteredError,
     errors.SessionRevokedError,
@@ -62,13 +61,9 @@ class SourceSnapshot:
     backfill_limit: int
     last_read_at: datetime | None
     target_channel_id: int | None
-
-
-@dataclass
-class Unit:
-    """Единица обработки: одиночный пост или альбом (группа сообщений)."""
-
-    messages: list
+    fresh_window_min: int
+    fallback_count: int
+    fallback_max_age_hours: int
 
 
 # ---------- метаданные медиа ----------
@@ -94,7 +89,7 @@ def _photo_dimensions(photo: Photo) -> tuple[int | None, int | None]:
 def _video_dimensions(doc: Document) -> tuple[int | None, int | None, int | None]:
     try:
         for attr in doc.attributes:
-            if isinstance(attr, DocumentAttributeVideo):
+            if isinstance(attr, Video):
                 return getattr(attr, "w", None), getattr(attr, "h", None), getattr(attr, "duration", None)
     except Exception:  # noqa: BLE001
         pass
@@ -135,7 +130,7 @@ def _media_meta(media_type: MediaType, media: object) -> dict:
 
 # ---------- загрузка медиа ----------
 
-async def _download_unit_media(client, snap: SourceSnapshot, unit: Unit) -> list[dict]:
+async def _download_unit_media(client, snap: SourceSnapshot, unit) -> list[dict]:
     """Скачивает медиа единицы; для каждого элемента возвращает данные строки."""
     first = unit.messages[0]
     rows: list[dict] = []
@@ -188,7 +183,7 @@ def _post_url(entity, message_id: int) -> str | None:
     return None
 
 
-async def _persist_unit(client, snap: SourceSnapshot, entity, unit: Unit) -> int | None:
+async def _persist_unit(client, snap: SourceSnapshot, entity, unit) -> int | None:
     first = unit.messages[0]
 
     # Дедупликация до любых затрат на медиа
@@ -246,6 +241,9 @@ async def load_sources() -> list[SourceSnapshot]:
                 backfill_limit=r.backfill_limit or settings.reader_backfill_limit,
                 last_read_at=r.last_read_at,
                 target_channel_id=r.target_channel_id,
+                fresh_window_min=settings.reader_fresh_window_min if r.fresh_window_min is None else r.fresh_window_min,
+                fallback_count=settings.reader_fallback_count if r.fallback_count is None else r.fallback_count,
+                fallback_max_age_hours=settings.reader_fallback_max_age_hours if r.fallback_max_age_hours is None else r.fallback_max_age_hours,
             )
             for r in rows
         ]
@@ -261,40 +259,51 @@ async def resolve_entity(client: TelegramClient, snap: SourceSnapshot):
 
 async def sync_source_meta(snap: SourceSnapshot, entity) -> None:
     title = getattr(entity, "title", None)
-    if entity.id == snap.telegram_id and title == snap_title_get(snap):
-        return
     async with session_scope() as session:
         source = await session.get(Source, snap.id)
         if source is None:
             return
+        changed = False
         if entity.id and source.telegram_id != entity.id:
-            source.telegram_id = entity.id
+            source.telegram_id = entity.id; changed = True
         if title and source.title != title:
-            source.title = title
-        await session.commit()
+            source.title = title; changed = True
+        if changed:
+            await session.commit()
 
 
-def snap_title_get(snap: SourceSnapshot):  # вспомогательная, чтобы не дёргать БД
-    return None
-
-
-def build_units(messages: list) -> list[Unit]:
+def build_units(messages: list) -> list:
     """Разбирает сообщения на единицы; альбомы склеиваются по grouped_id."""
-    units: list[Unit] = []
-    groups: dict[int, Unit] = {}
+    units = []
+    groups: dict[int, object] = {}
     for msg in messages:
         if getattr(msg, "action", None) is not None:
             continue  # сервисные сообщения не обрабатываем
         if msg.grouped_id:
             unit = groups.get(msg.grouped_id)
             if unit is None:
-                unit = Unit(messages=[])
+                unit = type("Unit", (), {"messages": []})()
                 groups[msg.grouped_id] = unit
                 units.append(unit)
             unit.messages.append(msg)
         else:
-            units.append(Unit(messages=[msg]))
+            units.append(type("Unit", (), {"messages": [msg]})())
     return units
+
+
+def _select_fresh(messages: list, snap: SourceSnapshot) -> list:
+    """Политика свежести: окно свежести; если пусто — фолбэк последних."""
+    now = _utcnow()
+    fresh_limit = timedelta(minutes=snap.fresh_window_min)
+    fallback_limit = timedelta(hours=snap.fallback_max_age_hours)
+
+    fresh = [m for m in messages if m.date is not None and (now - m.date) <= fresh_limit]
+    if fresh:
+        return fresh
+    recent = [m for m in messages if m.date is not None and (now - m.date) <= fallback_limit]
+    if snap.fallback_count > 0:
+        return recent[-snap.fallback_count:]
+    return []
 
 
 async def mark_read(snap: SourceSnapshot, last_id: int | None) -> None:
@@ -318,7 +327,8 @@ async def process_source(client: TelegramClient, snap: SourceSnapshot) -> None:
     await sync_source_meta(snap, entity)
 
     if snap.last_read_message_id is None:
-        messages = await client.get_messages(entity, limit=snap.backfill_limit)
+        fetch_limit = max(snap.backfill_limit, snap.fallback_count, 1)
+        messages = await client.get_messages(entity, limit=fetch_limit)
     else:
         messages = await client.get_messages(
             entity, min_id=snap.last_read_message_id, limit=MAX_MESSAGES_PER_CYCLE
@@ -329,18 +339,27 @@ async def process_source(client: TelegramClient, snap: SourceSnapshot) -> None:
         await mark_read(snap, None)
         return
 
-    created = 0
-    for unit in build_units(messages):
-        post_id = await _persist_unit(client, snap, entity, unit)
-        if post_id is not None:
-            created += 1
-            await enqueue_post(post_id)
+    selected = _select_fresh(messages, snap)
+    skipped = len(messages) - len(selected)
+    if skipped:
+        log.info("источник #%s: пропущено устаревших постов: %d", snap.id, skipped)
 
+    if selected:
+        created = 0
+        for unit in build_units(selected):
+            post_id = await _persist_unit(client, snap, entity, unit)
+            if post_id is not None:
+                created += 1
+                await enqueue_post(post_id)
+        log.info(
+            "источник #%s (%s): прочитано %d, в работу %d, создано постов %d",
+            snap.id, snap.username or snap.telegram_id, len(messages), len(selected), created,
+        )
+    else:
+        log.info("источник #%s: новых подходящих постов нет", snap.id)
+
+    # курсор двигаем по всем прочитанным, включая устаревшие
     await mark_read(snap, max(m.id for m in messages))
-    log.info(
-        "источник #%s (%s): прочитано сообщений %d, создано постов %d",
-        snap.id, snap.username or snap.telegram_id, len(messages), created,
-    )
 
 
 async def _idle_forever(reason: str) -> None:
@@ -365,7 +384,7 @@ async def main() -> None:
         await _idle_forever("сессия не авторизована — выполните `make login` и перезапустите reader")
 
     me = await client.get_me()
-    log.info("reader запущен (Этап 1); аккаунт-читатель: id=%s username=%s", me.id, me.username)
+    log.info("reader запущен; аккаунт-читатель: id=%s username=%s", me.id, me.username)
 
     # Декларативные источники: при наличии файла он — источник истины
     try:
