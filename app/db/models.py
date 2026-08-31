@@ -61,6 +61,8 @@ class Source(Base):
 
     posts: Mapped[list[Post]] = relationship(back_populates="source")
 
+    target_channel_id: Mapped[int | None] = mapped_column(ForeignKey("target_channels.id"), index=True)
+
 
 class StyleProfile(Base):
     """Стилевой профиль целевого канала: промпты, примеры, режим сохранения тона."""

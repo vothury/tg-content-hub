@@ -53,3 +53,6 @@ llm-check:     ## проверить OpenRouter и слаги моделей (д
 
 llm-models:    ## эндпоинты модели: провайдеры и цены: make llm-models MODEL=openai/gpt-5.6-luna
 	docker compose run --rm migrate python -m app.cli.llm_models $(MODEL)
+
+target-list:   ## список целевых каналов
+	docker compose run --rm migrate python -m app.cli.sources target-list

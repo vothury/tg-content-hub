@@ -15,7 +15,7 @@ from sqlalchemy import select
 
 from app.config import settings
 from app.db.enums import DraftOrigin, EventActor, LLMCallStatus, LLMStage, PostStatus
-from app.db.models import LLMCall, Post, PostDraftVersion, PostEvent, StyleProfile
+from app.db.models import LLMCall, Post, PostDraftVersion, PostEvent, StyleProfile, TargetChannel
 from app.db.session import session_scope
 from app.services import guards
 from app.services.llm.openrouter import LLMResponse, OpenRouterError, chat_completion
@@ -66,6 +66,17 @@ async def _get_default_profile(session) -> StyleProfile:
         await session.flush()
         log.info("создан стилевой профиль по умолчанию (сохранять тон исходника)")
     return profile
+
+
+async def _profile_for_post(session, post) -> StyleProfile:
+    """Стиль целевого канала, если пост привязан; иначе профиль по умолчанию."""
+    if post.target_channel_id is not None:
+        channel = await session.get(TargetChannel, post.target_channel_id)
+        if channel is not None and channel.style_profile_id is not None:
+            profile = await session.get(StyleProfile, channel.style_profile_id)
+            if profile is not None:
+                return profile
+    return await _get_default_profile(session)
 
 
 def _make_call_row(post_id, stage, model, prompt_version, messages, resp, parsed, status, error) -> LLMCall:
@@ -173,7 +184,7 @@ async def rewrite_post(post_id: int) -> None:
         post = await session.get(Post, post_id)
         if post is None or post.status not in (PostStatus.CANDIDATE, PostStatus.REWRITING):
             return
-        profile = await _get_default_profile(session)
+        profile = await _profile_for_post(session, post)
         profile_id = profile.id
         style_instructions = build_style_instructions(profile)
         original_text = (post.original_text or "")[:TEXT_LIMIT]

@@ -61,6 +61,7 @@ class SourceSnapshot:
     poll_interval_sec: int
     backfill_limit: int
     last_read_at: datetime | None
+    target_channel_id: int | None
 
 
 @dataclass
@@ -211,6 +212,7 @@ async def _persist_unit(client, snap: SourceSnapshot, entity, unit: Unit) -> int
         post = Post(
             source_id=snap.id,
             source_message_id=first.id,
+            target_channel_id=snap.target_channel_id,
             post_url=_post_url(entity, first.id),
             original_text=text,
             normalized_text=normalized,
@@ -243,6 +245,7 @@ async def load_sources() -> list[SourceSnapshot]:
                 poll_interval_sec=r.poll_interval_sec or settings.reader_default_source_interval_sec,
                 backfill_limit=r.backfill_limit or settings.reader_backfill_limit,
                 last_read_at=r.last_read_at,
+                target_channel_id=r.target_channel_id,
             )
             for r in rows
         ]

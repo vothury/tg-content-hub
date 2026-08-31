@@ -1,15 +1,7 @@
-"""Управление источниками из командной строки (до админки из Этапа 6).
+"""Управление источниками и целевыми каналами из командной строки.
 
 Основной способ — файл sources.yaml + `make sources-sync`.
 CLI-команды удобны для быстрых правок и диагностики.
-
-Примеры:
-  make sources-sync
-  make source-add USERNAME=@my_test_lab KIND=test
-  make source-list
-  make source-disable USERNAME=@some_public_channel
-  make source-delete USERNAME=@some_public_channel          # только источник
-  make source-delete USERNAME=@some_public_channel CASCADE  # источник + его посты/медиа
 """
 from __future__ import annotations
 
@@ -19,7 +11,7 @@ import asyncio
 from sqlalchemy import delete as sa_delete, select
 
 from app.db.enums import SourceKind
-from app.db.models import Post, Source
+from app.db.models import Post, Source, TargetChannel
 from app.db.session import session_scope
 
 
@@ -44,14 +36,31 @@ async def add(username: str, kind: SourceKind) -> None:
 
 async def list_sources() -> None:
     async with session_scope() as session:
+        targets = {t.id: t for t in (await session.execute(select(TargetChannel))).scalars().all()}
         rows = (await session.execute(select(Source).order_by(Source.id))).scalars().all()
         if not rows:
             print("Источников нет. Заполните sources.yaml и выполните make sources-sync")
             return
         for r in rows:
+            target = targets.get(r.target_channel_id)
+            target_str = f"@{target.username}" if target else "(не привязан)"
             print(
-                f"#{r.id} @{r.username} kind={r.kind.value} enabled={r.enabled} "
+                f"#{r.id} @{r.username} kind={r.kind.value} enabled={r.enabled} target={target_str} "
                 f"tg_id={r.telegram_id} last_msg={r.last_read_message_id} title={r.title!r}"
+            )
+
+
+async def list_targets() -> None:
+    async with session_scope() as session:
+        rows = (await session.execute(select(TargetChannel).order_by(TargetChannel.id))).scalars().all()
+        if not rows:
+            print("Целевых каналов нет. Добавьте блок targets в sources.yaml и выполните make sources-sync")
+            return
+        for t in rows:
+            style = t.style_profile_id or "—"
+            print(
+                f"#{t.id} @{t.username} enabled={t.enabled} title={t.title!r} "
+                f"daily_limit={t.daily_limit} min_interval={t.min_interval_min} style_profile_id={style}"
             )
 
 
@@ -95,14 +104,14 @@ def do_sync() -> None:
 
     try:
         asyncio.run(sync_sources())
-        print("Синхронизация завершена. См. make source-list")
+        print("Синхронизация завершена. См. make source-list и make target-list")
     except SourcesFileError as exc:
         print(f"Ошибка: {exc}")
         raise SystemExit(1)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Управление источниками")
+    parser = argparse.ArgumentParser(description="Управление источниками и каналами")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_add = sub.add_parser("add")
@@ -110,6 +119,7 @@ def main() -> None:
     p_add.add_argument("--kind", choices=["external", "test"], default="external")
 
     sub.add_parser("list")
+    sub.add_parser("target-list")
     sub.add_parser("sync")
 
     p_set = sub.add_parser("set-enabled")
@@ -126,6 +136,8 @@ def main() -> None:
         asyncio.run(add(_norm(args.username), SourceKind(args.kind)))
     elif args.cmd == "list":
         asyncio.run(list_sources())
+    elif args.cmd == "target-list":
+        asyncio.run(list_targets())
     elif args.cmd == "sync":
         do_sync()
     elif args.cmd == "set-enabled":

@@ -5,13 +5,13 @@ import logging
 from pathlib import Path
 
 from aiogram import Bot
-from aiogram.types import InlineKeyboardMarkup, InputFile, InputMediaPhoto, InputMediaVideo
+from aiogram.types import FSInputFile, InlineKeyboardMarkup, InputMediaPhoto, InputMediaVideo
 from sqlalchemy import select
 
 from app.bot.keyboards import manual_review_keyboard, media_review_keyboard, review_keyboard
 from app.config import settings
 from app.db.enums import MediaType, PostStatus
-from app.db.models import MediaItem, Post, Source
+from app.db.models import MediaItem, Post, Source, TargetChannel
 from app.db.session import session_scope
 from app.services.review import mark_card_sent
 
@@ -43,6 +43,11 @@ async def load_card_data(post_id: int) -> dict | None:
         if post is None:
             return None
         source = await session.get(Source, post.source_id)
+        target = None
+        if post.target_channel_id is not None:
+            t = await session.get(TargetChannel, post.target_channel_id)
+            if t is not None:
+                target = {"id": t.id, "username": t.username, "title": t.title}
         media = (
             await session.execute(
                 select(MediaItem).where(MediaItem.post_id == post_id).order_by(MediaItem.position)
@@ -52,6 +57,7 @@ async def load_card_data(post_id: int) -> dict | None:
             "post_id": post_id,
             "status": post.status,
             "source_username": source.username if source else "?",
+            "target": target,
             "post_url": post.post_url,
             "score": post.score,
             "verdict_reason": post.verdict_reason,
@@ -69,6 +75,11 @@ async def load_card_data(post_id: int) -> dict | None:
 def build_card_text(data: dict) -> tuple[str, InlineKeyboardMarkup]:
     status = data["status"]
     lines = [f"🆕 Кандидат #{data['post_id']} — @{data['source_username']}"]
+
+    if data["target"]:
+        lines.append(f"🎯 Канал: @{data['target']['username']} ({data['target']['title']})")
+    else:
+        lines.append("🎯 Канал: будет выбран при одобрении")
 
     if status is PostStatus.NEEDS_MEDIA_REVIEW:
         lines.append("ℹ️ Визуальный пост (медиа и короткий текст) — решение за вами.")
@@ -122,9 +133,9 @@ async def send_card(bot: Bot, chat_id: int, post_id: int) -> bool:
             log.warning("пост %s: медиафайл не найден: %s", post_id, path)
             continue
         if m["type"] is MediaType.VIDEO:
-            files.append(InputMediaVideo(media=InputFile(path)))
+            files.append(InputMediaVideo(media=FSInputFile(path)))
         else:
-            files.append(InputMediaPhoto(media=InputFile(path)))
+            files.append(InputMediaPhoto(media=FSInputFile(path)))
 
     if files:
         files[0].caption = f"🆕 Кандидат #{post_id} — @{data['source_username']}"

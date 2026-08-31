@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from app.db.enums import DraftOrigin, EventActor, PostStatus
-from app.db.models import Post, PostDraftVersion, PostEvent
+from app.db.models import Post, PostDraftVersion, PostEvent, TargetChannel
 from app.db.session import session_scope
 
 log = logging.getLogger(__name__)
@@ -20,6 +20,7 @@ log = logging.getLogger(__name__)
 class ActionResult:
     ok: bool
     message: str
+    needs_target: bool = False
 
 
 def _event(session, post_id, actor, action, from_status, to_status, details=None):
@@ -29,20 +30,34 @@ def _event(session, post_id, actor, action, from_status, to_status, details=None
     ))
 
 
-async def approve(post_id: int) -> ActionResult:
+async def approve(post_id: int, target_channel_id: int | None = None) -> ActionResult:
     async with session_scope() as session:
         post = await session.get(Post, post_id)
         if post is None:
             return ActionResult(False, "пост не найден")
         if post.status is not PostStatus.AWAITING_REVIEW:
             return ActionResult(False, f"недоступно в статусе {post.status.value}")
+
+        if post.target_channel_id is None and target_channel_id is None:
+            return ActionResult(False, "выберите целевой канал", needs_target=True)
+        if target_channel_id is not None:
+            channel_check = await session.get(TargetChannel, target_channel_id)
+            if channel_check is None:
+                return ActionResult(False, "канал не найден")
+            post.target_channel_id = target_channel_id
+
+        channel = await session.get(TargetChannel, post.target_channel_id)
+        channel_username = channel.username if channel is not None else "?"
+
         post.status = PostStatus.APPROVED
         post.approved_at = datetime.now(timezone.utc)
         _event(session, post_id, EventActor.OWNER, "approved",
-               PostStatus.AWAITING_REVIEW.value, PostStatus.APPROVED.value)
+               PostStatus.AWAITING_REVIEW.value, PostStatus.APPROVED.value,
+               {"target_channel": channel_username})
         await session.commit()
-    log.info("пост %s одобрен владельцем", post_id)
-    return ActionResult(True, "одобрено; время публикации и публикация — Этап 5")
+
+    log.info("пост %s одобрен владельцем для @%s", post_id, channel_username)
+    return ActionResult(True, f"одобрено для канала @{channel_username}; время публикации и публикация — Этап 5")
 
 
 async def reject(post_id: int, reason: str = "") -> ActionResult:

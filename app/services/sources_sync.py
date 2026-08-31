@@ -1,8 +1,9 @@
-"""Синхронизация источников из декларативного sources.yaml в таблицу sources.
+"""Синхронизация sources.yaml (целевые каналы + источники) в базу.
 
-Файл — единое наглядное место управления источниками. Отсутствие файла —
-синхронизация не выполняется, база не трогается. Источник, пропавший из
-списка, отключается (мягко), но не удаляется: посты и медиа сохраняются.
+Файл — единая карта контента: какие источники питают какие целевые каналы.
+Файла нет — синхронизация не выполняется, база не трогается.
+Источник, пропавший из списка, отключается (мягко), но не удаляется.
+Целевые каналы из файла не удаляются — только создаются/обновляются.
 """
 from __future__ import annotations
 
@@ -13,7 +14,7 @@ import yaml
 from sqlalchemy import select
 
 from app.db.enums import SourceKind
-from app.db.models import Source
+from app.db.models import Source, TargetChannel
 from app.db.session import session_scope
 
 log = logging.getLogger(__name__)
@@ -22,11 +23,15 @@ SOURCES_FILE = Path("sources.yaml")
 
 
 class SourcesFileError(Exception):
-    """Файл источников некорректен."""
+    """Файл каналов/источников некорректен."""
 
 
-def load_sources_file(path: Path = SOURCES_FILE) -> list[dict] | None:
-    """Возвращает нормализованный список источников или None, если файла/списка нет."""
+def _norm_username(value) -> str:
+    return str(value).lstrip("@").strip()
+
+
+def load_sources_file(path: Path = SOURCES_FILE):
+    """Возвращает (targets, sources) или None, если файла/списка источников нет."""
     if not path.exists():
         return None
     try:
@@ -38,48 +43,108 @@ def load_sources_file(path: Path = SOURCES_FILE) -> list[dict] | None:
     except yaml.YAMLError as exc:
         raise SourcesFileError(f"ошибка синтаксиса YAML в {path}: {exc}") from exc
 
-    entries = data.get("sources")
-    if not isinstance(entries, list):
-        log.warning("%s: список 'sources' отсутствует — синхронизация пропущена", path)
-        return None
+    if not isinstance(data, dict):
+        raise SourcesFileError(f"{path}: верхний уровень должен быть словарём с блоками targets и sources")
 
-    normalized: list[dict] = []
-    for i, raw in enumerate(entries, start=1):
+    targets_raw = data.get("targets") or []
+    sources_raw = data.get("sources")
+    if not isinstance(targets_raw, list):
+        raise SourcesFileError(f"{path}: блок 'targets' должен быть списком")
+    if not isinstance(sources_raw, list):
+        log.warning("%s: блок 'sources' отсутствует — источники не синхронизируются", path)
+        sources_raw = []
+
+    targets: list[dict] = []
+    for i, raw in enumerate(targets_raw, start=1):
         if not isinstance(raw, dict) or not raw.get("username"):
-            raise SourcesFileError(f"{path}: запись №{i} — обязательно поле 'username'")
+            raise SourcesFileError(f"{path}: запись targets №{i} — обязательно поле 'username'")
+        targets.append({
+            "username": _norm_username(raw["username"]),
+            "title": str(raw.get("title") or raw["username"]),
+            "daily_limit": raw.get("daily_limit"),
+            "min_interval_min": raw.get("min_interval_min"),
+            "quiet_hours": raw.get("quiet_hours"),
+        })
+
+    sources: list[dict] = []
+    for i, raw in enumerate(sources_raw, start=1):
+        if not isinstance(raw, dict) or not raw.get("username"):
+            raise SourcesFileError(f"{path}: запись sources №{i} — обязательно поле 'username'")
         kind_raw = str(raw.get("kind", "external")).strip().lower()
         try:
             kind = SourceKind(kind_raw)
         except ValueError:
-            raise SourcesFileError(f"{path}: запись №{i} — kind должен быть test|external, получено '{kind_raw}'")
-        normalized.append({
-            "username": str(raw["username"]).lstrip("@").strip(),
+            raise SourcesFileError(f"{path}: запись sources №{i} — kind должен быть test|external, получено '{kind_raw}'")
+        sources.append({
+            "username": _norm_username(raw["username"]),
             "kind": kind,
             "enabled": bool(raw.get("enabled", True)),
             "poll_interval_sec": raw.get("poll_interval_sec"),
             "backfill_limit": raw.get("backfill_limit"),
             "filters": raw.get("filters"),
+            "target": _norm_username(raw["target"]) if raw.get("target") else None,
         })
-    return normalized
+    return targets, sources
 
 
 async def sync_sources(path: Path = SOURCES_FILE) -> None:
-    """Примиряет таблицу sources с файлом."""
-    entries = load_sources_file(path)
-    if entries is None:
+    """Примиряет target_channels и sources с файлом."""
+    parsed = load_sources_file(path)
+    if parsed is None:
         return
-
-    listed = {e["username"] for e in entries}
-    created = updated = disabled = 0
+    targets_cfg, sources_cfg = parsed
 
     async with session_scope() as session:
-        existing = {
-            s.username: s
-            for s in (await session.execute(select(Source))).scalars().all()
+        # --- целевые каналы: только создание и обновление ---
+        existing_targets = {
+            t.username: t for t in (await session.execute(select(TargetChannel))).scalars().all()
+        }
+        t_created = t_updated = 0
+        for cfg in targets_cfg:
+            ch = existing_targets.get(cfg["username"])
+            if ch is None:
+                session.add(TargetChannel(
+                    username=cfg["username"],
+                    title=cfg["title"],
+                    daily_limit=cfg["daily_limit"] or 6,
+                    min_interval_min=cfg["min_interval_min"] or 60,
+                    quiet_hours=cfg["quiet_hours"],
+                ))
+                t_created += 1
+                continue
+            changed = False
+            if ch.title != cfg["title"]:
+                ch.title = cfg["title"]; changed = True
+            if cfg["daily_limit"] is not None and ch.daily_limit != int(cfg["daily_limit"]):
+                ch.daily_limit = int(cfg["daily_limit"]); changed = True
+            if cfg["min_interval_min"] is not None and ch.min_interval_min != int(cfg["min_interval_min"]):
+                ch.min_interval_min = int(cfg["min_interval_min"]); changed = True
+            if cfg["quiet_hours"] is not None and ch.quiet_hours != cfg["quiet_hours"]:
+                ch.quiet_hours = cfg["quiet_hours"]; changed = True
+            if changed:
+                t_updated += 1
+        await session.flush()
+
+        target_ids = {
+            t.username: t.id for t in (await session.execute(select(TargetChannel))).scalars().all()
         }
 
-        for e in entries:
-            src = existing.get(e["username"])
+        # --- источники ---
+        listed = {e["username"] for e in sources_cfg}
+        existing_sources = {
+            s.username: s for s in (await session.execute(select(Source))).scalars().all()
+        }
+        s_created = s_updated = s_disabled = 0
+        for e in sources_cfg:
+            target_id = None
+            if e["target"]:
+                target_id = target_ids.get(e["target"])
+                if target_id is None:
+                    raise SourcesFileError(
+                        f"источник @{e['username']}: целевой канал @{e['target']} не найден — "
+                        "добавьте его в блок targets"
+                    )
+            src = existing_sources.get(e["username"])
             if src is None:
                 session.add(Source(
                     username=e["username"],
@@ -89,8 +154,9 @@ async def sync_sources(path: Path = SOURCES_FILE) -> None:
                     poll_interval_sec=e["poll_interval_sec"],
                     backfill_limit=e["backfill_limit"],
                     filters=e["filters"],
+                    target_channel_id=target_id,
                 ))
-                created += 1
+                s_created += 1
                 continue
             changed = False
             if src.kind is not e["kind"]:
@@ -103,16 +169,21 @@ async def sync_sources(path: Path = SOURCES_FILE) -> None:
                 src.backfill_limit = e["backfill_limit"]; changed = True
             if src.filters != e["filters"]:
                 src.filters = e["filters"]; changed = True
+            if src.target_channel_id != target_id:
+                src.target_channel_id = target_id; changed = True
             if changed:
-                updated += 1
+                s_updated += 1
 
-        # Пропавшие из файла — мягко отключаем, данные сохраняем
-        for username, src in existing.items():
+        # Пропавшие из файла источники — мягко отключаем
+        for username, src in existing_sources.items():
             if username not in listed and src.enabled:
                 src.enabled = False
-                disabled += 1
+                s_disabled += 1
                 log.warning("источник @%s отсутствует в %s — отключён (посты сохранены)", username, path.name)
 
         await session.commit()
 
-    log.info("синхронизация источников: добавлено %d, обновлено %d, отключено %d", created, updated, disabled)
+    log.info(
+        "синхронизация: целевых каналов +%d/~%d; источников +%d/~%d, отключено %d",
+        t_created, t_updated, s_created, s_updated, s_disabled,
+    )

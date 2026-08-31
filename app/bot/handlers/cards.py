@@ -8,6 +8,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from app.bot.cards import build_card_text, load_card_data
+from app.bot.keyboards import targets_keyboard
 from app.bot.states import ReviewSteps
 from app.services import review
 
@@ -15,14 +16,22 @@ log = logging.getLogger(__name__)
 router = Router(name="cards")
 
 
-def _parse_callback(data: str) -> tuple[int | None, str | None]:
+def _parse_callback(data: str) -> tuple[int | None, str | None, int | None]:
     parts = data.split(":")
-    if len(parts) != 3 or parts[0] != "p":
-        return None, None
+    if len(parts) < 3 or parts[0] != "p":
+        return None, None, None
     try:
-        return int(parts[1]), parts[2]
+        post_id = int(parts[1])
     except ValueError:
-        return None, None
+        return None, None, None
+    action = parts[2]
+    extra = None
+    if len(parts) >= 4:
+        try:
+            extra = int(parts[3])
+        except ValueError:
+            pass
+    return post_id, action, extra
 
 
 async def _edit_card(callback: CallbackQuery, ok: bool, message: str) -> None:
@@ -37,13 +46,31 @@ async def _edit_card(callback: CallbackQuery, ok: bool, message: str) -> None:
 
 @router.callback_query(F.data.startswith("p:"))
 async def on_action(callback: CallbackQuery, state: FSMContext) -> None:
-    post_id, action = _parse_callback(callback.data)
+    post_id, action, extra = _parse_callback(callback.data)
     if post_id is None or action is None:
         await callback.answer("Некорректные данные", show_alert=True)
         return
 
     if action == "approve":
         result = await review.approve(post_id)
+        if result.needs_target:
+            keyboard = await targets_keyboard(post_id)
+            if callback.message is not None:
+                await callback.message.edit_text(
+                    f"Пост #{post_id}: выберите целевой канал для публикации",
+                    reply_markup=keyboard,
+                )
+            await callback.answer()
+            return
+        await _edit_card(callback, result.ok, f"Пост #{post_id}: {result.message}")
+        await callback.answer(result.message, show_alert=not result.ok)
+        return
+
+    if action == "to":
+        if extra is None:
+            await callback.answer("Канал не распознан", show_alert=True)
+            return
+        result = await review.approve(post_id, target_channel_id=extra)
         await _edit_card(callback, result.ok, f"Пост #{post_id}: {result.message}")
         await callback.answer(result.message, show_alert=not result.ok)
         return
