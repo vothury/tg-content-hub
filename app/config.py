@@ -80,6 +80,10 @@ class Settings(BaseSettings):
     reader_fallback_count: int = 2             # если свежих нет: взять последних
     reader_fallback_max_age_hours: int = 48    # но не старше этого возраста
 
+    # Публикация (Этап 5)
+    owner_timezone: str = "UTC"           # часовой пояс владельца (например, Europe/Moscow)
+    scheduler_poll_interval_sec: int = 15
+
     @property
     def effective_revision_model(self) -> str:
         return self.revision_model or self.rewrite_model

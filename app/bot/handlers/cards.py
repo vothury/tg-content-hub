@@ -12,6 +12,12 @@ from app.bot.keyboards import targets_keyboard
 from app.bot.states import ReviewSteps
 from app.services import review
 
+from app.bot.keyboards import publish_mode_keyboard, targets_keyboard
+from app.config import settings
+from app.db.enums import PublishMode
+from app.services.publishing import create_publish_job
+from app.services.times import fmt_owner, parse_scheduled
+
 log = logging.getLogger(__name__)
 router = Router(name="cards")
 
@@ -62,8 +68,19 @@ async def on_action(callback: CallbackQuery, state: FSMContext) -> None:
                 )
             await callback.answer()
             return
+        if result.ok:
+            if callback.message is not None:
+                try:
+                    await callback.message.edit_text(
+                        f"✅ Пост #{post_id}: {result.message}",
+                        reply_markup=publish_mode_keyboard(post_id),
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+            await callback.answer()
+            return
         await _edit_card(callback, result.ok, f"Пост #{post_id}: {result.message}")
-        await callback.answer(result.message, show_alert=not result.ok)
+        await callback.answer(result.message, show_alert=True)
         return
 
     if action == "to":
@@ -71,8 +88,47 @@ async def on_action(callback: CallbackQuery, state: FSMContext) -> None:
             await callback.answer("Канал не распознан", show_alert=True)
             return
         result = await review.approve(post_id, target_channel_id=extra)
+        if result.ok:
+            if callback.message is not None:
+                try:
+                    await callback.message.edit_text(
+                        f"✅ Пост #{post_id}: {result.message}",
+                        reply_markup=publish_mode_keyboard(post_id),
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+            await callback.answer()
+            return
         await _edit_card(callback, result.ok, f"Пост #{post_id}: {result.message}")
-        await callback.answer(result.message, show_alert=not result.ok)
+        await callback.answer(result.message, show_alert=True)
+        return
+
+    if action == "mode":
+        parts = callback.data.split(":")
+        mode_raw = parts[3] if len(parts) >= 4 else ""
+        if mode_raw == "schedule":
+            await state.set_state(ReviewSteps.schedule_time)
+            await state.update_data(post_id=post_id)
+            if callback.message is not None:
+                await callback.message.edit_text(
+                    f"Пост #{post_id}: отправьте время публикации — «ГГГГ-ММ-ДД ЧЧ:ММ», "
+                    f"«ДД.ММ.ГГГГ ЧЧ:ММ» или просто «ЧЧ:ММ» (часовой пояс: {settings.owner_timezone}). "
+                    "Отмена — /cancel"
+                )
+            await callback.answer()
+            return
+        try:
+            mode = PublishMode(mode_raw)
+        except ValueError:
+            await callback.answer("Неизвестный режим", show_alert=True)
+            return
+        ok, message = await create_publish_job(post_id, mode)
+        if callback.message is not None:
+            try:
+                await callback.message.edit_text(f"{'✅' if ok else '⚠️'} Пост #{post_id}: {message}")
+            except Exception:  # noqa: BLE001
+                pass
+        await callback.answer(message, show_alert=not ok)
         return
 
     if action == "media_ok":
@@ -173,3 +229,22 @@ async def on_ai_comment(message: Message, state: FSMContext) -> None:
         await message.answer(f"🤖 {result.message}.\n\n{text}", reply_markup=keyboard)
     else:
         await message.answer(result.message)
+
+
+@router.message(ReviewSteps.schedule_time)
+async def on_schedule_time(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    post_id = data.get("post_id")
+    scheduled_at = parse_scheduled(message.text or "")
+    if scheduled_at is None:
+        await message.answer(
+            "Не понял время. Форматы: «2026-09-01 18:30», «01.09.2026 18:30» или «18:30». "
+            "Отмена — /cancel"
+        )
+        return
+    ok, msg = await create_publish_job(post_id, PublishMode.SCHEDULE, scheduled_at)
+    await state.clear()
+    if ok:
+        await message.answer(f"🕒 Пост #{post_id}: {msg} на {fmt_owner(scheduled_at)} (ваше время)")
+    else:
+        await message.answer(f"⚠️ {msg}")

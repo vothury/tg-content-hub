@@ -57,7 +57,7 @@ async def approve(post_id: int, target_channel_id: int | None = None) -> ActionR
         await session.commit()
 
     log.info("пост %s одобрен владельцем для @%s", post_id, channel_username)
-    return ActionResult(True, f"одобрено для канала @{channel_username}; время публикации и публикация — Этап 5")
+    return ActionResult(True, f"одобрено для канала @{channel_username} — выберите время публикации")
 
 
 async def reject(post_id: int, reason: str = "") -> ActionResult:

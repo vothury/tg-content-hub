@@ -55,3 +55,15 @@ async def targets_keyboard(post_id: int) -> InlineKeyboardMarkup:
         for t in rows
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def publish_mode_keyboard(post_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🚀 Сейчас", callback_data=f"p:{post_id}:mode:now"),
+            InlineKeyboardButton(text="📥 В очередь", callback_data=f"p:{post_id}:mode:queue"),
+        ],
+        [
+            InlineKeyboardButton(text="🕒 Отложить…", callback_data=f"p:{post_id}:mode:schedule"),
+        ],
+    ])
