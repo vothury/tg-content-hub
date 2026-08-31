@@ -72,6 +72,9 @@ class Settings(BaseSettings):
     rewrite_providers: str = ""
     revision_providers: str = ""
 
+    # Ревью (Этап 4): период поиска постов без отправленной карточки
+    review_poll_interval_sec: int = 30
+
     @property
     def effective_revision_model(self) -> str:
         return self.revision_model or self.rewrite_model

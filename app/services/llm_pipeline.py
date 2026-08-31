@@ -27,6 +27,9 @@ from app.services.llm.prompts import (
     REWRITE_USER,
     REWRITE_VERSION,
     build_style_instructions,
+    REVISE_SYSTEM,
+    REVISE_USER,
+    REVISE_VERSION,
 )
 from app.services.llm.schemas import ClassifyResult, LLMParseError, RewriteResult
 from app.services.prefilter import run_prefilter
@@ -272,3 +275,81 @@ async def advance_post(post_id: int) -> None:
             await rewrite_post(post_id)
     except Exception:  # noqa: BLE001 — пост не теряется, подхватится ресканом
         log.exception("сбой обработки поста %s", post_id)
+
+
+
+async def revise_draft(post_id: int, comment: str) -> tuple[bool, str]:
+    """Правка ИИ: замечание владельца + текущий черновик -> новая версия."""
+    async with session_scope() as session:
+        post = await session.get(Post, post_id)
+        if post is None:
+            return False, "пост не найден"
+        if post.status not in (PostStatus.REVISION, PostStatus.AWAITING_REVIEW):
+            return False, f"правка недоступна в статусе {post.status.value}"
+        draft = post.draft_text or ""
+        if not draft:
+            return False, "у поста ещё нет черновика"
+
+    if not settings.openrouter_api_key:
+        return False, "OPENROUTER_API_KEY не задан"
+    if not await guards.budget_allows():
+        return False, "бюджет LLM на сегодня исчерпан — попробуйте завтра"
+
+    model = await _model_for(Keys.REVISION_MODEL)
+    providers = await _providers_for(Keys.REVISION_PROVIDERS)
+    messages = [
+        {"role": "system", "content": REVISE_SYSTEM},
+        {"role": "user", "content": REVISE_USER.format(draft=draft[:TEXT_LIMIT], comment=comment[:2000])},
+    ]
+    resp, result, call_status, error_text = await _call_and_parse(
+        messages, model, settings.llm_rewrite_max_tokens, temperature=0.7,
+        schema=RewriteResult, provider=providers,
+    )
+    if resp is not None and resp.cost_usd:
+        await guards.add_llm_cost(resp.cost_usd)
+
+    async with session_scope() as session:
+        call_row = _make_call_row(
+            post_id, LLMStage.REVISION, model, REVISE_VERSION, messages,
+            resp, asdict(result) if result is not None else None, call_status, error_text,
+        )
+        session.add(call_row)
+        await session.flush()
+
+        post = await session.get(Post, post_id)
+        if post is None:
+            await session.commit()
+            return False, "пост не найден"
+
+        if call_status is not LLMCallStatus.OK or result is None:
+            # Возвращаем в ожидание ревью: владелец рядом, пост не теряется
+            post.status = PostStatus.AWAITING_REVIEW
+            session.add(PostEvent(
+                post_id=post_id, actor=EventActor.SYSTEM, action="revision_failed",
+                from_status=PostStatus.REVISION.value, to_status=PostStatus.AWAITING_REVIEW.value,
+                details={"error": error_text},
+            ))
+            await session.commit()
+            return False, f"модель не смогла внести правку: {(error_text or '')[:200]}"
+
+        post.draft_text = result.draft
+        post.draft_version += 1
+        post.status = PostStatus.AWAITING_REVIEW
+        session.add(PostDraftVersion(
+            post_id=post_id, version=post.draft_version, text=result.draft,
+            origin=DraftOrigin.LLM_REVISION, llm_call_id=call_row.id,
+        ))
+        session.add(PostEvent(
+            post_id=post_id, actor=EventActor.LLM, action="revised",
+            from_status=PostStatus.REVISION.value, to_status=PostStatus.AWAITING_REVIEW.value,
+            details={"draft_version": post.draft_version, "warnings": result.warnings},
+        ))
+        # карточка будет обновлена на месте — повторная рассылка не нужна
+        session.add(PostEvent(
+            post_id=post_id, actor=EventActor.SYSTEM, action="card_sent",
+            details={"draft_version": post.draft_version},
+        ))
+        await session.commit()
+
+    log.info("пост %s: правка ИИ -> черновик v%d", post_id, post.draft_version)
+    return True, f"правка внесена — черновик v{post.draft_version}"

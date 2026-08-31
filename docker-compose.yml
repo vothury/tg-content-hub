@@ -112,6 +112,8 @@ services:
     env_file: .env
     mem_limit: 256m
     logging: *default-logging
+    volumes:
+      - media:/app/media
     depends_on:
       migrate:
         condition: service_completed_successfully
