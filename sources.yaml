@@ -34,14 +34,17 @@ sources:
   - username: go_tests
     kind: test
     target: testimfilm
+    filters:
+      min_text_len: 1
+      blacklist_words: ["#реклама", "# реклама"]
 
   - username: kino_filmach
     kind: external
     target: testimfilm
     # poll_interval_sec: 300
-    # filters:
-    #   min_text_len: 150
-    #   blacklist_words: ["#реклама", "# реклама"]
+    filters:
+      min_text_len: 1
+      blacklist_words: ["#реклама", "# реклама"]
     # fresh_window_min: 60
     # fallback_count: 2
     # fallback_max_age_hours: 48
