@@ -90,7 +90,7 @@ class TargetChannel(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(255))
-    telegram_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    telegram_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     username: Mapped[str | None] = mapped_column(String(64))
     style_profile_id: Mapped[int | None] = mapped_column(ForeignKey("style_profiles.id"))
     enabled: Mapped[bool] = mapped_column(default=True)
