@@ -61,7 +61,7 @@ class Settings(BaseSettings):
 
     # LLM (Этап 3)
     openrouter_request_timeout_sec: int = 90
-    llm_classify_max_tokens: int = 400
+    llm_classify_max_tokens: int = 800
     llm_rewrite_max_tokens: int = 1500
     # Как часто пайплайн пересматривает «застрявшие» посты при пустой очереди
     pipeline_rescan_interval_sec: int = 300

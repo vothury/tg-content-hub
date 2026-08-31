@@ -109,7 +109,11 @@ async def _call_and_parse(messages, model, max_tokens, temperature, schema, prov
     except OpenRouterError as exc:
         call_status, error_text = LLMCallStatus.ERROR, str(exc)
     except LLMParseError as exc:
-        call_status, error_text = LLMCallStatus.PARSE_ERROR, str(exc)
+        call_status = LLMCallStatus.PARSE_ERROR
+        if resp is not None and resp.finish_reason == "length":
+            error_text = f"ответ модели обрезан лимитом токенов: {exc}"
+        else:
+            error_text = str(exc)
     except Exception as exc:  # noqa: BLE001
         call_status, error_text = LLMCallStatus.ERROR, f"{exc.__class__.__name__}: {exc}"
     return resp, result, call_status, error_text

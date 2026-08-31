@@ -35,6 +35,7 @@ class LLMResponse:
     output_tokens: int | None
     cost_usd: float | None
     latency_ms: int
+    finish_reason: str | None
 
 
 class PriceBook:
@@ -131,7 +132,9 @@ async def chat_completion(
 
     latency_ms = int((time.monotonic() - started) * 1000)
     try:
-        content = data["choices"][0]["message"]["content"] or ""
+        choice = data["choices"][0]
+        content = choice["message"]["content"] or ""
+        finish_reason = choice.get("finish_reason")
     except (KeyError, IndexError, TypeError) as exc:
         raise OpenRouterError(f"неожиданная структура ответа: {json.dumps(data)[:500]}") from exc
 
@@ -147,4 +150,5 @@ async def chat_completion(
         output_tokens=output_tokens,
         cost_usd=_price_book.cost(answer_model, input_tokens, output_tokens),
         latency_ms=latency_ms,
+        finish_reason=finish_reason,
     )
