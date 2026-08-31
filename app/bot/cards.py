@@ -122,8 +122,10 @@ async def send_card(bot: Bot, chat_id: int, post_id: int) -> bool:
     if data is None:
         return False
 
-    # Медиа: альбом или одиночный файл (бот загружает заново из локального тома)
+    # Медиа: альбом или одиночный файл (бот загружает заново из локального тома).
+    # Подпись передаётся в конструкторе: модели InputMedia* в aiogram 3 заморожены.
     files: list = []
+    first = True
     root = media_root()
     for m in data["media"]:
         if not m["downloaded"] or not m["local_path"]:
@@ -132,13 +134,16 @@ async def send_card(bot: Bot, chat_id: int, post_id: int) -> bool:
         if not path.exists():
             log.warning("пост %s: медиафайл не найден: %s", post_id, path)
             continue
+        file_caption = (
+            f"🆕 Кандидат #{post_id} — @{data['source_username']}" if first else None
+        )
         if m["type"] is MediaType.VIDEO:
-            files.append(InputMediaVideo(media=FSInputFile(path)))
+            files.append(InputMediaVideo(media=FSInputFile(path), caption=file_caption))
         else:
-            files.append(InputMediaPhoto(media=FSInputFile(path)))
+            files.append(InputMediaPhoto(media=FSInputFile(path), caption=file_caption))
+        first = False
 
     if files:
-        files[0].caption = f"🆕 Кандидат #{post_id} — @{data['source_username']}"
         try:
             await bot.send_media_group(chat_id, media=files)
         except Exception:  # noqa: BLE001
