@@ -6,14 +6,18 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
+# Слой зависимостей: кэшируется, пока не меняется pyproject.toml.
+# Зависимости берутся прямо из него — единый источник правды сохраняется.
 COPY pyproject.toml ./
+RUN python -c 'import tomllib; d=tomllib.load(open("pyproject.toml","rb")); open("/tmp/reqs.txt","w").write(chr(10).join(d["project"]["dependencies"]))' \
+ && pip install --no-cache-dir -r /tmp/reqs.txt
+
+# Код: пересобирается только этот слой и ниже
 COPY app ./app
 COPY alembic.ini ./
 COPY alembic ./alembic
+RUN pip install --no-cache-dir --no-deps .
 
-RUN pip install .
-
-# useradd даёт uid 1000 — совпадает с владельцем ./sessions в WSL2
 RUN useradd -m appuser \
     && mkdir -p /app/sessions /app/media \
     && chown -R appuser:appuser /app
