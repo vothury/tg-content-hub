@@ -103,15 +103,17 @@ def build_card_text(data: dict) -> tuple[str, InlineKeyboardMarkup]:
         lines.append("Риски: " + "; ".join(str(r) for r in data["risks"][:5]))
 
     lines.append("")
-    lines.append("📄 Оригинал:")
-    lines.append(_snippet(data["original"]))
-    if data["draft"]:
-        lines.append("")
-        if data.get("draft_origin") == "original":
-            lines.append("✍️ Черновик (оригинал, без рерайта):")
-        else:
-            lines.append(f"✍️ Черновик (v{data['draft_version']}):")
+    if data.get("draft_origin") == "original":
+        # рерайт отключён: черновик совпадает с оригиналом — показываем текст один раз
+        lines.append("✍️ Черновик (оригинал, без рерайта):")
         lines.append(_snippet(data["draft"]))
+    else:
+        lines.append("📄 Оригинал:")
+        lines.append(_snippet(data["original"]))
+        if data["draft"]:
+            lines.append("")
+            lines.append(f"✍️ Черновик (v{data['draft_version']}):")
+            lines.append(_snippet(data["draft"]))
     if data["post_url"]:
         lines.append("")
         lines.append(f"🔗 Источник: {data['post_url']}")
