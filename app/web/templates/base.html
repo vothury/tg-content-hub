@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>{% block title %}TG Content Hub{% endblock %}</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">TG Content Hub</div>
+    <form method="post" action="/logout">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn ghost" type="submit">Выйти</button>
+    </form>
+  </div>
+
+  <nav class="nav">
+    <a href="/" class="{{ 'active' if active == 'dashboard' else '' }}">Дашборд</a>
+  </nav>
+
+  <main class="content">
+    {% block content %}{% endblock %}
+  </main>
+
+  <nav class="bottomnav">
+    <a href="/" class="{{ 'active' if active == 'dashboard' else '' }}">Дашборд</a>
+  </nav>
+</body>
+</html>

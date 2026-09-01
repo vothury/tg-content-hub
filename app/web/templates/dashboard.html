@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Дашборд — TG Content Hub{% endblock %}
+{% block content %}
+<h2 class="section-title">Дашборд</h2>
+
+<div class="grid cards">
+  <div class="card">
+    <div class="label">Постов всего</div>
+    <div class="value">{{ total_posts }}</div>
+  </div>
+  <div class="card">
+    <div class="label">Расход LLM сегодня</div>
+    <div class="value">${{ "%.4f"|format(spent) }}</div>
+    <div class="sub">лимит ${{ "%.2f"|format(budget_limit) }}</div>
+  </div>
+  <div class="card">
+    <div class="label">Кандидатов сегодня</div>
+    <div class="value">{{ candidates }}</div>
+    <div class="sub">лимит {{ cand_limit }}</div>
+  </div>
+</div>
+
+<div class="section-title">Посты по статусам</div>
+<div class="grid cards">
+  {% for st, cnt in post_counts.items() %}
+  <div class="card"><div class="label">{{ st }}</div><div class="value">{{ cnt }}</div></div>
+  {% endfor %}
+</div>
+
+<div class="section-title">Очередь публикации</div>
+<div class="grid cards">
+  {% for st, cnt in job_counts.items() %}
+  <div class="card"><div class="label">{{ st }}</div><div class="value">{{ cnt }}</div></div>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Вход — TG Content Hub</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="brand" style="margin-bottom:14px;font-weight:700;">TG Content Hub</div>
+      <form method="post" action="/login">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="password" name="password" placeholder="Пароль" required autofocus>
+        {% if error %}<div class="error">{{ error }}</div>{% endif %}
+        <button class="btn" type="submit" style="width:100%;margin-top:12px;">Войти</button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

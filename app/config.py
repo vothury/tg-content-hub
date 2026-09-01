@@ -84,6 +84,10 @@ class Settings(BaseSettings):
     owner_timezone: str = "UTC"           # часовой пояс владельца (например, Europe/Moscow)
     scheduler_poll_interval_sec: int = 15
 
+    # Веб-админка (Этап 6)
+    admin_password: str = ""
+    secret_key: str = ""
+
     @property
     def effective_revision_model(self) -> str:
         return self.revision_model or self.rewrite_model

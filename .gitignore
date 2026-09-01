@@ -1,5 +1,6 @@
 # Секреты и локальные данные — никогда не коммитить
 .env
+.env.bak
 sessions/*
 !sessions/.gitkeep
 media/
