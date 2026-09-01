@@ -240,6 +240,29 @@ async def rewrite_post(post_id: int) -> None:
         post = await session.get(Post, post_id)
         if post is None or post.status not in (PostStatus.CANDIDATE, PostStatus.REWRITING):
             return
+        channel = None
+        if post.target_channel_id is not None:
+            channel = await session.get(TargetChannel, post.target_channel_id)
+
+        # Канал без авторерайта: черновик = оригинал, модель не вызываем
+        if channel is not None and not channel.rewrite_enabled:
+            original_text = post.original_text or ""
+            from_status = post.status.value
+            post.draft_text = original_text
+            post.draft_version += 1
+            post.status = PostStatus.AWAITING_REVIEW
+            session.add(PostDraftVersion(
+                post_id=post_id, version=post.draft_version, text=original_text,
+                origin=DraftOrigin.ORIGINAL,
+            ))
+            session.add(PostEvent(
+                post_id=post_id, actor=EventActor.SYSTEM, action="rewrite_skipped",
+                from_status=from_status, to_status=PostStatus.AWAITING_REVIEW.value,
+                details={"reason": "rewrite_disabled"},
+            ))
+            await session.commit()
+            log.info("пост %s: рерайт отключён у канала — черновик = оригинал (v%d)", post_id, post.draft_version)
+            return
         profile = await _profile_for_post(session, post)
         profile_id = profile.id
         style_instructions = build_style_instructions(profile)
@@ -255,7 +278,7 @@ async def rewrite_post(post_id: int) -> None:
         {"role": "user", "content": REWRITE_USER.format(text=original_text)},
     ]
     resp, result, call_status, error_text = await _call_and_parse(
-        messages, model, settings.llm_rewrite_max_tokens, temperature=0.7,
+        messages, model, settings.llm_rewrite_max_tokens, temperature=0.4,
         schema=RewriteResult, provider=providers,
     )
     if resp is not None and resp.cost_usd:

@@ -11,7 +11,7 @@ from sqlalchemy import select
 from app.bot.keyboards import manual_review_keyboard, media_review_keyboard, review_keyboard
 from app.config import settings
 from app.db.enums import MediaType, PostStatus
-from app.db.models import MediaItem, Post, Source, TargetChannel
+from app.db.models import MediaItem, Post, PostDraftVersion, Source, TargetChannel
 from app.db.session import session_scope
 from app.services.review import mark_card_sent
 
@@ -53,6 +53,14 @@ async def load_card_data(post_id: int) -> dict | None:
                 select(MediaItem).where(MediaItem.post_id == post_id).order_by(MediaItem.position)
             )
         ).scalars().all()
+        last_version = (
+            await session.execute(
+                select(PostDraftVersion)
+                .where(PostDraftVersion.post_id == post_id)
+                .order_by(PostDraftVersion.version.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
         return {
             "post_id": post_id,
             "status": post.status,
@@ -65,6 +73,7 @@ async def load_card_data(post_id: int) -> dict | None:
             "original": post.original_text,
             "draft": post.draft_text,
             "draft_version": post.draft_version,
+            "draft_origin": last_version.origin.value if last_version is not None else None,
             "media": [
                 {"type": m.media_type, "local_path": m.local_path, "downloaded": m.downloaded}
                 for m in media
@@ -98,7 +107,10 @@ def build_card_text(data: dict) -> tuple[str, InlineKeyboardMarkup]:
     lines.append(_snippet(data["original"]))
     if data["draft"]:
         lines.append("")
-        lines.append(f"✍️ Черновик (v{data['draft_version']}):")
+        if data.get("draft_origin") == "original":
+            lines.append("✍️ Черновик (оригинал, без рерайта):")
+        else:
+            lines.append(f"✍️ Черновик (v{data['draft_version']}):")
         lines.append(_snippet(data["draft"]))
     if data["post_url"]:
         lines.append("")

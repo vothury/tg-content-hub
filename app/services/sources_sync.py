@@ -77,6 +77,7 @@ def load_sources_file(path: Path = SOURCES_FILE):
             "min_interval_min": raw.get("min_interval_min"),
             "quiet_hours": raw.get("quiet_hours"),
             "description": raw.get("description"),
+            "rewrite": raw.get("rewrite"),
         })
 
     sources: list[dict] = []
@@ -123,10 +124,11 @@ async def sync_sources(path: Path = SOURCES_FILE) -> None:
                 session.add(TargetChannel(
                     username=cfg["username"],
                     title=cfg["title"],
+                    description=cfg["description"],
                     daily_limit=cfg["daily_limit"] or 6,
                     min_interval_min=cfg["min_interval_min"] or 60,
                     quiet_hours=cfg["quiet_hours"],
-                    description=cfg["description"],
+                    rewrite_enabled=True if cfg["rewrite"] is None else bool(cfg["rewrite"]),  # ← добавить
                 ))
                 t_created += 1
                 continue
@@ -141,6 +143,9 @@ async def sync_sources(path: Path = SOURCES_FILE) -> None:
                 ch.quiet_hours = cfg["quiet_hours"]; changed = True
             if cfg["description"] is not None and ch.description != cfg["description"]:
                 ch.description = cfg["description"]; changed = True
+            rw = True if cfg["rewrite"] is None else bool(cfg["rewrite"])
+            if ch.rewrite_enabled != rw:
+                ch.rewrite_enabled = rw; changed = True
             if changed:
                 t_updated += 1
         await session.flush()

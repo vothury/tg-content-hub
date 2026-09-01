@@ -111,6 +111,8 @@ class TargetChannel(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     # Тематика канала — контекст для классификации и рерайта
     description: Mapped[str | None] = mapped_column(Text)
+    # Делать ли автоматический рерайт постов этого канала
+    rewrite_enabled: Mapped[bool] = mapped_column(default=True)
 
 class Post(Base):
     """Найденный пост источника. Жёсткая дедупликация: (source_id, source_message_id)."""

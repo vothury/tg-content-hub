@@ -35,12 +35,14 @@ targets:
     title: "Кино тест"
     description: "Канал о кино: новости фильмов, трейлеры, кастинги, релизы, сборы, подборки"
     style: kino_style
+    rewrite: false
     # daily_limit: 6
     # min_interval_min: 60
 
   - username: testimfoto
     title: "Фото тест"
     description: "Фото-канал: атмосферные кадры, фотоподборки, визуальные истории"
+    rewrite: false
     # стиль не указан -> профиль default
 
 # --- Источники (откуда читаем) -------------------------------------------------

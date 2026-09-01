@@ -44,6 +44,7 @@ class LLMCallStatus(str, enum.Enum):
 
 
 class DraftOrigin(str, enum.Enum):
+    ORIGINAL = "original"          # черновик = оригинал (канал без авторерайта)
     LLM_REWRITE = "llm_rewrite"
     LLM_REVISION = "llm_revision"
     MANUAL = "manual"
