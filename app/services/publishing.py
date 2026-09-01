@@ -48,6 +48,32 @@ def _in_quiet_hours(channel: TargetChannel, now_local: datetime) -> bool:
     return cur >= start or cur < end  # ночной диапазон через полночь
 
 
+# Отсрочки: не перепроверяем задачу до указанного времени
+# и не повторяем одно и то же уведомление.
+_deferred_until: dict[int, datetime] = {}
+_last_defer_reason: dict[int, str] = {}
+
+
+def _owner_chat_id() -> int | None:
+    return settings.allowed_owner_ids[0] if settings.allowed_owner_ids else None
+
+
+async def _notify_owner(bot, text: str) -> None:
+    chat_id = _owner_chat_id()
+    if bot is None or chat_id is None:
+        return
+    try:
+        await bot.send_message(chat_id, text)
+    except Exception:  # noqa: BLE001 — уведомление не должно ломать публикацию
+        log.warning("не удалось отправить уведомление владельцу: %s", text[:120])
+
+
+def _until_next_day() -> timedelta:
+    now_local = owner_now()
+    next_midnight = (now_local + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return next_midnight - now_local
+
+
 async def create_publish_job(post_id: int, mode: PublishMode, scheduled_at: datetime | None = None) -> tuple[bool, str]:
     """Создаёт задачу публикации идемпотентно; для упавших — перезапуск."""
     async with session_scope() as session:
@@ -104,8 +130,10 @@ async def create_publish_job(post_id: int, mode: PublishMode, scheduled_at: date
         await session.commit()
 
     if mode is PublishMode.SCHEDULE:
-        return True, "запланировано"
-    return True, "задача публикации создана"
+        return True, "запланирован — статус сообщу"
+    if mode is PublishMode.NOW:
+        return True, "публикую — статус сообщу"
+    return True, "в очереди — статус сообщу"
 
 
 async def _resolve_channel_id(bot: Bot, channel: TargetChannel) -> int | None:
@@ -128,14 +156,16 @@ async def _resolve_channel_id(bot: Bot, channel: TargetChannel) -> int | None:
     return chat.id
 
 
-async def _channel_allows(channel_id: int) -> tuple[bool, str]:
+async def _channel_allows(channel_id: int) -> tuple[bool, str, timedelta | None]:
+    """Разрешена ли публикация в канал прямо сейчас.
+    Возвращает (разрешено, причина, через сколько перепроверить)."""
     async with session_scope() as session:
         channel = await session.get(TargetChannel, channel_id)
         if channel is None:
-            return False, "канал не найден"
+            return False, "канал не найден", timedelta(minutes=15)
         now = owner_now()
         if _in_quiet_hours(channel, now):
-            return False, "тихие часы"
+            return False, "тихие часы", timedelta(minutes=15)
         day_start_utc = now.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
         published_today = await session.scalar(
             select(func.count()).select_from(PublishJob).where(
@@ -145,7 +175,7 @@ async def _channel_allows(channel_id: int) -> tuple[bool, str]:
             )
         )
         if published_today is not None and published_today >= channel.daily_limit:
-            return False, f"лимит {channel.daily_limit} публикаций в день исчерпан"
+            return False, f"лимит {channel.daily_limit} публикаций в день исчерпан", _until_next_day()
         last = await session.scalar(
             select(func.max(PublishJob.published_at)).where(
                 PublishJob.target_channel_id == channel_id,
@@ -153,15 +183,16 @@ async def _channel_allows(channel_id: int) -> tuple[bool, str]:
             )
         )
         if last is not None and (datetime.now(timezone.utc) - last) < timedelta(minutes=channel.min_interval_min):
-            return False, f"минимальный интервал {channel.min_interval_min} мин ещё не прошёл"
-    return True, ""
+            remaining = timedelta(minutes=channel.min_interval_min) - (datetime.now(timezone.utc) - last)
+            return False, f"минимальный интервал {channel.min_interval_min} мин ещё не прошёл", remaining
+    return True, "", None
 
 
-async def _next_candidates() -> list[tuple[int, int]]:
+async def _next_candidates() -> list[tuple[int, int, int]]:
     now_utc = datetime.now(timezone.utc)
     async with session_scope() as session:
         rows = (await session.execute(
-            select(PublishJob.id, PublishJob.target_channel_id)
+            select(PublishJob.id, PublishJob.target_channel_id, PublishJob.post_id)
             .where(
                 (PublishJob.state == PublishJobState.QUEUED)
                 | ((PublishJob.state == PublishJobState.SCHEDULED) & (PublishJob.scheduled_at <= now_utc))
@@ -169,7 +200,7 @@ async def _next_candidates() -> list[tuple[int, int]]:
             .order_by(PublishJob.mode != PublishMode.NOW, PublishJob.scheduled_at.asc(), PublishJob.id)
             .limit(10)
         )).all()
-        return [(r.id, r.target_channel_id) for r in rows]
+        return [(r.id, r.target_channel_id, r.post_id) for r in rows]
 
 
 async def _claim_job(job_id: int) -> bool:
@@ -229,7 +260,7 @@ async def _select_media(post_id: int) -> list[dict]:
         ]
 
 
-async def _finish_failed(job_id: int, error: str, attempts: int, final: bool) -> None:
+async def _finish_failed(bot, job_id: int, error: str, attempts: int, final: bool) -> None:
     async with session_scope() as session:
         job = await session.get(PublishJob, job_id)
         if job is None:
@@ -254,6 +285,7 @@ async def _finish_failed(job_id: int, error: str, attempts: int, final: bool) ->
                 ))
                 await session.commit()
         log.error("задача %s: публикация не удалась после %d попыток: %s", job_id, attempts, error)
+        await _notify_owner(bot, f"⚠️ Пост #{post_id}: не удалось опубликовать после {attempts} попыток — {error[:150]}")
     else:
         log.warning("задача %s: ошибка публикации (попытка %d): %s", job_id, attempts, error)
 
@@ -273,18 +305,18 @@ async def _publish(bot: Bot, job_id: int) -> None:
         post = await session.get(Post, post_id)
         channel = await session.get(TargetChannel, channel_id)
     if post is None or channel is None:
-        await _finish_failed(job_id, "пост или канал не найдены", attempts, final=True)
+        await _finish_failed(bot, job_id, "пост или канал не найдены", attempts, final=True)
         return
 
     chat_id = await _resolve_channel_id(bot, channel)
     if chat_id is None:
-        await _finish_failed(job_id, "канал недоступен: бот должен быть админом", attempts, final=False)
+        await _finish_failed(bot, job_id, "канал недоступен: бот должен быть админом", attempts, final=False)
         return
 
     try:
         published_id = await _send_to_channel(bot, chat_id, post)
     except Exception as exc:  # noqa: BLE001
-        await _finish_failed(job_id, f"{exc.__class__.__name__}: {exc}", attempts, final=False)
+        await _finish_failed(bot, job_id, f"{exc.__class__.__name__}: {exc}", attempts, final=False)
         return
 
     async with session_scope() as session:
@@ -303,14 +335,27 @@ async def _publish(bot: Bot, job_id: int) -> None:
         ))
         await session.commit()
     log.info("пост %s опубликован в @%s (сообщение %s)", post_id, channel.username, published_id)
+    await _notify_owner(bot, f"✅ Пост #{post_id} опубликован в @{channel.username}")
 
 
-async def process_ready_jobs(bot: Bot) -> None:
-    for job_id, channel_id in await _next_candidates():
-        allowed, reason = await _channel_allows(channel_id)
+async def process_ready_jobs(bot) -> None:
+    now = datetime.now(timezone.utc)
+    for job_id, channel_id, post_id in await _next_candidates():
+        skip_until = _deferred_until.get(job_id)
+        if skip_until is not None and now < skip_until:
+            continue  # задача в отсрочке — молча ждём
+
+        allowed, reason, retry_after = await _channel_allows(channel_id)
         if not allowed:
-            log.info("задача %s отложена: %s", job_id, reason)
+            _deferred_until[job_id] = now + (retry_after or timedelta(minutes=15))
+            if _last_defer_reason.get(job_id) != reason:
+                log.info("задача %s (пост %s) отложена: %s", job_id, post_id, reason)
+                await _notify_owner(bot, f"⏳ Пост #{post_id}: публикация отложена — {reason}")
+                _last_defer_reason[job_id] = reason
             continue
+
+        _deferred_until.pop(job_id, None)
+        _last_defer_reason.pop(job_id, None)
         if not await _claim_job(job_id):
             continue
         await _publish(bot, job_id)
