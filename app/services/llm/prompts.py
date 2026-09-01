@@ -1,6 +1,8 @@
-"""Промпты LLM-этапов. Версии меняются при правках и пишутся в llm_calls.prompt_version."""
+"""Промпты LLM-этапов. Версии меняются при правках и пишутся в llm_calls."""
 
-# ---------- Классификация (v4: релевантность + тематика канала + языковой барьер) ----------
+# ---------------------------------------------------------------------------
+# Классификация (версия 4 — режимы релевантности источника)
+# ---------------------------------------------------------------------------
 
 CLASSIFY_VERSION = "classify-v4"
 
@@ -51,7 +53,6 @@ CLASSIFY_USER = """Пост-кандидат из источника:
 
 
 def build_classify_prompt(channel_title: str | None, channel_description: str | None, relevance: int | None) -> str:
-    """Собирает системный промпт классификации с учётом релевантности и тематики канала."""
     if relevance is None or 4 <= relevance <= 7:
         mode = RELEVANCE_MID
     elif relevance >= 8:
@@ -61,13 +62,13 @@ def build_classify_prompt(channel_title: str | None, channel_description: str | 
     description = (channel_description or "").strip() or "тематика не задана — используй здравый смысл"
     title = (channel_title or "").strip() or "Telegram-канал"
     return CLASSIFY_SYSTEM_TEMPLATE.format(
-        channel_title=title,
-        channel_description=description,
-        relevance_mode=mode,
+        channel_title=title, channel_description=description, relevance_mode=mode,
     )
 
 
-# ---------- Рерайт (v2) ----------
+# ---------------------------------------------------------------------------
+# Рерайт (версия 2 — бережная редактура: факты из исходника, краткость)
+# ---------------------------------------------------------------------------
 
 REWRITE_VERSION = "rewrite-v2"
 
@@ -93,22 +94,15 @@ REWRITE_SYSTEM_TEMPLATE = """Ты — редактор Telegram-канала. Т
   "warnings": ["<предупреждение или пусто>"]
 }}"""
 
-STYLE_DEFAULT = "Нейтральный дружелюбный тон, максимально кратко и ясно, без лишних слов."
+REWRITE_USER = """Пост-кандидат:
+<source_post>
+{text}
+</source_post>"""
 
 
-def build_style_instructions(profile) -> str:
-    """Собирает инструкции стиля из профиля (или дефолты)."""
-    parts: list[str] = []
-    if profile is not None and profile.rewrite_prompt:
-        parts.append(profile.rewrite_prompt.strip())
-    if profile is not None and profile.preserve_source_tone:
-        parts.append(STYLE_PRESERVE_TONE)
-    if not parts:
-        parts.append(STYLE_DEFAULT)
-    return "\n\n".join(parts)
-
-
-# ---------- Правка ИИ (v1) ----------
+# ---------------------------------------------------------------------------
+# Правка ИИ (версия 1 — применение замечания владельца к черновику)
+# ---------------------------------------------------------------------------
 
 REVISE_VERSION = "revise-v1"
 
@@ -135,3 +129,26 @@ REVISE_USER = """Текущий черновик:
 <comment>
 {comment}
 </comment>"""
+
+
+# ---------------------------------------------------------------------------
+# Стилевые режимы
+# ---------------------------------------------------------------------------
+
+STYLE_PRESERVE_TONE = (
+    "Мягкий рерайт с сохранением тона и манеры исходника: исправь структуру, "
+    "убери воду и повторы, но сохрани авторскую интонацию."
+)
+STYLE_DEFAULT = "Нейтральный дружелюбный тон, максимально кратко и ясно, без лишних слов."
+
+
+def build_style_instructions(profile) -> str:
+    """Собирает инструкции стиля из профиля (или дефолты)."""
+    parts: list[str] = []
+    if profile is not None and profile.rewrite_prompt:
+        parts.append(profile.rewrite_prompt.strip())
+    if profile is not None and profile.preserve_source_tone:
+        parts.append(STYLE_PRESERVE_TONE)
+    if not parts:
+        parts.append(STYLE_DEFAULT)
+    return "\n\n".join(parts)
