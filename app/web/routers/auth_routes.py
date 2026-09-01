@@ -30,4 +30,6 @@ async def login_submit(request: Request, password: str = Form(...)):
 
 
 @router.post("/logout", dependencies=[Depends(csrf_protect)])
-async def
+async def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse("/login", status_code=303)
