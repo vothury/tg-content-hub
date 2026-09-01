@@ -68,6 +68,9 @@ class Source(Base):
     fallback_count: Mapped[int | None] = mapped_column(Integer)
     fallback_max_age_hours: Mapped[int | None] = mapped_column(Integer)
 
+    # Релевантность источника целевому каналу (1-10): влияет на строгость классификации
+    relevance: Mapped[int | None] = mapped_column(Integer)
+
 class StyleProfile(Base):
     """Стилевой профиль целевого канала: промпты, примеры, режим сохранения тона."""
 
@@ -106,7 +109,8 @@ class TargetChannel(Base):
     last_admin_check_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-
+    # Тематика канала — контекст для классификации и рерайта
+    description: Mapped[str | None] = mapped_column(Text)
 
 class Post(Base):
     """Найденный пост источника. Жёсткая дедупликация: (source_id, source_message_id)."""

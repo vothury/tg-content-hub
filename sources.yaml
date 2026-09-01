@@ -21,6 +21,7 @@
 targets:
   - username: testimfilm
     title: "Кино тест"
+    description: "Канал о кино: новости фильмов, трейлеры, кастинги, релизы, сборы, подборки"
     # daily_limit: 6          # максимум публикаций в день (Этап 5)
     # min_interval_min: 60    # минимальный интервал между публикациями (Этап 5)
     # лаборатория: берём всё свежее за 3 часа, без фолбэка вглубь
@@ -28,12 +29,14 @@ targets:
 
   - username: testimfoto
     title: "Фото тест"
+    escription: "Фото-канал: атмосферные кадры, фотоподборки, визуальные истории"
 
 # Источники. Поле target — в какой целевой канал идут посты этого источника.
 sources:
   - username: go_tests
     kind: test
     target: testimfilm
+    relevance: 9
     filters:
       min_text_len: 1
       blacklist_words: ["#реклама", "# реклама"]
@@ -41,6 +44,7 @@ sources:
   - username: kino_filmach
     kind: external
     target: testimfilm
+    relevance: 9
     # poll_interval_sec: 300
     filters:
       min_text_len: 1

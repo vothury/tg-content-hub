@@ -8,28 +8,28 @@
 """
 from __future__ import annotations
 
-import logging
+import logging, re
 from dataclasses import asdict
 
 from sqlalchemy import select
 
 from app.config import settings
 from app.db.enums import DraftOrigin, EventActor, LLMCallStatus, LLMStage, PostStatus
-from app.db.models import LLMCall, Post, PostDraftVersion, PostEvent, StyleProfile, TargetChannel
+from app.db.models import LLMCall, Post, PostDraftVersion, PostEvent, Source, StyleProfile, TargetChannel
 from app.db.session import session_scope
 from app.services import guards
 from app.services.llm.openrouter import LLMResponse, OpenRouterError, chat_completion
 from app.services.llm.prompts import (
-    CLASSIFY_SYSTEM,
     CLASSIFY_USER,
     CLASSIFY_VERSION,
     REWRITE_SYSTEM_TEMPLATE,
     REWRITE_USER,
     REWRITE_VERSION,
-    build_style_instructions,
     REVISE_SYSTEM,
     REVISE_USER,
     REVISE_VERSION,
+    build_classify_prompt,
+    build_style_instructions,
 )
 from app.services.llm.schemas import ClassifyResult, LLMParseError, RewriteResult
 from app.services.prefilter import run_prefilter
@@ -49,6 +49,30 @@ async def _get_status(post_id: int) -> PostStatus | None:
 async def _model_for(key: str) -> str:
     async with session_scope() as session:
         return str(await get_setting(session, key))
+
+
+_CJK_RE = re.compile(r"[\u2e80-\u9fff\uf900-\ufaff]")
+
+
+def _has_cjk(text: str | None) -> bool:
+    return bool(text and _CJK_RE.search(text))
+
+
+async def _translate_to_russian(text: str, model: str, providers) -> tuple[str | None, "LLMResponse | None"]:
+    """Дешёвый перевод причины на русский, если модель ответила иероглифами."""
+    messages = [
+        {"role": "system", "content": "Ты — переводчик. Переведи текст на русский язык. Ответь только переводом, без пояснений и кавычек."},
+        {"role": "user", "content": text},
+    ]
+    try:
+        resp = await chat_completion(messages, model, max_tokens=300, temperature=0.0, provider=providers)
+        translated = (resp.content or "").strip()
+        if translated and not _has_cjk(translated):
+            return translated, resp
+    except Exception:  # noqa: BLE001
+        log.warning("не удалось перевести причину классификации на русский")
+    return None, None
+
 
 async def _providers_for(key: str) -> dict | None:
     async with session_scope() as session:
@@ -125,27 +149,55 @@ async def classify_post(post_id: int) -> None:
         if post is None or post.status not in (PostStatus.PREFILTERED, PostStatus.LLM_CLASSIFYING):
             return
         original_text = (post.original_text or "")[:TEXT_LIMIT]
+        source = await session.get(Source, post.source_id)
+        channel = None
+        if post.target_channel_id is not None:
+            channel = await session.get(TargetChannel, post.target_channel_id)
+        relevance = source.relevance if source is not None else None
         post.status = PostStatus.LLM_CLASSIFYING
         await session.commit()
 
     model = await _model_for(Keys.CLASSIFY_MODEL)
     providers = await _providers_for(Keys.CLASSIFY_PROVIDERS)
+    system_prompt = build_classify_prompt(
+        channel_title=channel.title if channel is not None else None,
+        channel_description=channel.description if channel is not None else None,
+        relevance=relevance,
+    )
     messages = [
-        {"role": "system", "content": CLASSIFY_SYSTEM},
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": CLASSIFY_USER.format(text=original_text)},
     ]
     resp, result, call_status, error_text = await _call_and_parse(
-        messages, model, settings.llm_classify_max_tokens, temperature=0.2,
-        schema=ClassifyResult, provider=providers,
+        messages, model, settings.llm_classify_max_tokens, temperature=0.2, schema=ClassifyResult
     )
     if resp is not None and resp.cost_usd:
         await guards.add_llm_cost(resp.cost_usd)
+
+    # Языковой барьер: если причина пришла иероглифами — переводим тем же дешёвым вызовом
+    translate_resp = None
+    if result is not None and _has_cjk(result.reason):
+        translated, translate_resp = await _translate_to_russian(result.reason, model, providers)
+        if translated:
+            result.reason = translated
+    if result is not None and result.risks:
+        result.risks = [r for r in result.risks if not _has_cjk(r)]
+    if translate_resp is not None and translate_resp.cost_usd:
+        await guards.add_llm_cost(translate_resp.cost_usd)
 
     async with session_scope() as session:
         session.add(_make_call_row(
             post_id, LLMStage.CLASSIFY, model, CLASSIFY_VERSION, messages,
             resp, asdict(result) if result is not None else None, call_status, error_text,
         ))
+        if translate_resp is not None:
+            session.add(LLMCall(
+                post_id=post_id, stage=LLMStage.CLASSIFY, provider="openrouter", model=model,
+                prompt_version="translate-v1", request=None,
+                response={"content": translate_resp.content}, status=LLMCallStatus.OK,
+                input_tokens=translate_resp.input_tokens, output_tokens=translate_resp.output_tokens,
+                cost_usd=translate_resp.cost_usd, latency_ms=translate_resp.latency_ms,
+            ))
         post = await session.get(Post, post_id)
         if post is None:
             await session.commit()
@@ -179,9 +231,9 @@ async def classify_post(post_id: int) -> None:
                 from_status=PostStatus.LLM_CLASSIFYING.value, to_status=PostStatus.UNSUITABLE.value,
                 details={"score": result.score, "reason": result.reason},
             ))
-            log.info("пост %s: классификация -> UNSUITABLE (%s)", post_id, result.reason[:120])
+            log.info("пост %s: классификация -> UNSUITABLE (%s)", post_id, (result.reason or "")[:120])
         await session.commit()
-
+        
 
 async def rewrite_post(post_id: int) -> None:
     async with session_scope() as session:

@@ -30,6 +30,18 @@ def _norm_username(value) -> str:
     return str(value).lstrip("@").strip()
 
 
+def _parse_relevance(value, index: int) -> int | None:
+    if value is None:
+        return None
+    try:
+        v = int(value)
+    except (TypeError, ValueError):
+        raise SourcesFileError(f"запись sources №{index}: relevance должен быть целым 1-10")
+    if not 1 <= v <= 10:
+        raise SourcesFileError(f"запись sources №{index}: relevance должен быть в пределах 1-10")
+    return v
+
+
 def load_sources_file(path: Path = SOURCES_FILE):
     """Возвращает (targets, sources) или None, если файла/списка источников нет."""
     if not path.exists():
@@ -64,6 +76,7 @@ def load_sources_file(path: Path = SOURCES_FILE):
             "daily_limit": raw.get("daily_limit"),
             "min_interval_min": raw.get("min_interval_min"),
             "quiet_hours": raw.get("quiet_hours"),
+            "description": raw.get("description"),
         })
 
     sources: list[dict] = []
@@ -86,6 +99,7 @@ def load_sources_file(path: Path = SOURCES_FILE):
             "fresh_window_min": raw.get("fresh_window_min"),
             "fallback_count": raw.get("fallback_count"),
             "fallback_max_age_hours": raw.get("fallback_max_age_hours"),
+            "relevance": _parse_relevance(raw.get("relevance"), i),
         })
     return targets, sources
 
@@ -112,6 +126,7 @@ async def sync_sources(path: Path = SOURCES_FILE) -> None:
                     daily_limit=cfg["daily_limit"] or 6,
                     min_interval_min=cfg["min_interval_min"] or 60,
                     quiet_hours=cfg["quiet_hours"],
+                    description=cfg["description"],
                 ))
                 t_created += 1
                 continue
@@ -124,6 +139,8 @@ async def sync_sources(path: Path = SOURCES_FILE) -> None:
                 ch.min_interval_min = int(cfg["min_interval_min"]); changed = True
             if cfg["quiet_hours"] is not None and ch.quiet_hours != cfg["quiet_hours"]:
                 ch.quiet_hours = cfg["quiet_hours"]; changed = True
+            if cfg["description"] is not None and ch.description != cfg["description"]:
+                ch.description = cfg["description"]; changed = True
             if changed:
                 t_updated += 1
         await session.flush()
@@ -161,6 +178,7 @@ async def sync_sources(path: Path = SOURCES_FILE) -> None:
                     fresh_window_min=e["fresh_window_min"],
                     fallback_count=e["fallback_count"],
                     fallback_max_age_hours=e["fallback_max_age_hours"],
+                    relevance=e["relevance"],
                 ))
                 s_created += 1
                 continue
@@ -183,6 +201,8 @@ async def sync_sources(path: Path = SOURCES_FILE) -> None:
                 src.fallback_max_age_hours = e["fallback_max_age_hours"]; changed = True
             if src.target_channel_id != target_id:
                 src.target_channel_id = target_id; changed = True
+            if src.relevance != e["relevance"]:
+                src.relevance = e["relevance"]; changed = True
             if changed:
                 s_updated += 1
 
