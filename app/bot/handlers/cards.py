@@ -119,10 +119,10 @@ async def on_action(callback: CallbackQuery, state: FSMContext) -> None:
         mode_raw = parts[3] if len(parts) >= 4 else ""
         if mode_raw == "schedule":
             await state.set_state(ReviewSteps.schedule_time)
-        await state.update_data(
-            post_id=post_id,
-            card_message_id=callback.message.message_id if callback.message else None,
-        )
+            await state.update_data(
+                post_id=post_id,
+                card_message_id=callback.message.message_id if callback.message else None,
+            )
             if callback.message is not None:
                 await callback.message.edit_text(
                     f"Пост #{post_id}: отправьте время публикации — «ГГГГ-ММ-ДД ЧЧ:ММ», "
