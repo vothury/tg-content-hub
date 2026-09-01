@@ -11,8 +11,7 @@ router = APIRouter()
 async def login_page(request: Request):
     if request.session.get("authenticated"):
         return RedirectResponse("/", status_code=303)
-    return templates.TemplateResponse("login.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "login.html", {
         "csrf_token": get_csrf_token(request),
         "error": None,
     })
@@ -24,14 +23,11 @@ async def login_submit(request: Request, password: str = Form(...)):
         request.session["authenticated"] = True
         get_csrf_token(request)
         return RedirectResponse("/", status_code=303)
-    return templates.TemplateResponse("login.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "login.html", {
         "csrf_token": get_csrf_token(request),
         "error": "Неверный пароль",
     }, status_code=401)
 
 
 @router.post("/logout", dependencies=[Depends(csrf_protect)])
-async def logout(request: Request):
-    request.session.clear()
-    return RedirectResponse("/login", status_code=303)
+async def

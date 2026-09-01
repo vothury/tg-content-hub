@@ -36,8 +36,7 @@ async def dashboard(request: Request):
         )).all()
         job_counts = {st.value: cnt for st, cnt in job_rows}
 
-    return templates.TemplateResponse("dashboard.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "dashboard.html", {
         "active": "dashboard",
         "csrf_token": get_csrf_token(request),
         "spent": spent,
