@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import logging
 
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
+
 
 from app.bot.cards import build_card_text, load_card_data
 from app.bot.keyboards import targets_keyboard
@@ -17,6 +18,7 @@ from app.config import settings
 from app.db.enums import PublishMode
 from app.services.publishing import create_publish_job
 from app.services.times import fmt_owner, parse_scheduled
+
 
 log = logging.getLogger(__name__)
 router = Router(name="cards")
@@ -46,6 +48,15 @@ async def _edit_card(callback: CallbackQuery, ok: bool, message: str) -> None:
     prefix = "✅" if ok else "⚠️"
     try:
         await callback.message.edit_text(f"{prefix} {message}")
+    except Exception:  # noqa: BLE001 — сообщение могло стать недоступным
+        pass
+
+async def _summarize_prompt(bot: Bot, chat_id: int, message_id: int | None, text: str) -> None:
+    """Заменяет сообщение-подсказку на итог действия."""
+    if not message_id:
+        return
+    try:
+        await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text)
     except Exception:  # noqa: BLE001 — сообщение могло стать недоступным
         pass
 
@@ -108,7 +119,10 @@ async def on_action(callback: CallbackQuery, state: FSMContext) -> None:
         mode_raw = parts[3] if len(parts) >= 4 else ""
         if mode_raw == "schedule":
             await state.set_state(ReviewSteps.schedule_time)
-            await state.update_data(post_id=post_id)
+        await state.update_data(
+            post_id=post_id,
+            card_message_id=callback.message.message_id if callback.message else None,
+        )
             if callback.message is not None:
                 await callback.message.edit_text(
                     f"Пост #{post_id}: отправьте время публикации — «ГГГГ-ММ-ДД ЧЧ:ММ», "
@@ -145,7 +159,10 @@ async def on_action(callback: CallbackQuery, state: FSMContext) -> None:
 
     if action == "reject":
         await state.set_state(ReviewSteps.reject_reason)
-        await state.update_data(post_id=post_id)
+        await state.update_data(
+            post_id=post_id,
+            card_message_id=callback.message.message_id if callback.message else None,
+        )
         if callback.message is not None:
             await callback.message.edit_text(
                 f"Пост #{post_id}: отправьте причину отклонения (или «-» без причины). Отмена — /cancel"
@@ -159,7 +176,10 @@ async def on_action(callback: CallbackQuery, state: FSMContext) -> None:
             await callback.answer(result.message, show_alert=True)
             return
         await state.set_state(ReviewSteps.ai_comment)
-        await state.update_data(post_id=post_id)
+        await state.update_data(
+            post_id=post_id,
+            card_message_id=callback.message.message_id if callback.message else None,
+        )
         if callback.message is not None:
             await callback.message.edit_text(
                 f"Пост #{post_id}: отправьте замечание для правки ИИ одним сообщением. Отмена — /cancel"
@@ -173,7 +193,10 @@ async def on_action(callback: CallbackQuery, state: FSMContext) -> None:
             await callback.answer(result.message, show_alert=True)
             return
         await state.set_state(ReviewSteps.manual_text)
-        await state.update_data(post_id=post_id)
+        await state.update_data(
+            post_id=post_id,
+            card_message_id=callback.message.message_id if callback.message else None,
+        )
         if callback.message is not None:
             await callback.message.edit_text(
                 f"Пост #{post_id}: отправьте новый текст поста целиком одним сообщением. Отмена — /cancel"
@@ -185,7 +208,7 @@ async def on_action(callback: CallbackQuery, state: FSMContext) -> None:
 
 
 @router.message(ReviewSteps.reject_reason)
-async def on_reject_reason(message: Message, state: FSMContext) -> None:
+async def on_reject_reason(message: Message, state: FSMContext, bot: Bot) -> None:
     data = await state.get_data()
     post_id = data.get("post_id")
     reason = (message.text or "").strip()
@@ -193,15 +216,19 @@ async def on_reject_reason(message: Message, state: FSMContext) -> None:
         reason = ""
     result = await review.reject(post_id, reason)
     await state.clear()
+    await _summarize_prompt(bot, message.chat.id, data.get("card_message_id"),
+                            f"{'❌' if result.ok else '⚠️'} Пост #{post_id}: {result.message}")
     await message.answer(f"{'❌' if result.ok else '⚠️'} {result.message}")
 
 
 @router.message(ReviewSteps.manual_text)
-async def on_manual_text(message: Message, state: FSMContext) -> None:
+async def on_manual_text(message: Message, state: FSMContext, bot: Bot) -> None:
     data = await state.get_data()
     post_id = data.get("post_id")
     result = await review.apply_manual_edit(post_id, message.text or "")
     await state.clear()
+    await _summarize_prompt(bot, message.chat.id, data.get("card_message_id"),
+                            f"{'✏️' if result.ok else '⚠️'} Пост #{post_id}: {result.message}")
     if not result.ok:
         await message.answer(f"⚠️ {result.message}")
         return
@@ -214,12 +241,14 @@ async def on_manual_text(message: Message, state: FSMContext) -> None:
 
 
 @router.message(ReviewSteps.ai_comment)
-async def on_ai_comment(message: Message, state: FSMContext) -> None:
+async def on_ai_comment(message: Message, state: FSMContext, bot: Bot) -> None:
     data = await state.get_data()
     post_id = data.get("post_id")
     await message.answer("🤖 Отправляю черновик модели с вашим замечанием…")
     result = await review.apply_ai_revision(post_id, message.text or "")
     await state.clear()
+    await _summarize_prompt(bot, message.chat.id, data.get("card_message_id"),
+                            f"{'🤖' if result.ok else '⚠️'} Пост #{post_id}: {result.message}")
     if not result.ok:
         await message.answer(f"⚠️ {result.message}")
         return
@@ -232,7 +261,7 @@ async def on_ai_comment(message: Message, state: FSMContext) -> None:
 
 
 @router.message(ReviewSteps.schedule_time)
-async def on_schedule_time(message: Message, state: FSMContext) -> None:
+async def on_schedule_time(message: Message, state: FSMContext, bot: Bot) -> None:
     data = await state.get_data()
     post_id = data.get("post_id")
     scheduled_at = parse_scheduled(message.text or "")
@@ -245,6 +274,10 @@ async def on_schedule_time(message: Message, state: FSMContext) -> None:
     ok, msg = await create_publish_job(post_id, PublishMode.SCHEDULE, scheduled_at)
     await state.clear()
     if ok:
+        await _summarize_prompt(bot, message.chat.id, data.get("card_message_id"),
+                                f"🕒 Пост #{post_id}: запланировано на {fmt_owner(scheduled_at)}")
         await message.answer(f"🕒 Пост #{post_id}: {msg} на {fmt_owner(scheduled_at)} (ваше время)")
     else:
+        await _summarize_prompt(bot, message.chat.id, data.get("card_message_id"),
+                                f"⚠️ Пост #{post_id}: {msg}")
         await message.answer(f"⚠️ {msg}")
