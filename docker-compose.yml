@@ -136,6 +136,7 @@ services:
         condition: service_completed_successfully
     volumes:
       - media:/app/media
+      - ./sources.yaml:/app/sources.yaml:ro
 
 volumes:
   pgdata:
