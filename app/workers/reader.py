@@ -213,6 +213,7 @@ async def _persist_unit(client, snap: SourceSnapshot, entity, unit) -> int | Non
             normalized_text=normalized,
             text_hash=make_text_hash(normalized),
             status=PostStatus.NEW,
+            source_published_at=first.date,
         )
         session.add(post)
         await session.flush()

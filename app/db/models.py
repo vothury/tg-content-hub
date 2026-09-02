@@ -157,6 +157,8 @@ class Post(Base):
     draft_versions: Mapped[list[PostDraftVersion]] = relationship(back_populates="post", cascade="all, delete-orphan")
     events: Mapped[list[PostEvent]] = relationship(back_populates="post", cascade="all, delete-orphan")
 
+    # Когда пост вышел в канале-источнике (по данным Telegram)
+    source_published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 class PostDraftVersion(Base):
     """История версий черновика: рерайт, правка ИИ, ручная правка."""

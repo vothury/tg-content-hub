@@ -22,7 +22,8 @@
   {% for r in rows %}
   <a class="row" href="/posts/{{ r.id }}">
     <span class="row-id">#{{ r.id }}</span>
-    <span class="badge">{{ r.status }}</span>
+    {% if r.when %}<span class="badge">{{ r.when }}</span>{% endif %}
+    <span class="badge st-{{ r.status|lower }}">{{ r.status }}</span>
     {% if r.media %}<span class="badge">📎 {{ r.media|unique|join('+') }}</span>{% endif %}
     <span class="row-text">{{ r.text }}</span>
     <span class="row-meta">@{{ r.source }} → @{{ r.channel }}</span>

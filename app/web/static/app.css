@@ -85,3 +85,14 @@ textarea { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #2
 
 .card video, .card img { max-width: 100%; border-radius: 8px; margin-top: 8px; display: block; }
 .list video, .list img { max-width: 100%; border-radius: 8px; }
+
+.badge.st-new, .badge.st-deduplicated { color: #9aa3b2; background: rgba(154,163,178,.15); }
+.badge.st-prefiltered, .badge.st-llm_classifying { color: #7fb0ff; background: rgba(79,140,255,.15); }
+.badge.st-candidate, .badge.st-rewriting { color: #c3a1ff; background: rgba(160,107,255,.15); }
+.badge.st-awaiting_review, .badge.st-revision, .badge.st-manual_editing { color: #ffd27f; background: rgba(245,166,35,.15); }
+.badge.st-needs_media_review, .badge.st-needs_manual_review { color: #ffb266; background: rgba(255,149,0,.15); }
+.badge.st-approved { color: #8ce6ae; background: rgba(52,199,89,.15); }
+.badge.st-scheduled, .badge.st-publishing { color: #7fd8e6; background: rgba(48,176,192,.15); }
+.badge.st-published { color: #7ee2a8; background: rgba(52,199,89,.22); }
+.badge.st-failed, .badge.st-rejected { color: #ff9c9c; background: rgba(255,77,79,.15); }
+.badge.st-unsuitable { color: #e0a3a3; background: rgba(208,102,102,.15); }

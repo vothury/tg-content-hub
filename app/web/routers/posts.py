@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select
+from datetime import timezone
 
 from app.db.enums import PostStatus
 from app.db.models import MediaItem, Post, Source, TargetChannel
 from app.db.session import session_scope
 from app.web.auth import get_csrf_token, require_auth
 from app.web.templating import templates
+from app.services.times import owner_now, owner_tz
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 
@@ -42,6 +44,16 @@ async def posts_list(request: Request, status: str = "", channel: int = 0, q: st
                 MediaItem.post_id, MediaItem.media_type
             ).where(MediaItem.post_id.in_(ids)))).all():
                 media_map.setdefault(pid, []).append(mt.value)
+        now_local = owner_now()
+
+        def _when(dt):
+            if dt is None:
+                return ""
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            local = dt.astimezone(owner_tz())
+            return local.strftime("%H:%M") if local.date() == now_local.date() else local.strftime("%d.%m")
+
     rows = [
         {
             "id": p.id,
@@ -51,6 +63,7 @@ async def posts_list(request: Request, status: str = "", channel: int = 0, q: st
             "score": p.score,
             "text": (p.original_text or "")[:80],
             "media": media_map.get(p.id, []),
+            "when": _when(p.source_published_at or p.created_at),
         }
         for p in posts
     ]

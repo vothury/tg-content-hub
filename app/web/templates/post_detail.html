@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Пост #{{ p.id }} — TG Content Hub{% endblock %}
 {% block content %}
-<h2 class="section-title">Пост #{{ p.id }} <span class="badge">{{ status }}</span></h2>
+<h2 class="section-title">Пост #{{ p.id }} <span class="badge st-{{ status|lower }}">{{ status }}</span></h2>
 {% if msg %}<div class="card msg">{{ msg }}</div>{% endif %}
 <div class="card">
   <div class="label">@{{ source }} → @{{ channel }} · оценка {{ p.score if p.score is not none else '—' }}</div>
