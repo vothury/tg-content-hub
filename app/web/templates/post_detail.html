@@ -8,12 +8,6 @@
   {% if p.verdict_reason %}<div class="sub">Вердикт: {{ p.verdict_reason }}</div>{% endif %}
 </div>
 
-<div class="section-title">Оригинал</div>
-<div class="card pre">{{ p.original_text or '—' }}</div>
-
-<div class="section-title">Черновик (v{{ p.draft_version }})</div>
-<div class="card pre">{{ p.draft_text or '—' }}</div>
-
 {% if media %}
 <div class="section-title">Медиа</div>
 <div class="list">
@@ -27,6 +21,14 @@
     {% endif %}
   {% endfor %}
 </div>
+{% endif %}
+
+<div class="section-title">Оригинал</div>
+<div class="card pre">{{ p.original_text or '—' }}</div>
+
+{% if p.draft_text and p.draft_text != p.original_text %}
+<div class="section-title">Черновик (v{{ p.draft_version }})</div>
+<div class="card pre">{{ p.draft_text }}</div>
 {% endif %}
 
 <div class="section-title">Действия</div>
@@ -78,7 +80,6 @@
     <button class="btn danger" type="submit">Отклонить</button>
   </form>
 </div>
-<div class="card sub">Пост здесь из-за ошибки обработки — «Повторить» вернёт его в пайплайн.</div>
 {% elif status == 'NEEDS_MEDIA_REVIEW' %}
 <div class="actions">
   <form method="post" action="/posts/{{ p.id }}/media_ok">
@@ -91,6 +92,15 @@
     <button class="btn danger" type="submit">Отклонить</button>
   </form>
 </div>
+
+{% elif status in ('UNSUITABLE', 'REJECTED') %}
+<div class="actions">
+  <form method="post" action="/posts/{{ p.id }}/to_review">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button class="btn" type="submit">↩ Вернуть в ревью</button>
+  </form>
+</div>
+<div class="card sub">Пост отклонён автоматически или владельцем. «Вернуть в ревью» переведёт его в AWAITING_REVIEW — далее можно одобрить и опубликовать.</div>
 {% else %}
 <div class="card sub">Для статуса {{ status }} действия ревью недоступны.</div>
 {% endif %}

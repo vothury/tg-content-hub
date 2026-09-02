@@ -14,7 +14,7 @@ from app.web.auth import csrf_protect, get_csrf_token, require_auth
 from app.web.templating import templates
 
 from app.config import settings
-from app.db.enums import PublishMode
+from app.db.enums import DraftOrigin, EventActor, PostStatus, PublishMode
 from app.services.publishing import create_publish_job
 from app.services.times import parse_scheduled
 
@@ -109,6 +109,27 @@ async def act_retry(request: Request, post_id: int):
 @router.post("/posts/{post_id}/media_ok", dependencies=[Depends(csrf_protect)])
 async def act_media_ok(request: Request, post_id: int):
     return _back(post_id, await review.media_approve(post_id))
+
+
+@router.post("/posts/{post_id}/to_review", dependencies=[Depends(csrf_protect)])
+async def act_to_review(request: Request, post_id: int):
+    async with session_scope() as session:
+        post = await session.get(Post, post_id)
+        if post is None:
+            return RedirectResponse("/posts", status_code=303)
+        if not post.draft_text:
+            post.draft_text = post.original_text or ""
+            post.draft_version = 1
+            session.add(PostDraftVersion(
+                post_id=post_id, version=1, text=post.draft_text,
+                origin=DraftOrigin.ORIGINAL))
+        post.status = PostStatus.AWAITING_REVIEW
+        session.add(PostEvent(
+            post_id=post_id, actor=EventActor.OWNER, action="revived_to_review",
+            to_status=PostStatus.AWAITING_REVIEW.value))
+        await session.commit()
+    return RedirectResponse(
+        f"/posts/{post_id}?msg={quote('возвращён в ревью')}", status_code=303)
 
 
 def _media_root() -> Path:
