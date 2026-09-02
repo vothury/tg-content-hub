@@ -96,3 +96,6 @@ textarea { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #2
 .badge.st-published { color: #7ee2a8; background: rgba(52,199,89,.22); }
 .badge.st-failed, .badge.st-rejected { color: #ff9c9c; background: rgba(255,77,79,.15); }
 .badge.st-unsuitable { color: #e0a3a3; background: rgba(208,102,102,.15); }
+
+#dateFloat{position:fixed;top:64px;left:50%;transform:translateX(-50%);background:var(--panel-2);color:var(--muted);padding:6px 14px;border-radius:999px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .25s;z-index:20;}
+#dateFloat.show{opacity:1;}

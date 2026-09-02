@@ -2,6 +2,7 @@
 {% block title %}Посты — TG Content Hub{% endblock %}
 {% block content %}
 <h2 class="section-title">Посты</h2>
+<div id="dateFloat"></div>
 <form method="get" action="/posts" class="filters">
   <select name="status">
     <option value="">Все статусы</option>
@@ -20,10 +21,10 @@
 </form>
 <div class="list">
   {% for r in rows %}
-  <a class="row" href="/posts/{{ r.id }}">
+  <a class="row" data-date="{{ r.date_label }}" href="/posts/{{ r.id }}">
     <span class="row-id">#{{ r.id }}</span>
     {% if r.when %}<span class="badge">{{ r.when }}</span>{% endif %}
-    <span class="badge st-{{ r.status|lower }}">{{ r.status }}</span>
+    <span class="badge st-{{ r.status|lower }}">{{ r.status }}{% if r.status == 'PUBLISHED' and r.pub_time %} {{ r.pub_time }}{% endif %}</span>
     {% if r.media %}<span class="badge">📎 {{ r.media|unique|join('+') }}</span>{% endif %}
     <span class="row-text">{{ r.text }}</span>
     <span class="row-meta">@{{ r.source }} → @{{ r.channel }}</span>
@@ -38,8 +39,9 @@ function esc(s){return (s||'').replace(/[&<>"']/g,function(c){return{'&':'&amp;'
 function rowHtml(r){
   var media=r.media&&r.media.length?'<span class="badge">📎 '+esc([...new Set(r.media)].join('+'))+'</span>':'';
   var when=r.when?'<span class="badge">'+esc(r.when)+'</span>':'';
-  return '<a class="row" href="/posts/'+r.id+'"><span class="row-id">#'+r.id+'</span>'+when
-    +'<span class="badge st-'+r.status.toLowerCase()+'">'+esc(r.status)+'</span>'+media
+  var pub=r.status=='PUBLISHED'&&r.pub_time?' '+esc(r.pub_time):'';
+  return '<a class="row" data-date="'+esc(r.date_label)+'" href="/posts/'+r.id+'"><span class="row-id">#'+r.id+'</span>'+when
+    +'<span class="badge st-'+r.status.toLowerCase()+'">'+esc(r.status)+pub+'</span>'+media
     +'<span class="row-text">'+esc(r.text)+'</span>'
     +'<span class="row-meta">@'+esc(r.source)+' → @'+esc(r.channel)+'</span></a>';
 }
@@ -53,5 +55,8 @@ function refresh(){
   }).catch(function(){});
 }
 setInterval(refresh,5000);
+var FLOAT=document.getElementById('dateFloat');var FT;
+function onScroll(){if(!LIST)return;var rs=LIST.querySelectorAll('.row');var cur='';for(var i=0;i<rs.length;i++){if(rs[i].getBoundingClientRect().top<90){cur=rs[i].dataset.date||cur;}}if(cur){FLOAT.textContent=cur;FLOAT.classList.add('show');}clearTimeout(FT);FT=setTimeout(function(){FLOAT.classList.remove('show');},600);}
+addEventListener('scroll',onScroll,{passive:true});
 </script>
 {% endblock %}

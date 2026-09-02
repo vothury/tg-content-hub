@@ -4,14 +4,37 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
 
-from app.db.enums import PostStatus
-from app.db.models import MediaItem, Post, Source, TargetChannel
+from app.db.enums import PostStatus, PublishJobState
+from app.db.models import MediaItem, Post, PublishJob, Source, TargetChannel
 from app.db.session import session_scope
 from app.services.times import owner_now, owner_tz
 from app.web.auth import get_csrf_token, require_auth
 from app.web.templating import templates
 
 router = APIRouter(dependencies=[Depends(require_auth)])
+
+
+_MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня",
+           "июля", "августа", "сентября", "октября", "ноября", "декабря"]
+
+
+def _date_label(dt):
+    if dt is None:
+        return ""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    local = dt.astimezone(owner_tz())
+    return f"{local.day} {_MONTHS[local.month - 1]}"
+
+
+def _pubfmt(dt):
+    if dt is None:
+        return ""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    local = dt.astimezone(owner_tz())
+    return local.strftime("%H:%M") if local.date() == owner_now().date() \
+        else local.strftime("%d.%m %H:%M")
 
 
 async def _query_rows(status: str, channel: int, q: str):
@@ -40,6 +63,14 @@ async def _query_rows(status: str, channel: int, q: str):
                 MediaItem.post_id, MediaItem.media_type
             ).where(MediaItem.post_id.in_(ids)))).all():
                 media_map.setdefault(pid, []).append(mt.value)
+        pub_map: dict = {}
+        if ids:
+            for pid, pat in (await session.execute(select(
+                PublishJob.post_id, PublishJob.published_at
+            ).where(PublishJob.post_id.in_(ids),
+                      PublishJob.state == PublishJobState.DONE))).all():
+                if pat and (pid not in pub_map or pat > pub_map[pid]):
+                    pub_map[pid] = pat
     now_local = owner_now()
 
     def _when(dt):
@@ -61,6 +92,8 @@ async def _query_rows(status: str, channel: int, q: str):
             "media": media_map.get(p.id, []),
             "when": _when(p.source_published_at or p.created_at),
             "text": txt[:80] + (".." if len(txt) > 80 else ""),
+            "pub_time": _pubfmt(pub_map.get(p.id)),
+            "date_label": _date_label(p.source_published_at or p.created_at),
         })
     return rows, channels
 

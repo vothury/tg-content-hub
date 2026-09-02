@@ -14,9 +14,18 @@ from app.web.auth import AuthRequired
 from app.web.routers import auth_routes, dashboard, post_detail, posts, settings_page
 from app.web.templating import WEB_DIR
 
+
 log = logging.getLogger("web")
 
 app = FastAPI(title="TG Content Hub", docs_url=None, redoc_url=None, openapi_url=None)
+
+
+class _ApiAccessFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "/api/" not in record.getMessage()
+
+logging.getLogger("uvicorn.access").addFilter(_ApiAccessFilter())
+
 
 SECRET = settings.secret_key or secrets.token_hex(32)
 if not settings.secret_key:

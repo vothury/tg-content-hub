@@ -93,17 +93,14 @@
   </form>
 </div>
 
-{% elif status in ('UNSUITABLE', 'REJECTED') %}
+{% elif status in ('UNSUITABLE', 'REJECTED', 'APPROVED') %}
 <div class="actions">
   <form method="post" action="/posts/{{ p.id }}/to_review">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button class="btn" type="submit">↩ Вернуть в ревью</button>
   </form>
 </div>
-<div class="card sub">Пост отклонён автоматически или владельцем. «Вернуть в ревью» переведёт его в AWAITING_REVIEW — далее можно одобрить и опубликовать.</div>
-{% else %}
-<div class="card sub">Для статуса {{ status }} действия ревью недоступны.</div>
-{% endif %}
+<div class="card sub">«Вернуть в ревью» переведёт пост в AWAITING_REVIEW — дальше можно править текст и одобрять заново.</div>
 
 <div class="section-title">Публикация</div>
 <div class="list">
