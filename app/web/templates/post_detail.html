@@ -101,6 +101,9 @@
   </form>
 </div>
 <div class="card sub">«Вернуть в ревью» переведёт пост в AWAITING_REVIEW — дальше можно править текст и одобрять заново.</div>
+{% else %}
+<div class="card sub">Для статуса {{ status }} действия ревью недоступны.</div>
+{% endif %}
 
 <div class="section-title">Публикация</div>
 <div class="list">
