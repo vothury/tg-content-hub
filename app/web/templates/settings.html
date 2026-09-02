@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Настройки — TG Content Hub{% endblock %}
+{% block content %}
+<h2 class="section-title">Текущие настройки</h2>
+<div class="card sub">Значения из .env и дефолтов; секреты скрыты. Runtime-переопределения — ниже.</div>
+<div class="list">
+  {% for k, v in rows %}
+  <div class="card"><span class="badge">{{ k }}</span><div class="sub">{{ v }}</div></div>
+  {% endfor %}
+</div>
+
+<div class="section-title">Runtime-переопределения (app_settings)</div>
+<div class="list">
+  {% for o in overrides %}
+  <div class="card"><span class="badge">{{ o.key }}</span><div class="sub">{{ o.value }}</div></div>
+  {% else %}<div class="card">Пере
