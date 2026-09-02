@@ -64,3 +64,13 @@ input[type="password"], input[type="text"] {
   .bottomnav a { color: var(--muted); font-size: 12px; padding: 6px 10px; text-align: center; }
   .bottomnav a.active { color: var(--text); }
 }
+
+.filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.filters select, .filters input { width: auto; flex: 1 1 120px; }
+.list { display: flex; flex-direction: column; gap: 8px; }
+.row { display: flex; gap: 8px; align-items: center; background: var(--panel); border-radius: var(--radius); padding: 10px 12px; color: var(--text); }
+.row-id { color: var(--muted); font-size: 13px; min-width: 34px; }
+.badge { font-size: 11px; padding: 3px 8px; border-radius: 999px; background: var(--panel-2); color: var(--muted); white-space: nowrap; }
+.row-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-meta { color: var(--muted); font-size: 12px; white-space: nowrap; }
+@media (max-width: 700px) { .row { flex-wrap: wrap; } .row-text { flex-basis: 100%; order: 3; white-space: normal; } }

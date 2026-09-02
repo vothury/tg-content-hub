@@ -11,7 +11,7 @@ from app.config import settings
 from app.db.session import session_scope
 from app.redis_client import get_redis
 from app.web.auth import AuthRequired
-from app.web.routers import auth_routes, dashboard
+from app.web.routers import auth_routes, dashboard, posts
 from app.web.templating import WEB_DIR
 
 log = logging.getLogger("web")
@@ -43,6 +43,7 @@ app.add_exception_handler(AuthRequired, _auth_required_handler)
 
 app.include_router(auth_routes.router)
 app.include_router(dashboard.router)
+app.include_router(posts.router)
 
 
 @app.get("/healthz")

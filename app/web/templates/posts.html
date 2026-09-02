@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Посты — TG Content Hub{% endblock %}
+{% block content %}
+<h2 class="section-title">Посты</h2>
+<form method="get" action="/posts" class="filters">
+  <select name="status">
+    <option value="">Все статусы</option>
+    {% for s in statuses %}
+    <option value="{{ s }}" {{ 'selected' if s == f_status else '' }}>{{ s }}</option>
+    {% endfor %}
+  </select>
+  <select name="channel">
+    <option value="0">Все каналы</option>
+    {% for c in channels %}
+    <option value="{{ c.id }}" {{ 'selected' if c.id == f_channel else '' }}>@{{ c.username }}</option>
+    {% endfor %}
+  </select>
+  <input type="text" name="q" value="{{ f_q }}" placeholder="Поиск по тексту">
+  <button class="btn" type="submit">Фильтр</button>
+</form>
+<div class="list">
+  {% for r in rows %}
+  <a class="row" href="/posts/{{ r.id }}">
+    <span class="row-id">#{{ r.id }}</span>
+    <span class="badge">{{ r.status }}</span>
+    <span class="row-text">{{ r.text }}</span>
+    <span class="row-meta">@{{ r.source }} → @{{ r.channel }}</span>
+  </a>
+  {% else %}
+  <div class="card">Нет постов по фильтру</div>
+  {% endfor %}
+</div>
+{% endblock %}
