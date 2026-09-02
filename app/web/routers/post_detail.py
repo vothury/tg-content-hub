@@ -101,6 +101,16 @@ async def act_edit(request: Request, post_id: int, text: str = Form(...)):
     return _back(post_id, await review.apply_manual_edit(post_id, text))
 
 
+@router.post("/posts/{post_id}/retry", dependencies=[Depends(csrf_protect)])
+async def act_retry(request: Request, post_id: int):
+    return _back(post_id, await review.retry_manual(post_id))
+
+
+@router.post("/posts/{post_id}/media_ok", dependencies=[Depends(csrf_protect)])
+async def act_media_ok(request: Request, post_id: int):
+    return _back(post_id, await review.media_approve(post_id))
+
+
 def _media_root() -> Path:
     root = Path(settings.media_dir)
     if not root.is_absolute():

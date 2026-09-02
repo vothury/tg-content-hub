@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select
 
 from app.db.enums import PostStatus
-from app.db.models import Post, Source, TargetChannel
+from app.db.models import MediaItem, Post, Source, TargetChannel
 from app.db.session import session_scope
 from app.web.auth import get_csrf_token, require_auth
 from app.web.templating import templates
@@ -35,6 +35,13 @@ async def posts_list(request: Request, status: str = "", channel: int = 0, q: st
             select(TargetChannel).order_by(TargetChannel.id)
         )).scalars().all()
         ch_map = {c.id: c.username for c in channels}
+        ids = [p.id for p in posts]
+        media_map: dict = {}
+        if ids:
+            for pid, mt in (await session.execute(select(
+                MediaItem.post_id, MediaItem.media_type
+            ).where(MediaItem.post_id.in_(ids)))).all():
+                media_map.setdefault(pid, []).append(mt.value)
     rows = [
         {
             "id": p.id,
@@ -43,6 +50,7 @@ async def posts_list(request: Request, status: str = "", channel: int = 0, q: st
             "channel": ch_map.get(p.target_channel_id, "—"),
             "score": p.score,
             "text": (p.original_text or "")[:80],
+            "media": media_map.get(p.id, []),
         }
         for p in posts
     ]

@@ -84,3 +84,4 @@ input[type="password"], input[type="text"] {
 textarea { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #2a3040; background: var(--panel-2); color: var(--text); font-size: 15px; margin-bottom: 8px; }
 
 .card video, .card img { max-width: 100%; border-radius: 8px; margin-top: 8px; display: block; }
+.list video, .list img { max-width: 100%; border-radius: 8px; }

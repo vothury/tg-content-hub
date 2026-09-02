@@ -14,7 +14,23 @@
 <div class="section-title">Черновик (v{{ p.draft_version }})</div>
 <div class="card pre">{{ p.draft_text or '—' }}</div>
 
+{% if media %}
+<div class="section-title">Медиа</div>
+<div class="list">
+  {% for m in media %}
+    {% if m.downloaded and m.local_path %}
+      {% if m.media_type.value == 'video' %}
+      <video controls preload="metadata" src="/media/{{ m.local_path }}"></video>
+      {% else %}
+      <img src="/media/{{ m.local_path }}" alt="">
+      {% endif %}
+    {% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+
 <div class="section-title">Действия</div>
+{% if status == 'AWAITING_REVIEW' %}
 <div class="actions">
   <form method="post" action="/posts/{{ p.id }}/approve">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -23,12 +39,13 @@
       <option value="{{ c.id }}" {{ 'selected' if c.id == p.target_channel_id else '' }}>@{{ c.username }}</option>
       {% endfor %}
     </select>
-    <select name="mode">
+    <select name="mode" onchange="tgSched(this)">
       <option value="now">Сейчас</option>
       <option value="queue">В очередь</option>
       <option value="schedule">Отложить</option>
     </select>
-    <input type="datetime-local" name="scheduled_at">
+    <input type="datetime-local" name="scheduled_at" style="display:none">
+    <button class="btn ghost" type="button" onclick="hideSched(this)" style="display:none">✕</button>
     <button class="btn" type="submit">Одобрить</button>
   </form>
   <form method="post" action="/posts/{{ p.id }}/reject">
@@ -49,6 +66,35 @@
   <textarea name="text" rows="6">{{ p.draft_text or p.original_text or '' }}</textarea>
   <button class="btn ghost" type="submit">Сохранить как черновик (редактор)</button>
 </form>
+{% elif status == 'NEEDS_MANUAL_REVIEW' %}
+<div class="actions">
+  <form method="post" action="/posts/{{ p.id }}/retry">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button class="btn" type="submit">🔁 Повторить обработку</button>
+  </form>
+  <form method="post" action="/posts/{{ p.id }}/reject">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="text" name="reason" placeholder="Причина">
+    <button class="btn danger" type="submit">Отклонить</button>
+  </form>
+</div>
+<div class="card sub">Пост здесь из-за ошибки обработки — «Повторить» вернёт его в пайплайн.</div>
+{% elif status == 'NEEDS_MEDIA_REVIEW' %}
+<div class="actions">
+  <form method="post" action="/posts/{{ p.id }}/media_ok">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button class="btn" type="submit">✅ Подходит (в рерайт)</button>
+  </form>
+  <form method="post" action="/posts/{{ p.id }}/reject">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="text" name="reason" placeholder="Причина">
+    <button class="btn danger" type="submit">Отклонить</button>
+  </form>
+</div>
+{% else %}
+<div class="card sub">Для статуса {{ status }} действия ревью недоступны.</div>
+{% endif %}
+
 <div class="section-title">Версии черновика</div>
 <div class="list">
   {% for v in versions %}
@@ -57,20 +103,11 @@
   {% else %}<div class="card">Версий нет</div>{% endfor %}
 </div>
 
-<div class="section-title">Медиа</div>
+<div class="section-title">Файлы медиа</div>
 <div class="list">
   {% for m in media %}
-  <div class="card">
-    <span class="badge">{{ m.media_type.value }}</span>
-    <span class="sub">{{ m.local_path or m.download_error or '—' }}</span>
-    {% if m.downloaded and m.local_path %}
-      {% if m.media_type.value == 'video' %}
-      <video controls preload="metadata" src="/media/{{ m.local_path }}"></video>
-      {% else %}
-      <img src="/media/{{ m.local_path }}" alt="">
-      {% endif %}
-    {% endif %}
-  </div>
+  <div class="card"><span class="badge">{{ m.media_type.value }}</span>
+    <span class="sub">{{ m.local_path or m.download_error or '—' }}</span></div>
   {% else %}<div class="card">Медиа нет</div>{% endfor %}
 </div>
 
@@ -81,4 +118,8 @@
     <span class="sub">{{ e.from_status or '' }} → {{ e.to_status or '' }}</span></div>
   {% else %}<div class="card">Событий нет</div>{% endfor %}
 </div>
+<script>
+function tgSched(s){var f=s.closest('form'),d=f.querySelector('input[name=scheduled_at]'),x=f.querySelector('button[onclick]'),on=s.value=='schedule';d.style.display=on?'':'none';if(x)x.style.display=on?'':'none';}
+function hideSched(b){var f=b.closest('form'),d=f.querySelector('input[name=scheduled_at]');d.value='';d.style.display='none';b.style.display='none';}
+</script>
 {% endblock %}
