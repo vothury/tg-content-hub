@@ -30,6 +30,7 @@ from app.db.session import session_scope
 from app.services.queue import enqueue_post
 from app.services.sources_sync import SourcesFileError, sync_sources
 from app.services.text import make_text_hash, normalize_text
+from app.services import config_yaml
 
 log = setup_logging("reader")
 
@@ -387,11 +388,20 @@ async def main() -> None:
     me = await client.get_me()
     log.info("reader запущен; аккаунт-читатель: id=%s username=%s", me.id, me.username)
 
-    # Декларативные источники: при наличии файла он — источник истины
-    try:
-        await sync_sources()
-    except SourcesFileError as exc:
-        log.error("ошибка в sources.yaml: %s — продолжаю с источниками из БД", exc)
+    # Декларативные источники
+    for attempt in (1, 2, 3):
+        try:
+            await config_yaml.file_sync_conditional()
+            break
+        except SourcesFileError as exc:
+            log.error("ошибка в sources.yaml: %s — продолжаю с источниками из БД", exc)
+            break
+        except Exception as exc:  # noqa: BLE001
+            if attempt < 3:
+                log.warning("синхронизация источников, попытка %d: %s — повтор", attempt, exc)
+                await asyncio.sleep(attempt * 3)
+            else:
+                log.exception("синхронизация не удалась после 3 попыток — продолжаю с БД")
 
     try:
         while True:

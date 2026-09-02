@@ -99,3 +99,6 @@ textarea { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #2
 
 #dateFloat{position:fixed;top:64px;left:50%;transform:translateX(-50%);background:var(--panel-2);color:var(--muted);padding:6px 14px;border-radius:999px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .25s;z-index:20;}
 #dateFloat.show{opacity:1;}
+
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; white-space: pre; }
+.card.error { border-left: 3px solid var(--danger); color: #ffb4b4; }

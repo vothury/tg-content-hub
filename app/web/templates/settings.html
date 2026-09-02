@@ -1,8 +1,34 @@
 {% extends "base.html" %}
 {% block title %}Настройки — TG Content Hub{% endblock %}
 {% block content %}
-<h2 class="section-title">Текущие настройки</h2>
-<div class="card sub">Значения из .env и дефолтов; секреты скрыты. Runtime-переопределения — ниже.</div>
+<h2 class="section-title">Настройки</h2>
+{% if msg %}<div class="card msg">{{ msg }}</div>{% endif %}
+
+<div class="section-title">Редактируемые runtime-настройки</div>
+<div class="list">
+  {% for e in editable %}
+  <div class="card">
+    <div class="label">{{ e.label }} <span class="badge">{{ e.key }}</span></div>
+    <div class="sub">текущее: {{ e.current }} · дефолт: {{ e.default }}</div>
+    <div class="actions">
+      <form method="post" action="/settings/save">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="key" value="{{ e.key }}">
+        <input type="hidden" name="vtype" value="{{ e.type }}">
+        <input type="text" name="value" value="{{ e.current }}" placeholder="{{ e.default }}">
+        <button class="btn" type="submit">Сохранить</button>
+      </form>
+      <form method="post" action="/settings/reset">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="key" value="{{ e.key }}">
+        <button class="btn ghost" type="submit">Сбросить</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="section-title">Все настройки (из .env/дефолтов)</div>
 <div class="list">
   {% for k, v in rows %}
   <div class="card"><span class="badge">{{ k }}</span><div class="sub">{{ v }}</div></div>

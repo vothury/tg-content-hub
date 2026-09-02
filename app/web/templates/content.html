@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Карта контента — TG Content Hub{% endblock %}
+{% block content %}
+<h2 class="section-title">Карта контента</h2>
+{% if msg %}<div class="card msg">{{ msg }}</div>{% endif %}
+{% if err %}<div class="card error">{{ err }}</div>{% endif %}
+<div class="card sub">Последнее применение: {{ meta.origin }} · {{ meta.updated_at or '—' }}.
+{% if meta.file_changed %}<b>Внимание:</b> файл sources.yaml изменился с последнего применения — при следующем старте/sync он перекроет веб-правки.{% endif %}</div>
+
+<div class="section-title">Редактор sources.yaml</div>
+<form method="post" action="/content/apply">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <textarea name="text" rows="16" class="mono">{{ editor_text }}</textarea>
+  <div class="actions">
+    <button class="btn" type="submit">Применить</button>
+  </div>
+</form>
+<div class="actions">
+  <form method="post" action="/content/save_draft">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="text" id="draftCopy" value="">
+    <button class="btn ghost" type="submit" onclick="document.getElementById('draftCopy').value=document.querySelector('textarea[name=text]').value">Сохранить черновик</button>
+  </form>
+  <form method="post" action="/content/reload">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button class="btn ghost" type="submit">Загрузить из файла</button>
+  </form>
+</div>
+
+<div class="section-title">Целевые каналы</div>
+<div class="list">
+  {% for c in channels %}
+  <div class="card">
+    <div class="label">@{{ c.username }} · {{ c.title or '' }}</div>
+    <div class="sub">{{ c.description or '' }}</div>
+    <div class="sub">лимит {{ c.daily_limit }}/день · интервал {{ c.min_interval_min }} мин · рерайт {{ 'вкл' if c.rewrite_enabled else 'выкл' }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="section-title">Стили</div>
+<div class="list">
+  {% for s in styles %}
+  <div class="card">
+    <span class="badge">{{ s.name }}</span>
+    <span class="sub">тон: {{ 'сохранять' if s.preserve_source_tone else 'свой' }}</span>
+    <div class="sub">{{ (s.rewrite_prompt or '')[:160] }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="section-title">Источники</div>
+<div class="list">
+  {% for s in sources %}
+  <div class="card">
+    <div class="label">@{{ s.username }} · {{ s.kind.value }} · {{ 'вкл' if s.enabled else 'выкл' }}</div>
+    <div class="sub">→ @{{ ch_map.get(s.target_channel_id, '—') }} · релевантность {{ s.relevance if s.relevance is not none else '—' }}</div>
+    <div class="sub">свежесть {{ s.fresh_window_min }} мин · фолбэк {{ s.fallback_count }} / {{ s.fallback_max_age_hours }} ч</div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}
