@@ -32,4 +32,26 @@
   <div class="card">Нет постов по фильтру</div>
   {% endfor %}
 </div>
+<script>
+var LIST=document.querySelector('.list');
+function esc(s){return (s||'').replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function rowHtml(r){
+  var media=r.media&&r.media.length?'<span class="badge">📎 '+esc([...new Set(r.media)].join('+'))+'</span>':'';
+  var when=r.when?'<span class="badge">'+esc(r.when)+'</span>':'';
+  return '<a class="row" href="/posts/'+r.id+'"><span class="row-id">#'+r.id+'</span>'+when
+    +'<span class="badge st-'+r.status.toLowerCase()+'">'+esc(r.status)+'</span>'+media
+    +'<span class="row-text">'+esc(r.text)+'</span>'
+    +'<span class="row-meta">@'+esc(r.source)+' → @'+esc(r.channel)+'</span></a>';
+}
+function refresh(){
+  fetch('/api/posts'+location.search).then(function(r){return r.json();}).then(function(d){
+    if(!LIST)return;
+    var sig=JSON.stringify(d.rows.map(function(x){return x.id+x.status;}));
+    if(LIST.dataset.sig===sig)return;
+    LIST.dataset.sig=sig;
+    LIST.innerHTML=d.rows.length?d.rows.map(rowHtml).join(''):'<div class="card">Нет постов по фильтру</div>';
+  }).catch(function(){});
+}
+setInterval(refresh,5000);
+</script>
 {% endblock %}

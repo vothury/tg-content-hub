@@ -2,7 +2,7 @@ from urllib.parse import quote
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, Request, HTTPException
-from fastapi.responses import RedirectResponse, FileResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from sqlalchemy import select
 
 from app.db.models import (
@@ -146,3 +146,12 @@ async def serve_media(path: str):
     if not str(file).startswith(str(root)) or not file.is_file():
         raise HTTPException(status_code=404)
     return FileResponse(file)
+
+
+@router.get("/api/posts/{post_id}")
+async def api_post(post_id: int):
+    async with session_scope() as session:
+        post = await session.get(Post, post_id)
+        if post is None:
+            return JSONResponse({"status": None})
+        return JSONResponse({"status": post.status.value})

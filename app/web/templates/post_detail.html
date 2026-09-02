@@ -131,5 +131,12 @@
 <script>
 function tgSched(s){var f=s.closest('form'),d=f.querySelector('input[name=scheduled_at]'),x=f.querySelector('button[onclick]'),on=s.value=='schedule';d.style.display=on?'':'none';if(x)x.style.display=on?'':'none';}
 function hideSched(b){var f=b.closest('form'),d=f.querySelector('input[name=scheduled_at]');d.value='';d.style.display='none';b.style.display='none';}
+var BADGE=document.querySelector('h2 .badge');var CUR=BADGE?BADGE.textContent.trim():'';
+setInterval(function(){fetch('/api/posts/{{ p.id }}').then(function(r){return r.json();}).then(function(d){
+  if(!d.status||d.status===CUR)return;CUR=d.status;
+  if(BADGE){BADGE.textContent=d.status;BADGE.className='badge st-'+d.status.toLowerCase();}
+  var t=document.activeElement&&/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
+  if(!t)location.reload();
+}).catch(function(){});},5000);
 </script>
 {% endblock %}
