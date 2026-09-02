@@ -23,6 +23,12 @@
       <option value="{{ c.id }}" {{ 'selected' if c.id == p.target_channel_id else '' }}>@{{ c.username }}</option>
       {% endfor %}
     </select>
+    <select name="mode">
+      <option value="now">Сейчас</option>
+      <option value="queue">В очередь</option>
+      <option value="schedule">Отложить</option>
+    </select>
+    <input type="datetime-local" name="scheduled_at">
     <button class="btn" type="submit">Одобрить</button>
   </form>
   <form method="post" action="/posts/{{ p.id }}/reject">
@@ -54,8 +60,17 @@
 <div class="section-title">Медиа</div>
 <div class="list">
   {% for m in media %}
-  <div class="card"><span class="badge">{{ m.media_type.value }}</span>
-    <span class="sub">{{ m.local_path or m.download_error or '—' }}</span></div>
+  <div class="card">
+    <span class="badge">{{ m.media_type.value }}</span>
+    <span class="sub">{{ m.local_path or m.download_error or '—' }}</span>
+    {% if m.downloaded and m.local_path %}
+      {% if m.media_type.value == 'video' %}
+      <video controls preload="metadata" src="/media/{{ m.local_path }}"></video>
+      {% else %}
+      <img src="/media/{{ m.local_path }}" alt="">
+      {% endif %}
+    {% endif %}
+  </div>
   {% else %}<div class="card">Медиа нет</div>{% endfor %}
 </div>
 

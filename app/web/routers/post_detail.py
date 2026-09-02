@@ -1,7 +1,8 @@
 from urllib.parse import quote
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter, Depends, Form, Request, HTTPException
+from fastapi.responses import RedirectResponse, FileResponse
 from sqlalchemy import select
 
 from app.db.models import (
@@ -11,6 +12,11 @@ from app.db.session import session_scope
 from app.services import review
 from app.web.auth import csrf_protect, get_csrf_token, require_auth
 from app.web.templating import templates
+
+from app.config import settings
+from app.db.enums import PublishMode
+from app.services.publishing import create_publish_job
+from app.services.times import parse_scheduled
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 
@@ -56,8 +62,28 @@ async def post_detail(request: Request, post_id: int, msg: str = ""):
 
 
 @router.post("/posts/{post_id}/approve", dependencies=[Depends(csrf_protect)])
-async def act_approve(request: Request, post_id: int, target_channel_id: int = Form(0)):
-    return _back(post_id, await review.approve(post_id, target_channel_id or None))
+async def act_approve(
+    request: Request,
+    post_id: int,
+    target_channel_id: int = Form(0),
+    mode: str = Form("now"),
+    scheduled_at: str = Form(""),
+):
+    res = await review.approve(post_id, target_channel_id or None)
+    if not res.ok:
+        return _back(post_id, res)
+    try:
+        pub_mode = PublishMode(mode)
+    except ValueError:
+        pub_mode = PublishMode.NOW
+    when = None
+    if pub_mode is PublishMode.SCHEDULE:
+        when = parse_scheduled(scheduled_at.replace("T", " "))
+        if when is None:
+            pub_mode = PublishMode.QUEUE
+    ok, msg = await create_publish_job(post_id, pub_mode, when)
+    res.message = f"{res.message} | публикация: {msg}"
+    return _back(post_id, res)
 
 
 @router.post("/posts/{post_id}/reject", dependencies=[Depends(csrf_protect)])
@@ -73,3 +99,19 @@ async def act_ai(request: Request, post_id: int, comment: str = Form(...)):
 @router.post("/posts/{post_id}/edit", dependencies=[Depends(csrf_protect)])
 async def act_edit(request: Request, post_id: int, text: str = Form(...)):
     return _back(post_id, await review.apply_manual_edit(post_id, text))
+
+
+def _media_root() -> Path:
+    root = Path(settings.media_dir)
+    if not root.is_absolute():
+        root = Path("/app") / settings.media_dir
+    return root
+
+
+@router.get("/media/{path:path}")
+async def serve_media(path: str):
+    root = _media_root().resolve()
+    file = (root / path).resolve()
+    if not str(file).startswith(str(root)) or not file.is_file():
+        raise HTTPException(status_code=404)
+    return FileResponse(file)
