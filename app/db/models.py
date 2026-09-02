@@ -266,6 +266,8 @@ class PublishJob(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
+    # Почему задача отложена (лимит/интервал/тихие часы)
+    defer_reason: Mapped[str | None] = mapped_column(Text)
 
 class AppSetting(Base):
     """Runtime-переопределения настроек из .env (модели, предохранители).

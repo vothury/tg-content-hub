@@ -1,12 +1,13 @@
 from urllib.parse import quote
 from pathlib import Path
+from datetime import timezone
 
 from fastapi import APIRouter, Depends, Form, Request, HTTPException
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from sqlalchemy import select
 
 from app.db.models import (
-    MediaItem, Post, PostDraftVersion, PostEvent, Source, TargetChannel,
+    MediaItem, Post, PostDraftVersion, PostEvent, Source, TargetChannel, PublishJob,
 )
 from app.db.session import session_scope
 from app.services import review
@@ -14,9 +15,10 @@ from app.web.auth import csrf_protect, get_csrf_token, require_auth
 from app.web.templating import templates
 
 from app.config import settings
-from app.db.enums import DraftOrigin, EventActor, PostStatus, PublishMode
+from app.db.enums import DraftOrigin, EventActor, PostStatus, PublishMode, PublishJobState
 from app.services.publishing import create_publish_job
-from app.services.times import parse_scheduled
+from app.services.times import parse_scheduled, owner_tz
+
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 
@@ -46,6 +48,28 @@ async def post_detail(request: Request, post_id: int, msg: str = ""):
             .order_by(PostEvent.id.desc()).limit(20))).scalars().all()
         channels = (await session.execute(select(TargetChannel)
             .order_by(TargetChannel.id))).scalars().all()
+        ch_map = {c.id: c.username for c in channels}
+        jobs_rows = (await session.execute(select(PublishJob)
+            .where(PublishJob.post_id == post_id)
+            .order_by(PublishJob.id.desc()))).scalars().all()
+    def _fmt(dt):
+        if dt is None:
+            return ""
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(owner_tz()).strftime("%d.%m %H:%M")
+
+    jobs = [
+        {
+            "id": j.id,
+            "state": j.state.value,
+            "channel": ch_map.get(j.target_channel_id, "—"),
+            "scheduled_at": _fmt(j.scheduled_at),
+            "published_at": _fmt(j.published_at),
+            "reason": j.defer_reason or j.last_error or "",
+        }
+        for j in jobs_rows
+    ]  
     return templates.TemplateResponse(request, "post_detail.html", {
         "active": "posts",
         "csrf_token": get_csrf_token(request),
@@ -58,6 +82,7 @@ async def post_detail(request: Request, post_id: int, msg: str = ""):
         "versions": versions,
         "events": events,
         "channels": channels,
+        "jobs": jobs,
     })
 
 
@@ -153,5 +178,27 @@ async def api_post(post_id: int):
     async with session_scope() as session:
         post = await session.get(Post, post_id)
         if post is None:
-            return JSONResponse({"status": None})
-        return JSONResponse({"status": post.status.value})
+            return JSONResponse({"status": None, "sig": ""})
+        jobs = (await session.execute(select(PublishJob)
+            .where(PublishJob.post_id == post_id)
+            .order_by(PublishJob.id.desc()))).scalars().all()
+    sig = post.status.value + "|" + ",".join(
+        f"{j.id}:{j.state.value}:{j.defer_reason or ''}" for j in jobs)
+    return JSONResponse({"status": post.status.value, "sig": sig})
+
+
+@router.post("/posts/{post_id}/cancel_publish", dependencies=[Depends(csrf_protect)])
+async def act_cancel_publish(request: Request, post_id: int, job_id: int = Form(...)):
+    async with session_scope() as session:
+        job = await session.get(PublishJob, job_id)
+        if job is not None and job.post_id == post_id and job.state in (
+            PublishJobState.QUEUED, PublishJobState.SCHEDULED,
+        ):
+            job.state = PublishJobState.FAILED
+            job.last_error = "отменено владельцем"
+            post = await session.get(Post, post_id)
+            if post is not None and post.status is PostStatus.SCHEDULED:
+                post.status = PostStatus.APPROVED
+            await session.commit()
+    return RedirectResponse(
+        f"/posts/{post_id}?msg={quote('публикация отменена')}", status_code=303)

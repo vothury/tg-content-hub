@@ -105,6 +105,24 @@
 <div class="card sub">Для статуса {{ status }} действия ревью недоступны.</div>
 {% endif %}
 
+<div class="section-title">Публикация</div>
+<div class="list">
+  {% for j in jobs %}
+  <div class="card">
+    <span class="badge st-{{ 'published' if j.state == 'done' else ('failed' if j.state == 'failed' else 'scheduled') }}">{{ j.state }}</span>
+    <span class="sub">@{{ j.channel }}{% if j.scheduled_at %} · план: {{ j.scheduled_at }}{% endif %}{% if j.published_at %} · опубликовано: {{ j.published_at }}{% endif %}</span>
+    {% if j.reason %}<div class="sub">Причина: {{ j.reason }}</div>{% endif %}
+    {% if j.state in ('queued', 'scheduled') %}
+    <form method="post" action="/posts/{{ p.id }}/cancel_publish">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="job_id" value="{{ j.id }}">
+      <button class="btn danger" type="submit">Отменить публикацию</button>
+    </form>
+    {% endif %}
+  </div>
+  {% else %}<div class="card">Задач публикации нет</div>{% endfor %}
+</div>
+
 <div class="section-title">Версии черновика</div>
 <div class="list">
   {% for v in versions %}
@@ -131,12 +149,12 @@
 <script>
 function tgSched(s){var f=s.closest('form'),d=f.querySelector('input[name=scheduled_at]'),x=f.querySelector('button[onclick]'),on=s.value=='schedule';d.style.display=on?'':'none';if(x)x.style.display=on?'':'none';}
 function hideSched(b){var f=b.closest('form'),d=f.querySelector('input[name=scheduled_at]');d.value='';d.style.display='none';b.style.display='none';}
-var BADGE=document.querySelector('h2 .badge');var CUR=BADGE?BADGE.textContent.trim():'';
+var BADGE=document.querySelector('h2 .badge');var SIG='';
 setInterval(function(){fetch('/api/posts/{{ p.id }}').then(function(r){return r.json();}).then(function(d){
-  if(!d.status||d.status===CUR)return;CUR=d.status;
-  if(BADGE){BADGE.textContent=d.status;BADGE.className='badge st-'+d.status.toLowerCase();}
+  if(!d.sig||d.sig===SIG)return;var first=SIG==='';SIG=d.sig;
+  if(BADGE){var st=d.status;BADGE.textContent=st;BADGE.className='badge st-'+st.toLowerCase();}
   var t=document.activeElement&&/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
-  if(!t)location.reload();
+  if(!first&&!t)location.reload();
 }).catch(function(){});},5000);
 </script>
 {% endblock %}

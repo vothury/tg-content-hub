@@ -325,6 +325,7 @@ async def _publish(bot: Bot, job_id: int) -> None:
         if job is None or post is None:
             return
         job.state = PublishJobState.DONE
+        job.defer_reason = None
         job.published_message_id = published_id
         job.published_at = datetime.now(timezone.utc)
         post.status = PostStatus.PUBLISHED
@@ -352,6 +353,11 @@ async def process_ready_jobs(bot) -> None:
                 log.info("задача %s (пост %s) отложена: %s", job_id, post_id, reason)
                 await _notify_owner(bot, f"⏳ Пост #{post_id}: публикация отложена — {reason}")
                 _last_defer_reason[job_id] = reason
+                async with session_scope() as session:
+                    j = await session.get(PublishJob, job_id)
+                    if j is not None:
+                        j.defer_reason = reason
+                        await session.commit()
             continue
 
         _deferred_until.pop(job_id, None)
