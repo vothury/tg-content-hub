@@ -5,6 +5,7 @@
 {% if msg %}<div class="card msg">{{ msg }}</div>{% endif %}
 {% if err %}<div class="card error">{{ err }}</div>{% endif %}
 <div class="card sub">Последнее применение: {{ meta.origin }} · {{ meta.updated_at or '—' }}.
+{% if not meta.file_found %}<div class="card error">sources.yaml не найден на сервере — проверьте рабочую директорию контейнера api.</div>{% endif %}
 {% if meta.file_changed %}<b>Внимание:</b> файл sources.yaml изменился с последнего применения — при следующем старте/sync он перекроет веб-правки.{% endif %}</div>
 
 <div class="section-title">Редактор sources.yaml</div>

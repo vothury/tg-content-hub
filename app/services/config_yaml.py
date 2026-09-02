@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 from sqlalchemy import select
 
@@ -24,8 +25,20 @@ async def _set(session, key, value):
         row.value = value
 
 
-def _read_file_text():
+def _file_path() -> Path:
+    """sources.yaml с учётом рабочей директории контейнера."""
     p = sources_sync.DEFAULT_PATH
+    if p.is_absolute():
+        return p
+    for base in (Path.cwd(), Path("/app")):
+        cand = base / p.name
+        if cand.exists():
+            return cand
+    return Path.cwd() / p.name
+
+
+def read_file_text() -> str | None:
+    p = _file_path()
     return p.read_text(encoding="utf-8") if p.exists() else None
 
 
@@ -35,12 +48,13 @@ async def get_meta() -> dict:
         updated = await get_setting(session, K_UPDATED)
         fhash = await get_setting(session, K_FILE_HASH)
         draft = await get_setting(session, K_DRAFT)
-    file_text = _read_file_text() or ""
+    file_text = read_file_text() or ""
     return {
         "origin": origin or "file",
         "updated_at": (updated or "")[:16].replace("T", " "),
         "draft": draft,
         "file_text": file_text,
+        "file_found": bool(file_text),
         "file_changed": bool(file_text and fhash and sources_sync.file_hash(file_text) != fhash),
     }
 
@@ -62,7 +76,7 @@ async def web_apply(text: str) -> dict:
 
 
 async def file_sync_conditional():
-    text = _read_file_text()
+    text = read_file_text()
     if text is None:
         return None
     h = sources_sync.file_hash(text)

@@ -48,6 +48,8 @@ async def content_save_draft(request: Request, text: str = Form(...)):
 
 @router.post("/content/reload", dependencies=[Depends(csrf_protect)])
 async def content_reload(request: Request):
-    meta = await config_yaml.get_meta()
-    await config_yaml.save_draft(meta["file_text"])
-    return RedirectResponse("/content?msg=загружено+из+файла", status_code=303)
+    text = config_yaml.read_file_text()
+    if text is None:
+        return RedirectResponse("/content?err=sources.yaml+не+найден+на+сервере", status_code=303)
+    await config_yaml.save_draft(text)
+    return RedirectResponse("/content?msg=загружено+с+сервера", status_code=303)

@@ -45,7 +45,7 @@ class Settings(BaseSettings):
 
     # Предохранители
     max_llm_budget_usd_per_day: float = 1.0
-    max_candidates_per_day: int = 30
+    max_candidates_per_day: int = 100000
 
     # Админка (этап 6)
     admin_password: str = ""
@@ -53,16 +53,16 @@ class Settings(BaseSettings):
     # Читатель: интервал опроса источника по умолчанию (если не задан у источника)
     reader_default_source_interval_sec: int = 120
     # Предохранитель: медиа крупнее не скачиваются (Этап 1)
-    max_media_download_mb: int = 25
+    max_media_download_mb: int = 100
 
     # Предфильтр (Этап 2)
-    prefilter_min_text_len: int = 200
+    prefilter_min_text_len: int = 0
     prefilter_blacklist_words: list[str] = Field(default_factory=list)
 
     # LLM (Этап 3)
     openrouter_request_timeout_sec: int = 90
-    llm_classify_max_tokens: int = 800
-    llm_rewrite_max_tokens: int = 1500
+    llm_classify_max_tokens: int = 8000
+    llm_rewrite_max_tokens: int = 15000
     # Как часто пайплайн пересматривает «застрявшие» посты при пустой очереди
     pipeline_rescan_interval_sec: int = 60
 

@@ -27,6 +27,7 @@ from app.config import settings
 from app.db.enums import EventActor, MediaType, PostStatus
 from app.db.models import MediaItem, Post, PostEvent, Source
 from app.db.session import session_scope
+from app.services.settings import Keys, get_setting
 from app.services.queue import enqueue_post
 from app.services.sources_sync import SourcesFileError, sync_sources
 from app.services.text import make_text_hash, normalize_text
@@ -131,12 +132,19 @@ def _media_meta(media_type: MediaType, media: object) -> dict:
 
 # ---------- загрузка медиа ----------
 
+async def _media_limit_mb() -> int:
+    from app.services.settings import Keys, get_setting
+    key = getattr(Keys, "MAX_MEDIA_DOWNLOAD_MB", "reader.max_media_download_mb")
+    async with session_scope() as session:
+        v = await get_setting(session, key)
+    return int(v) if v is not None else settings.max_media_download_mb
+
 async def _download_unit_media(client, snap: SourceSnapshot, unit) -> list[dict]:
     """Скачивает медиа единицы; для каждого элемента возвращает данные строки."""
     first = unit.messages[0]
     rows: list[dict] = []
     position = 0
-    size_limit = settings.max_media_download_mb * 1024 * 1024
+    size_limit = (await _media_limit_mb()) * 1024 * 1024
     grouped_id = str(first.grouped_id) if first.grouped_id else None
 
     for msg in unit.messages:
