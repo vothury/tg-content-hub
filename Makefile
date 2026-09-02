@@ -56,3 +56,12 @@ llm-models:    ## эндпоинты модели: провайдеры и це�
 
 target-list:   ## список целевых каналов
 	docker compose run --rm migrate python -m app.cli.sources target-list
+
+
+wait-web:    ## ждать готовности веб-админки после make up
+	@for i in $$(seq 1 60); do \
+	  code=$$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/healthz); \
+	  if [ "$$code" = "200" ]; then echo "api готов (попытка $$i)"; exit 0; fi; \
+	  sleep 2; \
+	done; \
+	echo "api не ответил за ~120 сек — смотрите docker compose logs api"; exit 1
