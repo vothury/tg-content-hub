@@ -13,4 +13,6 @@
 <div class="list">
   {% for o in overrides %}
   <div class="card"><span class="badge">{{ o.key }}</span><div class="sub">{{ o.value }}</div></div>
-  {% else %}<div class="card">Пере
+  {% else %}<div class="card">Переопределений нет</div>{% endfor %}
+</div>
+{% endblock %}
