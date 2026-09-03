@@ -13,7 +13,7 @@ from app.config import settings
 from app.db.session import session_scope
 from app.redis_client import get_redis
 from app.web.auth import AuthRequired, require_auth
-from app.web.routers import auth_routes, content_page, dashboard, post_detail, posts, settings_page
+from app.web.routers import auth_routes, content_page, dashboard, post_detail, posts, queue_page, settings_page
 from app.web.templating import WEB_DIR
 from app.services import monitor
 
@@ -67,6 +67,7 @@ app.include_router(posts.router)
 app.include_router(post_detail.router)
 app.include_router(settings_page.router)
 app.include_router(content_page.router)
+app.include_router(queue_page.router)
 
 
 @app.get("/healthz")

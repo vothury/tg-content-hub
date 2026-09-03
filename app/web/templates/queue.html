@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Очередь — TG Content Hub{% endblock %}
+{% block content %}
+<h2 class="section-title">Очередь публикации</h2>
+<div class="list">
+  {% for r in rows %}
+  <div class="card">
+    <div class="label"><a href="/posts/{{ r.post_id }}">#{{ r.post_id }}</a> · @{{ r.channel }} · {{ r.mode }}</div>
+    <div class="sub"><span class="badge st-{{ 'published' if r.state == 'done' else ('failed' if r.state == 'failed' else 'scheduled') }}">{{ r.state }}</span>
+      {% if r.scheduled_at %} · план: {{ r.scheduled_at|dt }}{% endif %}
+      {% if r.published_at %} · опубликовано: {{ r.published_at|dt }}{% endif %}
+      · попыток: {{ r.attempts }}</div>
+    {% if r.note %}<div class="sub">Причина: {{ r.note }}</div>{% endif %}
+  </div>
+  {% else %}<div class="card">Задач нет</div>{% endfor %}
+</div>
+{% endblock %}

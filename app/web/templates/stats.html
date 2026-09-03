@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Статистика — TG Content Hub{% endblock %}
+{% block content %}
+<h2 class="section-title">Статистика</h2>
+
+<div class="section-title">LLM по дням</div>
+<div class="list">
+  {% for d, cnt, cost in by_day %}
+  <div class="card"><span class="badge">{{ d }}</span><div class="sub">{{ cnt }} вызовов · ${{ '%.4f'|format(cost) }}</div></div>
+  {% else %}<div class="card">Нет данных</div>{% endfor %}
+</div>
+
+<div class="section-title">LLM по моделям</div>
+<div class="list">
+  {% for m, cnt, cost in by_model %}
+  <div class="card"><span class="badge">{{ m }}</span><div class="sub">{{ cnt }} вызовов · ${{ '%.4f'|format(cost) }}</div></div>
+  {% else %}<div class="card">Нет данных</div>{% endfor %}
+</div>
+
+<div class="section-title">Публикации по дням</div>
+<div class="list">
+  {% for d, cnt in pub_by_day %}
+  <div class="card"><span class="badge">{{ d }}</span><div class="sub">{{ cnt }} пост(ов)</div></div>
+  {% else %}<div class="card">Нет данных</div>{% endfor %}
+</div>
+
+<div class="section-title">Посты по статусам</div>
+<div class="list">
+  {% for st, cnt in status_rows %}
+  <div class="card"><span class="badge st-{{ st.value|lower }}">{{ st.value }}</span><div class="sub">{{ cnt }}</div></div>
+  {% endfor %}
+</div>
+{% endblock %}
