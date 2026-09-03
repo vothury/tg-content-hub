@@ -3,7 +3,7 @@ import secrets
 import asyncio
 
 from fastapi import FastAPI, Request, Depends
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from starlette.middleware.sessions import SessionMiddleware
@@ -87,6 +87,11 @@ async def healthz():
         status["redis"] = "error"
         status["status"] = "degraded"
     return JSONResponse(status)
+
+
+@app.get("/sw.js")
+async def sw():
+    return FileResponse(WEB_DIR / "static" / "sw.js", media_type="application/javascript")
 
 
 @app.get("/api/status", dependencies=[Depends(require_auth)])

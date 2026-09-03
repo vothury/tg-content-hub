@@ -153,3 +153,5 @@ textarea { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #2
 .menu-logout-btn.armed{color:#ff9c9c;}
 .nav-logout-btn{background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:4px 8px;}
 .nav-logout-btn.armed{color:#ff9c9c;font-size:13px;}
+
+.bell{background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:4px 6px;}

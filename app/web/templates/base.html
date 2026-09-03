@@ -16,6 +16,7 @@
 <body>
   <div class="topbar">
     <div class="brand">TG Content Hub</div>
+        <button id="bell" class="bell" title="Уведомления">🔕</button>
     <span id="mon" class="mon" title=""></span>
     <button class="burger" type="button" onclick="document.body.classList.toggle('menu-open')">☰</button>
   </div>
@@ -74,6 +75,32 @@ document.querySelectorAll('.js-logout').forEach(function(b){
       setTimeout(function(){delete b.dataset.armed;b.textContent=orig;b.classList.remove('armed');},3000);}
   });
 });
+var BELL=document.getElementById('bell');
+function setBell(on){BELL.textContent=on?'🔔':'🔕';}
+setBell(localStorage.getItem('notify')==='1');
+function notifyLocal(t,b){
+  if('serviceWorker' in navigator){navigator.serviceWorker.ready.then(function(r){r.showNotification(t,{body:b,icon:'/static/icon.svg'});}).catch(function(){});}
+  else if('Notification' in window&&Notification.permission==='granted'){new Notification(t,{body:b});}
+}
+BELL.addEventListener('click',function(){
+  if(localStorage.getItem('notify')==='1'){localStorage.removeItem('notify');setBell(false);return;}
+  if(!('Notification' in window)){alert('Уведомления не поддерживаются');return;}
+  Notification.requestPermission().then(function(p){
+    if(p!=='granted')return;
+    localStorage.setItem('notify','1');setBell(true);
+    if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(function(){});}
+    fetch('/api/notify').then(function(r){return r.json();}).then(function(d){localStorage.setItem('notify_last',String(d.last));});
+    notifyLocal('Уведомления включены','Новые посты на ревью будут приходить сюда');
+  });
+});
+setInterval(function(){
+  if(localStorage.getItem('notify')!=='1')return;
+  fetch('/api/notify').then(function(r){return r.json();}).then(function(d){
+    var last=parseInt(localStorage.getItem('notify_last')||'0',10);
+    if(d.last>last){localStorage.setItem('notify_last',String(d.last));notifyLocal('Новый пост на ревью','#'+d.last+' ожидает вашего решения');}
+    else if(last===0){localStorage.setItem('notify_last',String(d.last));}
+  }).catch(function(){});
+},30000);
 </script>
 </body>
 </html>

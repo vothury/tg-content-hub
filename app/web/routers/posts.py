@@ -2,7 +2,7 @@ from datetime import timezone
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.db.enums import PostStatus, PublishJobState
 from app.db.models import MediaItem, Post, PublishJob, Source, TargetChannel
@@ -115,3 +115,15 @@ async def posts_list(request: Request, status: str = "", channel: int = 0, q: st
 async def api_posts(status: str = "", channel: int = 0, q: str = ""):
     rows, _ = await _query_rows(status, channel, q)
     return JSONResponse({"rows": rows})
+
+
+@router.get("/api/notify")
+async def api_notify():
+    async with session_scope() as session:
+        last = (await session.execute(
+            select(func.max(Post.id)).where(Post.status == PostStatus.AWAITING_REVIEW)
+        )).scalar()
+        n = (await session.execute(
+            select(func.count()).select_from(Post).where(Post.status == PostStatus.AWAITING_REVIEW)
+        )).scalar()
+    return JSONResponse({"last": last or 0, "n": n or 0})
