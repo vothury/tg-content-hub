@@ -58,10 +58,11 @@ target-list:   ## список целевых каналов
 	docker compose run --rm migrate python -m app.cli.sources target-list
 
 
-wait-web:    ## ждать готовности веб-админки после make up
-	@for i in $$(seq 1 60); do \
-	  code=$$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/healthz); \
-	  if [ "$$code" = "200" ]; then echo "api готов (попытка $$i)"; exit 0; fi; \
-	  sleep 2; \
+wait-web:    ## ждать готовности веб-админки после make up (до ~30 мин)
+	@for i in $$(seq 1 5); do \
+	  code=$$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/healthz 2>/dev/null); \
+	  if [ "$$code" = "200" ]; then printf "\033[32m✓ api готов — можно открывать http://127.0.0.1:8000/\033[0m\n"; exit 0; fi; \
+	  printf "⏳ api ещё не готов… (попытка %d/20, следующая проверка через 90 с)\n" $$i; \
+	  sleep 90; \
 	done; \
-	echo "api не ответил за ~120 сек — смотрите docker compose logs api"; exit 1
+	printf "\033[31m✗ api не ответил за ~30 мин — смотрите docker compose logs api\033[0m\n"; exit 1
