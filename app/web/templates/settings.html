@@ -4,6 +4,16 @@
 <h2 class="section-title">Настройки</h2>
 {% if msg %}<div class="card msg">{{ msg }}</div>{% endif %}
 
+<div class="section-title">Сводка</div>
+<div class="list">
+  {% for title, lines in summary %}
+  <div class="card">
+    <div class="label">{{ title }}</div>
+    {% for l in lines %}<div class="sub">• {{ l }}</div>{% endfor %}
+  </div>
+  {% endfor %}
+</div>
+
 <div class="section-title">Редактируемые runtime-настройки</div>
 <div class="list">
   {% for e in editable %}

@@ -5,7 +5,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 
 from app.config import settings
-from app.db.models import AppSetting
+from app.db.models import AppSetting, Source, StyleProfile, TargetChannel
 from app.db.session import session_scope
 from app.services.settings import Keys, get_setting
 from app.web.auth import csrf_protect, get_csrf_token, require_auth
@@ -54,6 +54,37 @@ async def settings_page(request: Request, msg: str = ""):
                 "current": await get_setting(session, e["key"]),
                 "default": getattr(settings, e["attr"], ""),
             })
+        sources = (await session.execute(select(Source).order_by(Source.id))).scalars().all()
+        channels = (await session.execute(select(TargetChannel).order_by(TargetChannel.id))).scalars().all()
+        styles = (await session.execute(select(StyleProfile).order_by(StyleProfile.id))).scalars().all()
+    ch_map = {c.id: c.username for c in channels}
+    style_names = {s.id: s.name for s in styles}
+
+    src_lines = []
+    for s in sources:
+        line = (f"@{s.username} — {'вкл' if s.enabled else 'выкл'}; "
+                f"→ @{ch_map.get(s.target_channel_id, '—')}; опрос {s.poll_interval_sec} с")
+        if s.relevance is not None:
+            line += f"; релевантность {s.relevance}"
+        src_lines.append(line)
+
+    ch_lines = []
+    for c in channels:
+        ch_lines.append(
+            f"@{c.username} — лимит {c.daily_limit}/день; интервал {c.min_interval_min} мин; "
+            f"рерайт {'вкл' if c.rewrite_enabled else 'выкл'}; стиль {style_names.get(c.style_profile_id, '—')}")
+
+    cur = {e["key"]: e["current"] for e in editable}
+    cand = int(cur.get(_k("MAX_CANDIDATES_PER_DAY"), settings.max_candidates_per_day) or 0)
+    mode_lines = [
+        f"Опрос источников по умолчанию: {settings.reader_default_source_interval_sec} с",
+        f"Свежесть: окно {settings.reader_fresh_window_min} мин; фолбэк {settings.reader_fallback_count} не старше {settings.reader_fallback_max_age_hours} ч",
+        f"Медиа: скачивание до {settings.max_media_download_mb} МБ",
+        f"Классификация: {cur.get(_k('CLASSIFY_MODEL'), settings.classify_model)}; рерайт: {cur.get(_k('REWRITE_MODEL'), settings.rewrite_model)}",
+        f"Бюджет LLM: ${cur.get(_k('MAX_LLM_BUDGET_USD_PER_DAY'), settings.max_llm_budget_usd_per_day)}/день; "
+        f"кандидатов в день: {'без лимита' if cand >= 100000 else cand}",
+    ]
+    summary = [("Источники", src_lines), ("Каналы", ch_lines), ("Режим работы", mode_lines)]
     return templates.TemplateResponse(request, "settings.html", {
         "active": "settings",
         "csrf_token": get_csrf_token(request),
@@ -61,6 +92,7 @@ async def settings_page(request: Request, msg: str = ""):
         "rows": rows,
         "overrides": overrides,
         "editable": editable,
+        "summary": summary,
     })
 
 
