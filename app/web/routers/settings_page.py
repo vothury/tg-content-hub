@@ -35,18 +35,18 @@ EDITABLE = [
 ]
 
 ATTR_TO_KEY = {
-    "classify_model": _k("CLASSIFY_MODEL", "llm.classify_model"),
-    "rewrite_model": _k("REWRITE_MODEL", "llm.rewrite_model"),
-    "revision_model": _k("REVISION_MODEL", "llm.revision_model"),
-    "classify_providers": _k("CLASSIFY_PROVIDERS", "llm.classify_providers"),
-    "rewrite_providers": _k("REWRITE_PROVIDERS", "llm.rewrite_providers"),
-    "revision_providers": _k("REVISION_PROVIDERS", "llm.revision_providers"),
-    "max_llm_budget_usd_per_day": _k("MAX_LLM_BUDGET_USD_PER_DAY", "limits.max_llm_budget_usd_per_day"),
-    "max_candidates_per_day": _k("MAX_CANDIDATES_PER_DAY", "limits.max_candidates_per_day"),
-    "prefilter_min_text_len": _k("PREFILTER_MIN_TEXT_LEN", "prefilter.min_text_len"),
-    "prefilter_blacklist_words": _k("PREFILTER_BLACKLIST_WORDS", "prefilter.blacklist_words"),
-    "max_media_download_mb": _k("MAX_MEDIA_DOWNLOAD_MB", "reader.max_media_download_mb"),
-    "reader_default_source_interval_sec": _k("READER_DEFAULT_SOURCE_INTERVAL_SEC", "reader.default_source_interval_sec"),
+    "classify_model": _k("CLASSIFY_MODEL"),
+    "rewrite_model": _k("REWRITE_MODEL"),
+    "revision_model": _k("REVISION_MODEL"),
+    "classify_providers": _k("CLASSIFY_PROVIDERS"),
+    "rewrite_providers": _k("REWRITE_PROVIDERS"),
+    "revision_providers": _k("REVISION_PROVIDERS"),
+    "max_llm_budget_usd_per_day": _k("MAX_LLM_BUDGET_USD_PER_DAY"),
+    "max_candidates_per_day": _k("MAX_CANDIDATES_PER_DAY"),
+    "prefilter_min_text_len": _k("PREFILTER_MIN_TEXT_LEN"),
+    "prefilter_blacklist_words": _k("PREFILTER_BLACKLIST_WORDS"),
+    "max_media_download_mb": _k("MAX_MEDIA_DOWNLOAD_MB"),
+    "reader_default_source_interval_sec": _k("READER_DEFAULT_SOURCE_INTERVAL_SEC"),
 }
 
 
@@ -69,10 +69,13 @@ async def settings_page(request: Request, msg: str = ""):
 
     ch_map = {c.id: c.username for c in channels}
     style_names = {s.id: s.name for s in styles}
+    cur = {e["key"]: e["current"] for e in editable}
+    def_interval = cur.get(_k("READER_DEFAULT_SOURCE_INTERVAL_SEC")) or settings.reader_default_source_interval_sec
+    def_media = cur.get(_k("MAX_MEDIA_DOWNLOAD_MB")) or settings.max_media_download_mb
 
     src_lines = []
     for s in sources:
-        interval = s.poll_interval_sec or settings.reader_default_source_interval_sec
+        interval = s.poll_interval_sec or def_interval
         line = (f"@{s.username} — {'вкл' if s.enabled else 'выкл'}; "
                 f"→ @{ch_map.get(s.target_channel_id, '—')}; опрос {interval} с")
         if s.relevance is not None:
@@ -85,14 +88,13 @@ async def settings_page(request: Request, msg: str = ""):
         for c in channels
     ]
 
-    cur = {e["key"]: e["current"] for e in editable}
-    cand = int(cur.get(_k("MAX_CANDIDATES_PER_DAY"), settings.max_candidates_per_day) or 0)
+    cand = int(cur.get(_k("MAX_CANDIDATES_PER_DAY")) or settings.max_candidates_per_day)
     mode_lines = [
-        f"Опрос источников по умолчанию: {cur.get(_k('READER_DEFAULT_SOURCE_INTERVAL_SEC'), settings.reader_default_source_interval_sec)} с",
+        f"Опрос источников: {def_interval} с",
         f"Свежесть: окно {settings.reader_fresh_window_min} мин; фолбэк {settings.reader_fallback_count} не старше {settings.reader_fallback_max_age_hours} ч",
-        f"Медиа: скачивание до {cur.get(_k('MAX_MEDIA_DOWNLOAD_MB'), settings.max_media_download_mb)} МБ",
-        f"Классификация: {cur.get(_k('CLASSIFY_MODEL'), settings.classify_model)}; рерайт: {cur.get(_k('REWRITE_MODEL'), settings.rewrite_model)}",
-        f"Бюджет LLM: ${cur.get(_k('MAX_LLM_BUDGET_USD_PER_DAY'), settings.max_llm_budget_usd_per_day)}/день; "
+        f"Медиа: скачивание до {def_media} МБ",
+        f"Классификация: {cur.get(_k('CLASSIFY_MODEL')) or settings.classify_model}; рерайт: {cur.get(_k('REWRITE_MODEL')) or settings.rewrite_model}",
+        f"Бюджет LLM: ${cur.get(_k('MAX_LLM_BUDGET_USD_PER_DAY')) or settings.max_llm_budget_usd_per_day}/день; "
         f"кандидатов в день: {'без лимита' if cand >= 100000 else cand}",
     ]
     summary = [("Источники", src_lines), ("Каналы", ch_lines), ("Режим работы", mode_lines)]
@@ -117,6 +119,7 @@ async def settings_page(request: Request, msg: str = ""):
         "editable": editable,
         "summary": summary,
     })
+
 
 
 @router.post("/settings/save", dependencies=[Depends(csrf_protect)])
