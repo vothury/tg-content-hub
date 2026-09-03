@@ -152,6 +152,10 @@ async def act_to_review(request: Request, post_id: int):
         session.add(PostEvent(
             post_id=post_id, actor=EventActor.OWNER, action="revived_to_review",
             to_status=PostStatus.AWAITING_REVIEW.value))
+        session.add(PostEvent(
+            post_id=post_id, actor=EventActor.SYSTEM, action="card_sent",
+            details={"draft_version": post.draft_version},
+        ))
         await session.commit()
     return RedirectResponse(
         f"/posts/{post_id}?msg={quote('возвращён в ревью')}", status_code=303)

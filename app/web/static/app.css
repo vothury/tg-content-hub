@@ -102,3 +102,16 @@ textarea { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #2
 
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; white-space: pre; }
 .card.error { border-left: 3px solid var(--danger); color: #ffb4b4; }
+
+.burger{display:none;background:none;border:none;color:var(--text);font-size:20px;cursor:pointer;margin-right:10px;padding:4px 8px;}
+.menu{display:none;}
+@media (max-width:700px){
+  .nav{display:none;}
+  .bottomnav{display:none;}
+  .burger{display:block;}
+  .menu{display:none;flex-direction:column;background:var(--panel);border-bottom:1px solid #262b36;}
+  body.menu-open .menu{display:flex;}
+  .menu a{padding:12px 16px;color:var(--muted);}
+  .menu a.active{color:var(--text);background:var(--panel-2);}
+  .content{padding-bottom:24px;}
+}

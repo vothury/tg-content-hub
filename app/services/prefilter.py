@@ -70,6 +70,14 @@ def decide(normalized_text: str, has_media: bool, min_text_len: int, blacklist_w
     )
 
 
+def _human_reason(d: PrefilterDecision) -> str:
+    if d.reason == "blacklist":
+        return f"предфильтр: стоп-слово «{d.details.get('blacklist_word', '')}»"
+    if d.reason == "too_short_or_empty":
+        return f"предфильтр: слишком короткий текст ({d.details.get('text_len', 0)} симв.)"
+    return d.reason
+
+
 async def run_prefilter(post_id: int) -> None:
     """Обрабатывает один пост: дедуп → правила → статус + аудит. Идемпотентно."""
     async with session_scope() as session:
@@ -121,6 +129,8 @@ async def run_prefilter(post_id: int) -> None:
 
         from_status = post.status.value
         post.status = decision.status
+        if decision.status is PostStatus.UNSUITABLE:
+            post.verdict_reason = _human_reason(decision)
         if decision.status is PostStatus.NEEDS_MEDIA_REVIEW:
             post.needs_media_review = True
         session.add(PostEvent(
