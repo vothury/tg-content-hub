@@ -1,24 +1,34 @@
 import logging
 import secrets
+import asyncio
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from starlette.middleware.sessions import SessionMiddleware
+from contextlib import asynccontextmanager
 
 from app.config import settings
 from app.db.session import session_scope
 from app.redis_client import get_redis
-from app.web.auth import AuthRequired
+from app.web.auth import AuthRequired, require_auth
 from app.web.routers import auth_routes, content_page, dashboard, post_detail, posts, settings_page
-
 from app.web.templating import WEB_DIR
+from app.services import monitor
 
 
 log = logging.getLogger("web")
 
-app = FastAPI(title="TG Content Hub", docs_url=None, redoc_url=None, openapi_url=None)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    task = asyncio.create_task(monitor.monitor_loop())
+    yield
+    task.cancel()
+
+
+app = FastAPI(title="TG Content Hub", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 
 
 class _ApiAccessFilter(logging.Filter):
@@ -76,3 +86,8 @@ async def healthz():
         status["redis"] = "error"
         status["status"] = "degraded"
     return JSONResponse(status)
+
+
+@app.get("/api/status", dependencies=[Depends(require_auth)])
+async def api_status():
+    return JSONResponse(await monitor.get_status())

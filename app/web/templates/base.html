@@ -10,6 +10,7 @@
   <div class="topbar">
     <button class="burger" type="button" onclick="document.body.classList.toggle('menu-open')">☰</button>
     <div class="brand">TG Content Hub</div>
+    <span id="mon" class="mon" title=""></span>
     <form method="post" action="/logout">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <button class="btn ghost" type="submit">Выйти</button>
@@ -33,5 +34,14 @@
   <main class="content">
     {% block content %}{% endblock %}
   </main>
+<script>
+function mon(){fetch('/api/status').then(function(r){return r.ok?r.json():null;}).then(function(d){
+  var el=document.getElementById('mon');if(!el||!d)return;
+  var t=new Date(d.checked_at);var hh=('0'+t.getHours()).slice(-2)+':'+('0'+t.getMinutes()).slice(-2);
+  if(d.ok){el.textContent='🟢 OK ('+hh+')';el.className='mon ok';el.title='Проверено в '+hh;}
+  else{el.textContent='🔴 '+d.problems.length+' ('+hh+')';el.className='mon bad';el.title=d.problems.join('\n');}
+}).catch(function(){});}
+mon();setInterval(mon,60000);
+</script>
 </body>
 </html>

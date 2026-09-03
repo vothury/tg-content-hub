@@ -11,6 +11,7 @@ from aiogram import Bot
 from app.common.logging import setup_logging
 from app.config import settings
 from app.services.publishing import process_ready_jobs
+from app.services import monitor
 
 log = setup_logging("scheduler")
 
@@ -28,6 +29,7 @@ async def main() -> None:
                 await process_ready_jobs(bot)
             except Exception:  # noqa: BLE001
                 log.exception("сбой цикла планировщика")
+            await monitor.heartbeat("scheduler")    
             await asyncio.sleep(settings.scheduler_poll_interval_sec)
     finally:
         await bot.session.close()

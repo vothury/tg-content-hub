@@ -115,3 +115,7 @@ textarea { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #2
   .menu a.active{color:var(--text);background:var(--panel-2);}
   .content{padding-bottom:24px;}
 }
+
+.mon{font-size:12px;padding:4px 10px;border-radius:999px;margin-left:auto;margin-right:10px;white-space:nowrap;}
+.mon.ok{color:#7ee2a8;background:rgba(52,199,89,.15);}
+.mon.bad{color:#ff9c9c;background:rgba(255,77,79,.18);}

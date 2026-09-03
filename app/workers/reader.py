@@ -31,7 +31,8 @@ from app.services.settings import Keys, get_setting
 from app.services.queue import enqueue_post
 from app.services.sources_sync import SourcesFileError, sync_sources
 from app.services.text import make_text_hash, normalize_text
-from app.services import config_yaml
+from app.services import config_yaml, monitor
+
 
 log = setup_logging("reader")
 
@@ -433,7 +434,7 @@ async def main() -> None:
                 except Exception:  # noqa: BLE001
                     log.exception("ошибка обработки источника #%s", snap.id)
                 await asyncio.sleep(2)  # щадящая пауза между источниками
-
+            await monitor.heartbeat("reader")
             await asyncio.sleep(settings.reader_poll_interval_sec)
     finally:
         await client.disconnect()

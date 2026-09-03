@@ -18,6 +18,7 @@ from app.db.session import session_scope
 from app.redis_client import get_redis
 from app.services.llm_pipeline import advance_post
 from app.services.queue import PIPELINE_QUEUE
+from app.services import monitor
 
 log = setup_logging("pipeline")
 
@@ -60,6 +61,7 @@ async def main() -> None:
     redis = get_redis()
     next_rescan = time.monotonic() + settings.pipeline_rescan_interval_sec
     while True:
+        await monitor.heartbeat("pipeline")
         raw = await redis.lpop(PIPELINE_QUEUE)
         if raw is not None:
             try:

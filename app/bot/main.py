@@ -15,6 +15,7 @@ from app.bot.handlers import cards, commands
 from app.bot.notifier import card_notifier
 from app.common.logging import setup_logging
 from app.config import settings
+from app.services import monitor
 
 log = setup_logging("bot")
 
@@ -42,10 +43,18 @@ async def main() -> None:
     me = await bot.get_me()
     log.info("bot запущен (Этап 4): @%s", me.username)
 
+    async def _bot_hb():
+        while True:
+            await monitor.heartbeat("bot")
+            await asyncio.sleep(60)
+
+    hb_task = asyncio.create_task(_bot_hb())
+
     notifier_task = asyncio.create_task(card_notifier(bot))
     try:
         await dp.start_polling(bot)
     finally:
+        hb_task.cancel()
         notifier_task.cancel()
 
 
