@@ -112,6 +112,7 @@
     <span class="badge st-{{ 'published' if j.state == 'done' else ('failed' if j.state == 'failed' else 'scheduled') }}">{{ j.state }}</span>
     <span class="sub">@{{ j.channel }}{% if j.scheduled_at %} · план: {{ j.scheduled_at }}{% endif %}{% if j.published_at %} · опубликовано: {{ j.published_at }}{% endif %}</span>
     {% if j.reason %}<div class="sub">Причина: {{ j.reason }}</div>{% endif %}
+    {% if j.url %}<div class="sub"><a href="{{ j.url }}" target="_blank" rel="noopener">Открыть в Telegram ↗</a></div>{% endif %}
     {% if j.state in ('queued', 'scheduled') %}
     <form method="post" action="/posts/{{ p.id }}/cancel_publish">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

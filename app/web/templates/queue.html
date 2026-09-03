@@ -12,6 +12,7 @@
       {% if r.published_at %} · опубликовано: {{ r.published_at|dt }}{% endif %}
       · попыток: {{ r.attempts }}</div>
     {% if r.note %}<div class="sub">Причина: {{ r.note }}</div>{% endif %}
+    {% if r.url %}<div class="sub"><a href="{{ r.url }}" target="_blank" rel="noopener">Открыть в Telegram ↗</a></div>{% endif %}
   </div>
   {% else %}<div class="card">Задач нет</div>{% endfor %}
 </div>

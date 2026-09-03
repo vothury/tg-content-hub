@@ -49,6 +49,7 @@ async def post_detail(request: Request, post_id: int, msg: str = ""):
         channels = (await session.execute(select(TargetChannel)
             .order_by(TargetChannel.id))).scalars().all()
         ch_map = {c.id: c.username for c in channels}
+        ch_link = {c.id: (c.username or f"c/{c.telegram_id}") for c in channels}
         jobs_rows = (await session.execute(select(PublishJob)
             .where(PublishJob.post_id == post_id)
             .order_by(PublishJob.id.desc()))).scalars().all()
@@ -67,9 +68,12 @@ async def post_detail(request: Request, post_id: int, msg: str = ""):
             "scheduled_at": _fmt(j.scheduled_at),
             "published_at": _fmt(j.published_at),
             "reason": j.defer_reason or j.last_error or "",
+            "url": (f"https://t.me/{ch_link[j.target_channel_id]}/{j.published_message_id}"
+                    if j.state is PublishJobState.DONE and j.published_message_id
+                    and j.target_channel_id in ch_link else ""),
         }
         for j in jobs_rows
-    ]  
+    ]
     return templates.TemplateResponse(request, "post_detail.html", {
         "active": "posts",
         "csrf_token": get_csrf_token(request),

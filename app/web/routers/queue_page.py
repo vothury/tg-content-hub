@@ -29,6 +29,7 @@ async def _queue_rows():
                     select(Post).where(Post.id.in_(post_ids)))).scalars().all():
                 texts[p.id] = p.original_text or ""
     ch_map = {c.id: c.username for c in channels}
+    ch_link = {c.id: (c.username or f"c/{c.telegram_id}") for c in channels}
     rows = [
         {
             "id": j.id, "post_id": j.post_id, "state": j.state.value,
@@ -36,6 +37,9 @@ async def _queue_rows():
             "scheduled_at": j.scheduled_at, "published_at": j.published_at,
             "attempts": j.attempts, "note": j.defer_reason or j.last_error or "",
             "text": _snip(texts.get(j.post_id, "")),
+            "url": (f"https://t.me/{ch_link[j.target_channel_id]}/{j.published_message_id}"
+                    if j.state is PublishJobState.DONE and j.published_message_id
+                    and j.target_channel_id in ch_link else ""),
         }
         for j in jobs
     ]
