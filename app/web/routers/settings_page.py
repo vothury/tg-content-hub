@@ -75,13 +75,13 @@ async def settings_page(request: Request, msg: str = ""):
             f"рерайт {'вкл' if c.rewrite_enabled else 'выкл'}; стиль {style_names.get(c.style_profile_id, '—')}")
 
     cur = {e["key"]: e["current"] for e in editable}
-    cand = int(cur.get(_k("MAX_CANDIDATES_PER_DAY"), settings.max_candidates_per_day) or 0)
+    cand = int(cur.get(Keys.MAX_CANDIDATES_PER_DAY, settings.max_candidates_per_day) or 0)
     mode_lines = [
         f"Опрос источников по умолчанию: {settings.reader_default_source_interval_sec} с",
         f"Свежесть: окно {settings.reader_fresh_window_min} мин; фолбэк {settings.reader_fallback_count} не старше {settings.reader_fallback_max_age_hours} ч",
         f"Медиа: скачивание до {settings.max_media_download_mb} МБ",
-        f"Классификация: {cur.get(_k('CLASSIFY_MODEL'), settings.classify_model)}; рерайт: {cur.get(_k('REWRITE_MODEL'), settings.rewrite_model)}",
-        f"Бюджет LLM: ${cur.get(_k('MAX_LLM_BUDGET_USD_PER_DAY'), settings.max_llm_budget_usd_per_day)}/день; "
+        f"Классификация: {cur.get(Keys.CLASSIFY_MODEL, settings.classify_model)}; рерайт: {cur.get(Keys.REWRITE_MODEL, settings.rewrite_model)}",
+        f"Бюджет LLM: ${cur.get(Keys.MAX_LLM_BUDGET_USD_PER_DAY, settings.max_llm_budget_usd_per_day)}/день; "
         f"кандидатов в день: {'без лимита' if cand >= 100000 else cand}",
     ]
     summary = [("Источники", src_lines), ("Каналы", ch_lines), ("Режим работы", mode_lines)]
