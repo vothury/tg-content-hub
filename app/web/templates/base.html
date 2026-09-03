@@ -78,17 +78,22 @@ document.querySelectorAll('.js-logout').forEach(function(b){
 var BELL=document.getElementById('bell');
 function setBell(on){BELL.textContent=on?'🔔':'🔕';}
 setBell(localStorage.getItem('notify')==='1');
+function fallbackNote(t,b){if('Notification' in window&&Notification.permission==='granted'){try{new Notification(t,{body:b});}catch(e){}}}
 function notifyLocal(t,b){
-  if('serviceWorker' in navigator){navigator.serviceWorker.ready.then(function(r){r.showNotification(t,{body:b,icon:'/static/icon.svg'});}).catch(function(){});}
-  else if('Notification' in window&&Notification.permission==='granted'){new Notification(t,{body:b});}
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.ready.then(function(r){
+      if(r&&r.showNotification){r.showNotification(t,{body:b,icon:'/static/icon.svg'});}else{fallbackNote(t,b);}
+    }).catch(function(){fallbackNote(t,b);});
+  }else{fallbackNote(t,b);}
 }
+function toast(t){var d=document.createElement('div');d.className='toast';d.textContent=t;document.body.appendChild(d);setTimeout(function(){d.remove();},4000);}
 BELL.addEventListener('click',function(){
   if(localStorage.getItem('notify')==='1'){localStorage.removeItem('notify');setBell(false);return;}
-  if(!('Notification' in window)){alert('Уведомления не поддерживаются');return;}
+  if(!('Notification' in window)){toast('Уведомления не поддерживаются');return;}
   Notification.requestPermission().then(function(p){
-    if(p!=='granted')return;
+    if(p!=='granted'){toast('Разрешение не выдано ('+p+')');return;}
     localStorage.setItem('notify','1');setBell(true);
-    if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(function(){});}
+    if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(function(e){toast('SW ошибка: '+e);});}
     fetch('/api/notify').then(function(r){return r.json();}).then(function(d){localStorage.setItem('notify_last',String(d.last));});
     notifyLocal('Уведомления включены','Новые посты на ревью будут приходить сюда');
   });
@@ -97,7 +102,7 @@ setInterval(function(){
   if(localStorage.getItem('notify')!=='1')return;
   fetch('/api/notify').then(function(r){return r.json();}).then(function(d){
     var last=parseInt(localStorage.getItem('notify_last')||'0',10);
-    if(d.last>last){localStorage.setItem('notify_last',String(d.last));notifyLocal('Новый пост на ревью','#'+d.last+' ожидает вашего решения');}
+    if(d.last>last){localStorage.setItem('notify_last',String(d.last));toast('Новый пост #'+d.last);notifyLocal('Новый пост на ревью','#'+d.last+' ожидает вашего решения');}
     else if(last===0){localStorage.setItem('notify_last',String(d.last));}
   }).catch(function(){});
 },30000);
