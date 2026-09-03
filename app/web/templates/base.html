@@ -4,6 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>{% block title %}TG Content Hub{% endblock %}</title>
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/static/manifest.webmanifest">
+  <meta name="theme-color" content="#0f1115">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="/static/icon.svg">
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
@@ -20,19 +27,19 @@
   <nav class="menu">
     <a href="/" class="{{ 'active' if active == 'dashboard' else '' }}">Дашборд</a>
     <a href="/posts" class="{{ 'active' if active == 'posts' else '' }}">Посты</a>
-    <a href="/settings" class="{{ 'active' if active == 'settings' else '' }}">Настройки</a>
-    <a href="/content" class="{{ 'active' if active == 'content' else '' }}">Контент</a>
     <a href="/queue" class="{{ 'active' if active == 'queue' else '' }}">Очередь</a>
     <a href="/stats" class="{{ 'active' if active == 'stats' else '' }}">Статистика</a>
+    <a href="/settings" class="{{ 'active' if active == 'settings' else '' }}">Настройки</a>
+    <a href="/content" class="{{ 'active' if active == 'content' else '' }}">Контент</a>
   </nav>
 
   <nav class="nav">
     <a href="/" class="{{ 'active' if active == 'dashboard' else '' }}">Дашборд</a>
     <a href="/posts" class="{{ 'active' if active == 'posts' else '' }}">Посты</a>
-    <a href="/settings" class="{{ 'active' if active == 'settings' else '' }}">Настройки</a>
-    <a href="/content" class="{{ 'active' if active == 'content' else '' }}">Контент</a>
     <a href="/queue" class="{{ 'active' if active == 'queue' else '' }}">Очередь</a>
     <a href="/stats" class="{{ 'active' if active == 'stats' else '' }}">Статистика</a>
+    <a href="/settings" class="{{ 'active' if active == 'settings' else '' }}">Настройки</a>
+    <a href="/content" class="{{ 'active' if active == 'content' else '' }}">Контент</a>
   </nav>
 
   <main class="content">
