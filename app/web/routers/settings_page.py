@@ -19,7 +19,7 @@ SENSITIVE = {
 }
 
 
-def _k(name, fallback):
+def _k(name, fallback=None):
     return getattr(Keys, name, fallback)
 
 
