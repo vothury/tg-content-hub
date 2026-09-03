@@ -28,6 +28,8 @@ class Keys:
     MAX_CANDIDATES_PER_DAY = "limits.max_candidates_per_day"
     PREFILTER_MIN_TEXT_LEN = "prefilter.min_text_len"
     PREFILTER_BLACKLIST_WORDS = "prefilter.blacklist_words"
+    MAX_MEDIA_DOWNLOAD_MB = "reader.max_media_download_mb"
+    READER_DEFAULT_SOURCE_INTERVAL_SEC = "reader.default_source_interval_sec"
 
 
 _ENV_DEFAULTS: dict[str, Any] = {
@@ -42,6 +44,8 @@ _ENV_DEFAULTS: dict[str, Any] = {
     Keys.MAX_CANDIDATES_PER_DAY: settings.max_candidates_per_day,
     Keys.PREFILTER_MIN_TEXT_LEN: settings.prefilter_min_text_len,
     Keys.PREFILTER_BLACKLIST_WORDS: settings.prefilter_blacklist_words,
+    Keys.MAX_MEDIA_DOWNLOAD_MB: settings.max_media_download_mb,
+    Keys.READER_DEFAULT_SOURCE_INTERVAL_SEC: settings.reader_default_source_interval_sec,
 }
 
 
