@@ -20,6 +20,7 @@
     <button class="burger" type="button" onclick="document.body.classList.toggle('menu-open')">☰</button>
   </div>
 
+  <div id="monPanel" class="monpanel"></div>
   <div class="backdrop" onclick="document.body.classList.remove('menu-open')"></div>
 
   <nav class="menu">
@@ -31,7 +32,7 @@
     <a href="/content" class="{{ 'active' if active == 'content' else '' }}">Контент</a>
     <form method="post" action="/logout" class="menu-logout">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <button class="btn danger js-logout" type="submit">Выйти</button>
+      <button class="menu-logout-btn js-logout" type="submit">⎋ Выйти</button>
     </form>
   </nav>
 
@@ -44,7 +45,7 @@
     <a href="/content" class="{{ 'active' if active == 'content' else '' }}">Контент</a>
     <form method="post" action="/logout" class="navlogout">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <button class="btn ghost js-logout" type="submit">Выйти</button>
+      <button class="nav-logout-btn js-logout" type="submit" title="Выйти">⎋</button>
     </form>
   </nav>
 
@@ -52,17 +53,25 @@
     {% block content %}{% endblock %}
   </main>
 <script>
+var MON=null,MONH='';
 function mon(){fetch('/api/status').then(function(r){return r.ok?r.json():null;}).then(function(d){
-  var el=document.getElementById('mon');if(!el||!d)return;
-  var t=new Date(d.checked_at);var hh=('0'+t.getHours()).slice(-2)+':'+('0'+t.getMinutes()).slice(-2);
-  if(d.ok){el.textContent='🟢 OK ('+hh+')';el.className='mon ok';el.title='Проверено в '+hh;}
-  else{el.textContent='🔴 '+d.problems.length+' ('+hh+')';el.className='mon bad';el.title=d.problems.join('\n');}
+  var el=document.getElementById('mon');if(!el||!d)return;MON=d;
+  var t=new Date(d.checked_at);MONH=('0'+t.getHours()).slice(-2)+':'+('0'+t.getMinutes()).slice(-2);
+  if(d.ok){el.textContent='🟢 OK ('+MONH+')';el.className='mon ok';}
+  else{el.textContent='🔴 '+d.problems.length+' ('+MONH+')';el.className='mon bad';}
 }).catch(function(){});}
 mon();setInterval(mon,60000);
+document.getElementById('mon').addEventListener('click',function(){
+  var p=document.getElementById('monPanel');if(!MON)return;
+  if(p.style.display==='block'){p.style.display='none';return;}
+  p.textContent=MON.ok?('Все процессы в норме.\nПроверено в '+MONH):('Проблемы ('+MON.problems.length+'):\n• '+MON.problems.join('\n• ')+'\nПроверено в '+MONH);
+  p.style.display='block';
+});
 document.querySelectorAll('.js-logout').forEach(function(b){
+  var orig=b.textContent;
   b.addEventListener('click',function(e){
-    if(!b.dataset.armed){e.preventDefault();b.dataset.armed='1';b.textContent='Точно выйти?';
-      setTimeout(function(){delete b.dataset.armed;b.textContent='Выйти';},3000);}
+    if(!b.dataset.armed){e.preventDefault();b.dataset.armed='1';b.textContent='Точно выйти?';b.classList.add('armed');
+      setTimeout(function(){delete b.dataset.armed;b.textContent=orig;b.classList.remove('armed');},3000);}
   });
 });
 </script>

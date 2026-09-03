@@ -140,3 +140,16 @@ textarea { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #2
   .backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:28;}
   body.menu-open .backdrop{display:block;}
 }
+
+/* бейдж: раскрытие списка проблем по тапу */
+.mon{cursor:pointer;}
+.monpanel{display:none;position:fixed;top:57px;left:8px;right:8px;z-index:40;background:var(--panel);
+  border:1px solid #2a3040;border-radius:10px;padding:12px;font-size:13px;color:var(--text);
+  white-space:pre-line;box-shadow:0 8px 24px rgba(0,0,0,.4);}
+/* неброский выход */
+.menu-logout{padding:0;border-top:1px solid #262b36;}
+.menu-logout-btn{display:block;width:100%;text-align:left;background:none;border:none;color:var(--muted);
+  padding:14px 16px;font-size:15px;cursor:pointer;}
+.menu-logout-btn.armed{color:#ff9c9c;}
+.nav-logout-btn{background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:4px 8px;}
+.nav-logout-btn.armed{color:#ff9c9c;font-size:13px;}
