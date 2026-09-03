@@ -119,3 +119,24 @@ textarea { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #2
 .mon{font-size:12px;padding:4px 10px;border-radius:999px;margin-left:auto;margin-right:10px;white-space:nowrap;}
 .mon.ok{color:#7ee2a8;background:rgba(52,199,89,.15);}
 .mon.bad{color:#ff9c9c;background:rgba(255,77,79,.18);}
+
+/* шапка v2: бургер справа, меню-оверлей, выход с подтверждением */
+.topbar{justify-content:flex-start;}
+.brand{margin-right:auto;}
+.mon{margin-left:0;}
+.backdrop{display:none;}
+.navlogout{margin-left:8px;}
+.menu-logout{padding:12px 16px;border-top:1px solid #262b36;}
+.menu-logout .btn{width:100%;}
+@media (max-width:700px){
+  .nav{display:none;}
+  .bottomnav{display:none;}
+  .burger{display:block;}
+  .menu{display:none;position:fixed;top:57px;left:0;right:0;z-index:29;background:var(--panel);
+        border-bottom:1px solid #262b36;flex-direction:column;max-height:calc(100vh - 57px);overflow:auto;}
+  body.menu-open .menu{display:flex;}
+  .menu a{padding:14px 16px;color:var(--muted);border-top:1px solid #262b36;}
+  .menu a.active{color:var(--text);background:var(--panel-2);}
+  .backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:28;}
+  body.menu-open .backdrop{display:block;}
+}

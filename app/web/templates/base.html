@@ -15,14 +15,12 @@
 </head>
 <body>
   <div class="topbar">
-    <button class="burger" type="button" onclick="document.body.classList.toggle('menu-open')">☰</button>
     <div class="brand">TG Content Hub</div>
     <span id="mon" class="mon" title=""></span>
-    <form method="post" action="/logout">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <button class="btn ghost" type="submit">Выйти</button>
-    </form>
+    <button class="burger" type="button" onclick="document.body.classList.toggle('menu-open')">☰</button>
   </div>
+
+  <div class="backdrop" onclick="document.body.classList.remove('menu-open')"></div>
 
   <nav class="menu">
     <a href="/" class="{{ 'active' if active == 'dashboard' else '' }}">Дашборд</a>
@@ -31,6 +29,10 @@
     <a href="/stats" class="{{ 'active' if active == 'stats' else '' }}">Статистика</a>
     <a href="/settings" class="{{ 'active' if active == 'settings' else '' }}">Настройки</a>
     <a href="/content" class="{{ 'active' if active == 'content' else '' }}">Контент</a>
+    <form method="post" action="/logout" class="menu-logout">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn danger js-logout" type="submit">Выйти</button>
+    </form>
   </nav>
 
   <nav class="nav">
@@ -40,6 +42,10 @@
     <a href="/stats" class="{{ 'active' if active == 'stats' else '' }}">Статистика</a>
     <a href="/settings" class="{{ 'active' if active == 'settings' else '' }}">Настройки</a>
     <a href="/content" class="{{ 'active' if active == 'content' else '' }}">Контент</a>
+    <form method="post" action="/logout" class="navlogout">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn ghost js-logout" type="submit">Выйти</button>
+    </form>
   </nav>
 
   <main class="content">
@@ -53,6 +59,12 @@ function mon(){fetch('/api/status').then(function(r){return r.ok?r.json():null;}
   else{el.textContent='🔴 '+d.problems.length+' ('+hh+')';el.className='mon bad';el.title=d.problems.join('\n');}
 }).catch(function(){});}
 mon();setInterval(mon,60000);
+document.querySelectorAll('.js-logout').forEach(function(b){
+  b.addEventListener('click',function(e){
+    if(!b.dataset.armed){e.preventDefault();b.dataset.armed='1';b.textContent='Точно выйти?';
+      setTimeout(function(){delete b.dataset.armed;b.textContent='Выйти';},3000);}
+  });
+});
 </script>
 </body>
 </html>
