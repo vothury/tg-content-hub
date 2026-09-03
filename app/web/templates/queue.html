@@ -6,6 +6,7 @@
   {% for r in rows %}
   <div class="card">
     <div class="label"><a href="/posts/{{ r.post_id }}">#{{ r.post_id }}</a> · @{{ r.channel }} · {{ r.mode }}</div>
+    {% if r.text %}<div class="sub">{{ r.text }}</div>{% endif %}
     <div class="sub"><span class="badge st-{{ 'published' if r.state == 'done' else ('failed' if r.state == 'failed' else 'scheduled') }}">{{ r.state }}</span>
       {% if r.scheduled_at %} · план: {{ r.scheduled_at|dt }}{% endif %}
       {% if r.published_at %} · опубликовано: {{ r.published_at|dt }}{% endif %}
@@ -14,4 +15,8 @@
   </div>
   {% else %}<div class="card">Задач нет</div>{% endfor %}
 </div>
+<script>
+var QSIG='{{ sig }}';
+setInterval(function(){fetch('/api/queue').then(function(r){return r.json();}).then(function(d){if(d.sig&&d.sig!==QSIG)location.reload();}).catch(function(){});},10000);
+</script>
 {% endblock %}

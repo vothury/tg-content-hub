@@ -27,7 +27,9 @@
 <div class="section-title">Посты по статусам</div>
 <div class="list">
   {% for st, cnt in status_rows %}
-  <div class="card"><span class="badge st-{{ st.value|lower }}">{{ st.value }}</span><div class="sub">{{ cnt }}</div></div>
+  <a class="card" href="/posts?status={{ st.value }}">
+    <span class="badge st-{{ st.value|lower }}">{{ st.value }}</span><div class="sub">{{ cnt }} → смотреть</div>
+  </a>
   {% endfor %}
 </div>
 {% endblock %}
