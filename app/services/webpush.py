@@ -52,6 +52,7 @@ async def add_subscription(sub: dict) -> None:
 
 
 async def notify_all(title: str, body: str) -> None:
+    import time
     from pywebpush import WebPushException, webpush
     async with session_scope() as session:
         priv = await session.get(AppSetting, K_PRIV)
@@ -65,14 +66,16 @@ async def notify_all(title: str, body: str) -> None:
     subs = list(row.value)
     keep = []
     sent = 0
+    claims = {"sub": "mailto:admin@local", "exp": int(time.time()) + 86400}
     for sub in subs:
         try:
+            # позиционно: subscription_info, data, vapid_private_key, vapid_claims
             await asyncio.to_thread(
                 webpush,
-                subscription_info=sub,
-                data=json.dumps({"title": title, "body": body}),
-                vapid_private_key=priv.value,
-                vapid_claims={"sub": "mailto:admin@local"},
+                sub,
+                json.dumps({"title": title, "body": body}),
+                priv.value,
+                claims,
             )
             sent += 1
             keep.append(sub)
