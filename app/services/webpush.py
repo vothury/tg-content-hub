@@ -35,7 +35,7 @@ async def get_public_key() -> str:
             pem = key.private_bytes(
                 serialization.Encoding.PEM,
                 serialization.PrivateFormat.PKCS8,
-                serialization.NoEncryption,
+                serialization.NoEncryption(),
             ).decode()
             session.add(AppSetting(key=K_PRIV, value=pem))
             session.add(AppSetting(key=K_PUB, value=_b64url(pub_b)))
