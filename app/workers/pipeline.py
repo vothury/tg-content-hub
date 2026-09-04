@@ -61,24 +61,30 @@ async def main() -> None:
     redis = get_redis()
     next_rescan = time.monotonic() + settings.pipeline_rescan_interval_sec
     while True:
-        await monitor.heartbeat("pipeline")
-        raw = await redis.lpop(PIPELINE_QUEUE)
-        if raw is not None:
-            try:
-                post_id = int(raw)
-            except ValueError:
-                log.warning("не числовой элемент в очереди, пропущен: %r", raw)
+        try:
+            await monitor.heartbeat("pipeline")
+            raw = await redis.lpop(PIPELINE_QUEUE)
+            if raw is not None:
+                try:
+                    post_id = int(raw)
+                except ValueError:
+                    log.warning("не числовой элемент в очереди, пропущен: %r", raw)
+                    continue
+                await advance_post(post_id)
                 continue
-            await advance_post(post_id)
-            continue
-        await asyncio.sleep(5)
-        if time.monotonic() >= next_rescan:
-            next_rescan = time.monotonic() + settings.pipeline_rescan_interval_sec
-            pending = await pending_post_ids()
-            if pending:
-                log.info("рескан: %d пост(ов) в работе", len(pending))
-                for post_id in pending:
-                    await advance_post(post_id)
+            await asyncio.sleep(5)
+            if time.monotonic() >= next_rescan:
+                next_rescan = time.monotonic() + settings.pipeline_rescan_interval_sec
+                pending = await pending_post_ids()
+                if pending:
+                    log.info("рескан: %d пост(ов) в работе", len(pending))
+                    for post_id in pending:
+                        await advance_post(post_id)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 — не роняем воркер на транзиторных сбоях Redis/БД
+            log.exception("сбой цикла pipeline — повтор через 5 сек")
+            await asyncio.sleep(5)
 
 
 if __name__ == "__main__":
