@@ -77,14 +77,7 @@ async def get_public_key() -> str:
 
 async def add_subscription(sub: dict) -> None:
     async with session_scope() as session:
-        row = await session.get(AppSetting, K_SUBS)
-        subs = row.value if row is not None and isinstance(row.value, list) else []
-        if sub not in subs:
-            subs.append(sub)
-        if row is None:
-            session.add(AppSetting(key=K_SUBS, value=subs))
-        else:
-            row.value = subs
+        await _set(session, K_SUBS, [sub])
         await session.commit()
 
 

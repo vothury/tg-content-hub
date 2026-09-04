@@ -76,7 +76,7 @@ document.querySelectorAll('.js-logout').forEach(function(b){
   });
 });
 var BELL=document.getElementById('bell');
-function setBell(on){BELL.textContent=on?'🔔':'🔕';}
+function setBell(on){BELL.textContent=on?'🔔':'';}
 setBell(localStorage.getItem('notify')==='1');
 function toast(t){var d=document.createElement('div');d.className='toast';d.textContent=t;document.body.appendChild(d);setTimeout(function(){d.remove();},4000);}
 function urlB64ToUint8Array(b){var p=String(b).replace(/-/g,'+').replace(/_/g,'/');var pad=p.length%4;if(pad)p+='='.repeat(4-pad);var raw=atob(p);var out=new Uint8Array(raw.length);for(var i=0;i<raw.length;i++)out[i]=raw.charCodeAt(i);return out;}
@@ -90,7 +90,10 @@ BELL.addEventListener('click',function(){
       navigator.serviceWorker.register('/sw.js').then(function(){return navigator.serviceWorker.ready;}).then(function(reg){
         return fetch('/api/webpush/key').then(function(r){return r.json();}).then(function(k){
           return reg.pushManager.getSubscription().then(function(s){
-            return s||reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlB64ToUint8Array(k.public)});
+            if(s){return s.unsubscribe().then(function(){return null;});}
+            return null;
+          }).then(function(){
+            return reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlB64ToUint8Array(k.public)});
           }).then(function(sub){
             return fetch('/api/webpush/subscribe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(sub.toJSON())});
           });
