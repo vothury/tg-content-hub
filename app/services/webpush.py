@@ -100,12 +100,13 @@ async def notify_all(title: str, body: str) -> None:
             headers = _vapid_headers(sub.get("endpoint", ""), priv.value)
             headers["Urgency"] = "high"
             headers["TTL"] = "86400"
-            await asyncio.to_thread(
+            resp = await asyncio.to_thread(
                 webpush,
                 sub,
                 json.dumps({"title": title, "body": body}),
                 headers=headers,
             )
+            log.info("webpush: fcm status=%s", getattr(resp, "status_code", "?"))
             sent += 1
             keep.append(sub)
         except WebPushException as exc:

@@ -114,3 +114,13 @@ async def webpush_subscribe(request: Request):
     from app.services import webpush
     await webpush.add_subscription(await request.json())
     return JSONResponse({"ok": True})
+
+
+@app.post("/api/webpush/ping")
+async def webpush_ping(request: Request):
+    try:
+        data = await request.json()
+    except Exception:  # noqa: BLE001
+        data = {}
+    log.info("webpush ping: %s", data.get("stage"))
+    return JSONResponse({"ok": True})
