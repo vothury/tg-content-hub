@@ -1,5 +1,5 @@
 """Рассылка карточек: посты, ждущие ревью, без отправленной карточки
-на текущую версию черновика."""
+на текущую версию черновика. Плюс Web Push в PWA для новых AWAITING_REVIEW."""
 from __future__ import annotations
 
 import asyncio
@@ -14,6 +14,7 @@ from app.config import settings
 from app.db.enums import PostStatus
 from app.db.models import Post, PostEvent
 from app.db.session import session_scope
+from app.services import webpush
 
 log = logging.getLogger(__name__)
 
@@ -41,6 +42,12 @@ async def pending_card_post_ids(limit: int = 5) -> list[int]:
         return list(rows.scalars().all())
 
 
+async def _post_status(post_id: int):
+    async with session_scope() as session:
+        post = await session.get(Post, post_id)
+        return post.status if post is not None else None
+
+
 async def card_notifier(bot: Bot) -> None:
     global _forbidden_warned
     if not settings.allowed_owner_ids:
@@ -54,6 +61,10 @@ async def card_notifier(bot: Bot) -> None:
                 try:
                     await send_card(bot, owner_chat, post_id)
                     log.info("карточка поста %s отправлена", post_id)
+                    if await _post_status(post_id) is PostStatus.AWAITING_REVIEW:
+                        await webpush.notify_all(
+                            "Новый пост на ревью", f"#{post_id} ожидает вашего решения"
+                        )
                 except TelegramForbiddenError:
                     if not _forbidden_warned:
                         _forbidden_warned = True

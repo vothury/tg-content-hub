@@ -97,3 +97,16 @@ async def sw():
 @app.get("/api/status", dependencies=[Depends(require_auth)])
 async def api_status():
     return JSONResponse(await monitor.get_status())
+
+
+@app.get("/api/webpush/key", dependencies=[Depends(require_auth)])
+async def webpush_key():
+    from app.services import webpush
+    return JSONResponse({"public": await webpush.get_public_key()})
+
+
+@app.post("/api/webpush/subscribe", dependencies=[Depends(require_auth)])
+async def webpush_subscribe(request: Request):
+    from app.services import webpush
+    await webpush.add_subscription(await request.json())
+    return JSONResponse({"ok": True})
