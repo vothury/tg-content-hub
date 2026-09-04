@@ -56,10 +56,15 @@ async def notify_all(title: str, body: str) -> None:
     async with session_scope() as session:
         priv = await session.get(AppSetting, K_PRIV)
         row = await session.get(AppSetting, K_SUBS)
-    if priv is None or row is None or not row.value:
+    if priv is None:
+        log.warning("webpush: VAPID-ключ не создан — пуш пропущен")
+        return
+    if row is None or not row.value:
+        log.info("webpush: нет ни одной подписки — пуш пропущен")
         return
     subs = list(row.value)
     keep = []
+    sent = 0
     for sub in subs:
         try:
             await asyncio.to_thread(
@@ -69,16 +74,18 @@ async def notify_all(title: str, body: str) -> None:
                 vapid_private_key=priv.value,
                 vapid_claims={"sub": "mailto:admin@local"},
             )
+            sent += 1
             keep.append(sub)
         except WebPushException as exc:
             status = getattr(getattr(exc, "response", None), "status_code", None)
+            log.warning("webpush: ошибка отправки (status=%s): %s", status, exc)
             if status in (404, 410):
-                log.info("webpush: подписка недействительна — удалена")
                 continue
             keep.append(sub)
         except Exception:  # noqa: BLE001
             log.exception("webpush: сбой отправки")
             keep.append(sub)
+    log.info("webpush: отправлено %d из %d подписок", sent, len(subs))
     if len(keep) != len(subs):
         async with session_scope() as session:
             r2 = await session.get(AppSetting, K_SUBS)
