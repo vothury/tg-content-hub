@@ -78,7 +78,9 @@ async def notify_all(title: str, body: str) -> None:
         log.info("webpush: нет ни одной подписки — пуш пропущен")
         return
     try:
-        vapid = Vapid.from_string(priv.value)
+        from cryptography.hazmat.primitives import serialization as ser
+        vapid = Vapid()
+        vapid.private_key = ser.load_pem_private_key(priv.value.encode(), password=None)
         headers = vapid.sign({"sub": "mailto:admin@local", "exp": int(time.time()) + 86400})
     except Exception:
         log.exception("webpush: не удалось подписать VAPID")
