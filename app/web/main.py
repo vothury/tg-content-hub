@@ -91,7 +91,11 @@ async def healthz():
 
 @app.get("/sw.js")
 async def sw():
-    return FileResponse(WEB_DIR / "static" / "sw.js", media_type="application/javascript")
+    return FileResponse(
+        WEB_DIR / "static" / "sw.js",
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.get("/api/status", dependencies=[Depends(require_auth)])

@@ -54,6 +54,7 @@
     {% block content %}{% endblock %}
   </main>
 <script>
+if('serviceWorker' in navigator){navigator.serviceWorker.getRegistration().then(function(r){if(r)r.update();});}
 var MON=null,MONH='';
 function mon(){fetch('/api/status').then(function(r){return r.ok?r.json():null;}).then(function(d){
   var el=document.getElementById('mon');if(!el||!d)return;MON=d;
