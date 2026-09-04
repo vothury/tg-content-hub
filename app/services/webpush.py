@@ -99,6 +99,7 @@ async def notify_all(title: str, body: str) -> None:
             headers = _vapid_headers(sub.get("endpoint", ""), priv.value)
             headers["Urgency"] = "high"
             headers["TTL"] = "86400"
+            log.info("webpush: send to %s...", (sub.get("endpoint") or "")[:50])
             resp = await asyncio.to_thread(
                 webpush,
                 sub,

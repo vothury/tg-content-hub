@@ -112,7 +112,9 @@ async def webpush_key():
 @app.post("/api/webpush/subscribe", dependencies=[Depends(require_auth)])
 async def webpush_subscribe(request: Request):
     from app.services import webpush
-    await webpush.add_subscription(await request.json())
+    data = await request.json()
+    log.info("webpush subscribe: endpoint=%s...", (data.get("endpoint") or "")[:50])
+    await webpush.add_subscription(data)
     return JSONResponse({"ok": True})
 
 
