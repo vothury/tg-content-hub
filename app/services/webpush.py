@@ -1,5 +1,4 @@
-"""Web Push (VAPID): пуши в PWA даже при закрытом приложении.
-JWT подписываем вручную (ES256), без py_vapid."""
+"""Web Push (VAPID): пуши в PWA даже при закрытом приложении. JWT вручную (ES256)."""
 from __future__ import annotations
 
 import asyncio

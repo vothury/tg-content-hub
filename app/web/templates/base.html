@@ -103,14 +103,6 @@ BELL.addEventListener('click',function(){
     }
   });
 });
-setInterval(function(){
-  if(localStorage.getItem('notify')!=='1')return;
-  fetch('/api/notify').then(function(r){return r.json();}).then(function(d){
-    var last=parseInt(localStorage.getItem('notify_last')||'0',10);
-    if(d.last>last){localStorage.setItem('notify_last',String(d.last));toast('Новый пост #'+d.last);notifyLocal('Новый пост на ревью','#'+d.last+' ожидает вашего решения');}
-    else if(last===0){localStorage.setItem('notify_last',String(d.last));}
-  }).catch(function(){});
-},30000);
 </script>
 </body>
 </html>
