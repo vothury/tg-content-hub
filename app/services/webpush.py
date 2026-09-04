@@ -24,24 +24,32 @@ def _b64url(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).decode().rstrip("=")
 
 
+async def _set(session, key: str, value) -> None:
+    row = await session.get(AppSetting, key)
+    if row is None:
+        session.add(AppSetting(key=key, value=value))
+    else:
+        row.value = value
+
+
 async def get_public_key() -> str:
     async with session_scope() as session:
         priv = await session.get(AppSetting, K_PRIV)
         pub = await session.get(AppSetting, K_PUB)
-        if priv is None or pub is None:
-            key = ec.generate_private_key(ec.SECP256R1())
-            nums = key.private_numbers()
-            pub_b = b"\x04" + nums.public_numbers.x.to_bytes(32, "big") + nums.public_numbers.y.to_bytes(32, "big")
-            pem = key.private_bytes(
-                serialization.Encoding.PEM,
-                serialization.PrivateFormat.PKCS8,
-                serialization.NoEncryption(),
-            ).decode()
-            session.add(AppSetting(key=K_PRIV, value=pem))
-            session.add(AppSetting(key=K_PUB, value=_b64url(pub_b)))
-            await session.commit()
-            return _b64url(pub_b)
-        return pub.value
+        if priv is not None and pub is not None:
+            return pub.value
+        key = ec.generate_private_key(ec.SECP256R1())
+        nums = key.private_numbers()
+        pub_b = b"\x04" + nums.public_numbers.x.to_bytes(32, "big") + nums.public_numbers.y.to_bytes(32, "big")
+        pem = key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        ).decode()
+        await _set(session, K_PRIV, pem)
+        await _set(session, K_PUB, _b64url(pub_b))
+        await session.commit()
+        return _b64url(pub_b)
 
 
 async def add_subscription(sub: dict) -> None:
