@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>{% block title %}TG Content Hub{% endblock %}</title>
-  <link rel="icon" href="/static/icon-512.png" type="image/png">
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
   <link rel="manifest" href="/static/manifest.webmanifest">
   <meta name="theme-color" content="#0f1115">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <link rel="apple-touch-icon" href="/static/icon-512.png">
+  <link rel="apple-touch-icon" href="/static/icon.svg">
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
@@ -54,7 +54,6 @@
     {% block content %}{% endblock %}
   </main>
 <script>
-if('serviceWorker' in navigator){navigator.serviceWorker.getRegistration().then(function(r){if(r)r.update();});}
 var MON=null,MONH='';
 function mon(){fetch('/api/status').then(function(r){return r.ok?r.json():null;}).then(function(d){
   var el=document.getElementById('mon');if(!el||!d)return;MON=d;
@@ -103,6 +102,14 @@ BELL.addEventListener('click',function(){
     }
   });
 });
+setInterval(function(){
+  if(localStorage.getItem('notify')!=='1')return;
+  fetch('/api/notify').then(function(r){return r.json();}).then(function(d){
+    var last=parseInt(localStorage.getItem('notify_last')||'0',10);
+    if(d.last>last){localStorage.setItem('notify_last',String(d.last));toast('Новый пост #'+d.last);notifyLocal('Новый пост на ревью','#'+d.last+' ожидает вашего решения');}
+    else if(last===0){localStorage.setItem('notify_last',String(d.last));}
+  }).catch(function(){});
+},30000);
 </script>
 </body>
 </html>

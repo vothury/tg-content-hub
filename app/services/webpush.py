@@ -1,4 +1,5 @@
-"""Web Push (VAPID): пуши в PWA даже при закрытом приложении. JWT вручную (ES256)."""
+"""Web Push (VAPID): пуши в PWA даже при закрытом приложении.
+JWT подписываем вручную (ES256), без py_vapid."""
 from __future__ import annotations
 
 import asyncio
@@ -97,16 +98,12 @@ async def notify_all(title: str, body: str) -> None:
     for sub in subs:
         try:
             headers = _vapid_headers(sub.get("endpoint", ""), priv.value)
-            headers["Urgency"] = "high"
-            headers["TTL"] = "86400"
-            log.info("webpush: send to %s...", (sub.get("endpoint") or "")[:50])
-            resp = await asyncio.to_thread(
+            await asyncio.to_thread(
                 webpush,
                 sub,
                 json.dumps({"title": title, "body": body}),
                 headers=headers,
             )
-            log.info("webpush: fcm status=%s", getattr(resp, "status_code", "?"))
             sent += 1
             keep.append(sub)
         except WebPushException as exc:

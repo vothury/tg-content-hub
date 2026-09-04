@@ -91,11 +91,7 @@ async def healthz():
 
 @app.get("/sw.js")
 async def sw():
-    return FileResponse(
-        WEB_DIR / "static" / "sw.js",
-        media_type="application/javascript",
-        headers={"Cache-Control": "no-store"},
-    )
+    return FileResponse(WEB_DIR / "static" / "sw.js", media_type="application/javascript")
 
 
 @app.get("/api/status", dependencies=[Depends(require_auth)])
@@ -112,17 +108,5 @@ async def webpush_key():
 @app.post("/api/webpush/subscribe", dependencies=[Depends(require_auth)])
 async def webpush_subscribe(request: Request):
     from app.services import webpush
-    data = await request.json()
-    log.info("webpush subscribe: endpoint=%s...", (data.get("endpoint") or "")[:50])
-    await webpush.add_subscription(data)
-    return JSONResponse({"ok": True})
-
-
-@app.post("/api/webpush/ping")
-async def webpush_ping(request: Request):
-    try:
-        data = await request.json()
-    except Exception:  # noqa: BLE001
-        data = {}
-    log.info("webpush ping: %s", data.get("stage"))
+    await webpush.add_subscription(await request.json())
     return JSONResponse({"ok": True})
