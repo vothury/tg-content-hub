@@ -87,6 +87,7 @@ async def post_detail(request: Request, post_id: int, msg: str = ""):
         "events": events,
         "channels": channels,
         "jobs": jobs,
+        "channel_obj": channel,
     })
 
 

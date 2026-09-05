@@ -6,6 +6,8 @@
 <div class="card">
   <div class="label">@{{ source }} → @{{ channel }} · оценка {{ p.score if p.score is not none else '—' }}</div>
   {% if p.verdict_reason %}<div class="sub">Вердикт: {{ p.verdict_reason }}</div>{% endif %}
+  {% if p.autopilot %}<div class="sub">🤖 Опубликовано автопилотом{% if channel_obj and channel_obj.double_check %} · двойная проверка: одобрена{% endif %}</div>{% endif %}
+  {% if p.double_check_note %}<div class="sub" style="color:#ff9c9c">⛔ Двойная проверка отклонила: {{ p.double_check_note }}</div>{% endif %}
 </div>
 
 {% if media %}
@@ -32,7 +34,7 @@
 {% endif %}
 
 <div class="section-title">Действия</div>
-{% if status == 'AWAITING_REVIEW' %}
+{% if status in ('AWAITING_REVIEW', 'DOUBLE_CHECK_REVIEW') %}
 <div class="actions">
   <form method="post" action="/posts/{{ p.id }}/approve">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
