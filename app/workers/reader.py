@@ -72,12 +72,40 @@ class SourceSnapshot:
 # ---------- метаданные медиа ----------
 
 def _extract_media(msg) -> tuple[MediaType | None, object | None]:
+    # Link-preview (webpage) НЕ считается медиа: не тащим аватарки каналов из ссылок
+    if getattr(msg, "webpage", None) is not None and msg.photo is None and msg.video is None:
+        return None, None
     if msg.photo is not None:
         return MediaType.PHOTO, msg.photo
     if msg.video is not None:
         return MediaType.VIDEO, msg.video
     return None, None
 
+def _strip_link_signatures(text: str | None, entities) -> str | None:
+    """Убирает строки-подписи, целиком являющиеся ссылкой/упоминанием на Telegram-канал."""
+    if not text or not entities:
+        return text
+    from telethon.tl.types import (
+        MessageEntityMention, MessageEntityTextMention, MessageEntityTextUrl,
+    )
+    lines = text.split("\n")
+    out = []
+    pos = 0
+    for ln in lines:
+        start, end = pos, pos + len(ln)
+        stripped = False
+        for e in entities:
+            is_mention = isinstance(e, (MessageEntityMention, MessageEntityTextMention))
+            is_tg_url = isinstance(e, MessageEntityTextUrl) and (
+                "t.me/" in (getattr(e, "url", "") or "") or "telegram.me/" in (getattr(e, "url", "") or ""))
+            if (is_mention or is_tg_url) and e.offset >= start and (e.offset + e.length) <= end \
+                    and ln.strip() == text[e.offset:e.offset + e.length].strip():
+                stripped = True
+                break
+        if not stripped:
+            out.append(ln)
+        pos = end + 1
+    return "\n".join(out).strip()
 
 def _photo_dimensions(photo: Photo) -> tuple[int | None, int | None]:
     try:
@@ -210,6 +238,9 @@ async def _persist_unit(client, snap: SourceSnapshot, entity, unit) -> int | Non
         return None
 
     text = next((m.message for m in unit.messages if m.message), None)
+    ent_msg = next((m for m in unit.messages if m.message), None)
+    if text and ent_msg is not None:
+        text = _strip_link_signatures(text, getattr(ent_msg, "entities", None)) or text
     normalized = normalize_text(text)
     media_rows = await _download_unit_media(client, snap, unit)
 
