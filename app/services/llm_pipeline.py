@@ -577,13 +577,18 @@ async def _run_double_check(post_id: int) -> tuple[bool, str]:
         draft = post.draft_text or post.original_text or ""
         verdict = post.verdict_reason or ""
         score = post.score
+        source = await session.get(Source, post.source_id) if post.source_id else None
+        relevance = source.relevance if source is not None else None
         title = channel.title if channel else "канал"
         desc = channel.description if channel else ""
         model = (await get_setting(session, Keys.DOUBLE_CHECK_MODEL)) or settings.effective_revision_model
     messages = [
-        {"role": "system", "content": DOUBLE_CHECK_SYSTEM.format(channel_title=title)},
+        {"role": "system", "content": DOUBLE_CHECK_SYSTEM.format(
+            relevance=relevance if relevance is not None else "—",
+            channel_title=title)},
         {"role": "user", "content": DOUBLE_CHECK_USER.format(
             channel_description=desc,
+            relevance=relevance if relevance is not None else "—",
             score=f"{score:.1f}" if score is not None else "—",
             verdict=verdict or "нет",
             draft=draft[:TEXT_LIMIT])},
