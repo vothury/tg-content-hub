@@ -566,12 +566,18 @@ async def _run_double_check(post_id: int) -> tuple[bool, str]:
         channel = await session.get(TargetChannel, post.target_channel_id) \
             if post.target_channel_id else None
         draft = post.draft_text or post.original_text or ""
+        verdict = post.verdict_reason or ""
+        score = post.score
         title = channel.title if channel else "канал"
         desc = channel.description if channel else ""
-    model = (await get_setting(Keys.DOUBLE_CHECK_MODEL)) or settings.effective_double_check_model
+        model = (await get_setting(session, Keys.DOUBLE_CHECK_MODEL)) or settings.effective_revision_model
     messages = [
         {"role": "system", "content": DOUBLE_CHECK_SYSTEM.format(channel_title=title)},
-        {"role": "user", "content": DOUBLE_CHECK_USER.format(channel_description=desc, draft=draft[:TEXT_LIMIT])},
+        {"role": "user", "content": DOUBLE_CHECK_USER.format(
+            channel_description=desc,
+            score=f"{score:.1f}" if score is not None else "—",
+            verdict=verdict or "нет",
+            draft=draft[:TEXT_LIMIT])},
     ]
     resp, result, call_status, error_text = await _call_and_parse(
         messages, model, settings.llm_rewrite_max_tokens, temperature=0.1, schema=DoubleCheckResult)

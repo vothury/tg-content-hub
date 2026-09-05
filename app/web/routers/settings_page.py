@@ -98,6 +98,7 @@ async def settings_page(request: Request, msg: str = ""):
         f"Свежесть: окно {settings.reader_fresh_window_min} мин; фолбэк {settings.reader_fallback_count} не старше {settings.reader_fallback_max_age_hours} ч",
         f"Медиа: скачивание до {def_media} МБ",
         f"Классификация: {cur.get(_k('CLASSIFY_MODEL')) or settings.classify_model}; рерайт: {cur.get(_k('REWRITE_MODEL')) or settings.rewrite_model}",
+        f"Двойная проверка: {cur.get(_k('DOUBLE_CHECK_MODEL')) or settings.effective_revision_model}",
         f"Бюджет LLM: ${cur.get(_k('MAX_LLM_BUDGET_USD_PER_DAY')) or settings.max_llm_budget_usd_per_day}/день; "
         f"кандидатов в день: {'без лимита' if cand >= 100000 else cand}",
     ]
