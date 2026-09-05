@@ -39,22 +39,22 @@ from app.db.session import session_scope
 from app.services import guards
 from app.services.llm.openrouter import LLMResponse, OpenRouterError, chat_completion
 from app.services.llm.prompts import (
-    CLEAN_SYSTEM,
-    CLEAN_USER,
-    CLEAN_VERSION,
     CLASSIFY_USER,
     CLASSIFY_VERSION,
-    build_double_check_prompt,
-    DOUBLE_CHECK_USER,
-    DOUBLE_CHECK_VERSION,
     REWRITE_SYSTEM_TEMPLATE,
     REWRITE_USER,
     REWRITE_VERSION,
     REVISE_SYSTEM,
     REVISE_USER,
     REVISE_VERSION,
+    CLEAN_SYSTEM,
+    CLEAN_USER,
+    CLEAN_VERSION,
+    DOUBLE_CHECK_USER,
+    DOUBLE_CHECK_VERSION,
     build_classify_prompt,
     build_style_instructions,
+    build_double_check_prompt,
 )
 from app.services.llm.schemas import (
     ClassifyResult,

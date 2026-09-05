@@ -205,6 +205,14 @@ def build_double_check_prompt(channel_title: str, relevance, online: bool, stric
         facts=facts,
     )
 
+DOUBLE_CHECK_USER = """Тематика канала: {channel_description}
+Релевантность источника: {relevance}/10
+Вердикт первой модели: score {score}; причина: {verdict}
+
+Черновик поста:
+<draft>
+{draft}
+</draft>"""
 
 # ---------------------------------------------------------------------------
 # Стилевые режимы

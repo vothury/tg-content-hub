@@ -29,6 +29,12 @@ styles:
 #   daily_limit         — максимум публикаций в день (Этап 5)
 #   min_interval_min    — минимальный интервал между публикациями (Этап 5)
 #   quiet_hours         — тихие часы: {"start": "23:00", "end": "08:00"}
+#
+# double_check_fact_strictness (1–10, дефолт глобальный 4) — глубина проверки фактов:
+# ≤5 — только явные серьёзные ошибки;
+# 6–7 — придирчиво, но без фанатизма;
+# 8–9 — сверяет ключевые даты/имена/рейтинги;
+# 10 — досконально.
 
 targets:
   - username: testimfilm
@@ -40,6 +46,8 @@ targets:
     autopilot_min_score: 8
     review_if_uncertain: true
     double_check: true
+    double_check_online: true            # проверять спорные факты через веб-поиск (модель :online)
+    double_check_fact_strictness: 5      # важность точности фактов 1-10
     daily_limit: 30
     min_interval_min: 5
 
