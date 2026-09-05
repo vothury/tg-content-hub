@@ -51,7 +51,8 @@ CLASSIFY_SYSTEM_TEMPLATE = """Ты — редактор Telegram-канала «
 
 {relevance_mode}
 
-Требования: "reason" — до 20 слов на русском (для ok можно пусто); "risks" — не более 3 пунктов.
+{requirements}
+
 Ответь строго JSON без текста вне него:
 {{
   "suitable": true | false,
@@ -66,7 +67,11 @@ CLASSIFY_USER = """Пост-кандидат из источника:
 {text}
 </source_post>"""
 
-def build_classify_prompt(channel_title: str | None, channel_description: str | None, relevance: int | None) -> str:
+REQ_MIN = """Требования компактности: "reason" ВСЕГДА пустая строка, "risks" ВСЕГДА пустой список."""
+REQ_VERBOSE = """Требования: "reason" — до 20 слов на русском (для ok можно пусто); "risks" — не более 3 пунктов."""
+
+def build_classify_prompt(channel_title: str | None, channel_description: str | None,
+                          relevance: int | None, verbose: bool = False) -> str:
     if relevance is None or 4 <= relevance <= 7:
         mode = RELEVANCE_MID
     elif relevance >= 8:
@@ -78,6 +83,7 @@ def build_classify_prompt(channel_title: str | None, channel_description: str | 
     return CLASSIFY_SYSTEM_TEMPLATE.format(
         channel_title=title, channel_description=description,
         criteria=CRITERIA, relevance_mode=mode,
+        requirements=REQ_VERBOSE if verbose else REQ_MIN,
     )
 
 

@@ -75,6 +75,7 @@ class Settings(BaseSettings):
     # Автопилот (Этап 7)
     autopilot_min_score: int = 8
     double_check_model: str = ""  # пусто = модель правки
+    classify_verbose: bool = False  # подробный вердикт (reason/risks) — дороже и медленнее
 
     # Ревью (Этап 4): период поиска постов без отправленной карточки
     review_poll_interval_sec: int = 30

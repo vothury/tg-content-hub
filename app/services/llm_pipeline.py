@@ -190,8 +190,16 @@ async def classify_post(post_id: int) -> None:
         post.status = PostStatus.LLM_CLASSIFYING
         await session.commit()
 
+    async with session_scope() as session:
+        verbose = bool(await get_setting(session, Keys.CLASSIFY_VERBOSE))
     model = await _model_for(Keys.CLASSIFY_MODEL)
     providers = await _providers_for(Keys.CLASSIFY_PROVIDERS)
+    system_prompt = build_classify_prompt(
+        channel_title=channel.title if channel is not None else None,
+        channel_description=channel.description if channel is not None else None,
+        relevance=relevance,
+        verbose=verbose,
+    )
     system_prompt = build_classify_prompt(
         channel_title=channel.title if channel is not None else None,
         channel_description=channel.description if channel is not None else None,
