@@ -22,6 +22,7 @@ from app.db.enums import (
     LLMCallStatus,
     LLMStage,
     PostStatus,
+    PublishJobState,
     PublishMode,
 )
 from app.db.models import (
