@@ -18,7 +18,8 @@ from app.services import webpush
 
 log = logging.getLogger(__name__)
 
-CARD_STATUSES = (PostStatus.AWAITING_REVIEW, PostStatus.NEEDS_MEDIA_REVIEW, PostStatus.NEEDS_MANUAL_REVIEW)
+CARD_STATUSES = (PostStatus.AWAITING_REVIEW, PostStatus.NEEDS_MEDIA_REVIEW,
+                 PostStatus.NEEDS_MANUAL_REVIEW, PostStatus.DOUBLE_CHECK_REVIEW)
 
 _forbidden_warned = False
 
@@ -61,7 +62,8 @@ async def card_notifier(bot: Bot) -> None:
                 try:
                     await send_card(bot, owner_chat, post_id)
                     log.info("карточка поста %s отправлена", post_id)
-                    if await _post_status(post_id) is PostStatus.AWAITING_REVIEW:
+                    st = await _post_status(post_id)
+                    if st in (PostStatus.AWAITING_REVIEW, PostStatus.DOUBLE_CHECK_REVIEW):
                         await webpush.notify_all(
                             "Новый пост на ревью", f"#{post_id} ожидает вашего решения"
                         )

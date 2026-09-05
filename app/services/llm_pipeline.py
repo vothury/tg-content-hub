@@ -8,20 +8,44 @@
 """
 from __future__ import annotations
 
-import logging, re
+import logging
+import re
 from dataclasses import asdict
+from datetime import timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.config import settings
-from app.db.enums import DraftOrigin, EventActor, LLMCallStatus, LLMStage, PostStatus
-from app.db.models import LLMCall, Post, PostDraftVersion, PostEvent, Source, StyleProfile, TargetChannel
+from app.db.enums import (
+    DraftOrigin,
+    EventActor,
+    LLMCallStatus,
+    LLMStage,
+    PostStatus,
+    PublishMode,
+)
+from app.db.models import (
+    LLMCall,
+    Post,
+    PostDraftVersion,
+    PostEvent,
+    PublishJob,
+    Source,
+    StyleProfile,
+    TargetChannel,
+)
 from app.db.session import session_scope
 from app.services import guards
 from app.services.llm.openrouter import LLMResponse, OpenRouterError, chat_completion
 from app.services.llm.prompts import (
+    CLEAN_SYSTEM,
+    CLEAN_USER,
+    CLEAN_VERSION,
     CLASSIFY_USER,
     CLASSIFY_VERSION,
+    DOUBLE_CHECK_SYSTEM,
+    DOUBLE_CHECK_USER,
+    DOUBLE_CHECK_VERSION,
     REWRITE_SYSTEM_TEMPLATE,
     REWRITE_USER,
     REWRITE_VERSION,
@@ -31,9 +55,17 @@ from app.services.llm.prompts import (
     build_classify_prompt,
     build_style_instructions,
 )
-from app.services.llm.schemas import ClassifyResult, LLMParseError, RewriteResult
+from app.services.llm.schemas import (
+    ClassifyResult,
+    DoubleCheckResult,
+    LLMParseError,
+    RewriteResult,
+)
 from app.services.prefilter import run_prefilter
+from app.services.publishing import create_publish_job
 from app.services.settings import Keys, get_providers, get_setting
+from app.services.times import owner_now
+
 
 log = logging.getLogger(__name__)
 
@@ -262,6 +294,7 @@ async def rewrite_post(post_id: int) -> None:
             ))
             await session.commit()
             log.info("пост %s: рерайт отключён у канала — черновик = оригинал (v%d)", post_id, post.draft_version)
+            await _autopilot_step(post_id)
             return
         profile = await _profile_for_post(session, post)
         profile_id = profile.id
@@ -328,6 +361,7 @@ async def rewrite_post(post_id: int) -> None:
 
     if succeeded:
         await guards.inc_candidates()
+        await _autopilot_step(post_id)
 
 
 async def advance_post(post_id: int) -> None:
@@ -443,3 +477,158 @@ async def revise_draft(post_id: int, comment: str) -> tuple[bool, str]:
 
     log.info("пост %s: правка ИИ -> черновик v%d", post_id, post.draft_version)
     return True, f"правка внесена — черновик v{post.draft_version}"
+
+
+async def _autopilot_step(post_id: int) -> None:
+    try:
+        async with session_scope() as session:
+            post = await session.get(Post, post_id)
+            if post is None or post.status is not PostStatus.AWAITING_REVIEW:
+                return
+            channel = await session.get(TargetChannel, post.target_channel_id) \
+                if post.target_channel_id else None
+            if channel is None or not channel.autopilot:
+                return
+            min_score = channel.autopilot_min_score or settings.autopilot_min_score
+            confident = (post.score or 0.0) >= min_score
+            review_if_uncertain = channel.review_if_uncertain
+            double_check = channel.double_check
+        if not confident:
+            if review_if_uncertain:
+                log.info("пост %s: автопилот не уверен — оставлен в ревью", post_id)
+                return
+            await _autopilot_reject(post_id, "автопилот: ниже порога уверенности")
+            return
+        await _ensure_clean_draft(post_id)
+        if double_check:
+            approve, note = await _run_double_check(post_id)
+            if not approve:
+                await _set_double_check_review(post_id, note or "нет вердикта — проверить вручную")
+                return
+        await _autopilot_publish(post_id)
+    except Exception:  # noqa: BLE001
+        log.exception("сбой автопилота поста %s", post_id)
+
+
+async def _autopilot_reject(post_id: int, reason: str) -> None:
+    async with session_scope() as session:
+        post = await session.get(Post, post_id)
+        if post is None:
+            return
+        post.status = PostStatus.UNSUITABLE
+        post.reject_reason = reason
+        session.add(PostEvent(post_id=post_id, actor=EventActor.SYSTEM, action="autopilot_rejected",
+                              from_status=PostStatus.AWAITING_REVIEW.value,
+                              to_status=PostStatus.UNSUITABLE.value, details={"reason": reason}))
+        await session.commit()
+    log.info("пост %s: автопилот отклонил (%s)", post_id, reason)
+
+
+async def _ensure_clean_draft(post_id: int) -> None:
+    """Для каналов без рерайта: дешёвым вызовом убрать чужие подписи."""
+    async with session_scope() as session:
+        post = await session.get(Post, post_id)
+        if post is None:
+            return
+        channel = await session.get(TargetChannel, post.target_channel_id) \
+            if post.target_channel_id else None
+        if channel is not None and channel.rewrite_enabled:
+            return  # рерайт уже чистит подписи (правило 7)
+        text = post.draft_text or post.original_text or ""
+    model = await _model_for(Keys.PREFILTER_MODEL)
+    messages = [
+        {"role": "system", "content": CLEAN_SYSTEM},
+        {"role": "user", "content": CLEAN_USER.format(text=text[:TEXT_LIMIT])},
+    ]
+    resp, result, call_status, error_text = await _call_and_parse(
+        messages, model, settings.llm_rewrite_max_tokens, temperature=0.0, schema=RewriteResult)
+    if resp is not None and resp.cost_usd:
+        await guards.add_llm_cost(resp.cost_usd)
+    async with session_scope() as session:
+        session.add(_make_call_row(post_id, LLMStage.REWRITE, model, CLEAN_VERSION, messages,
+                                   resp, asdict(result) if result else None, call_status, error_text))
+        post = await session.get(Post, post_id)
+        if post is None:
+            await session.commit(); return
+        if call_status is LLMCallStatus.OK and result is not None and result.draft:
+            post.draft_text = result.draft
+            post.draft_version += 1
+            session.add(PostDraftVersion(post_id=post_id, version=post.draft_version,
+                                         text=result.draft, origin=DraftOrigin.LLM_REWRITE))
+        await session.commit()
+
+
+async def _run_double_check(post_id: int) -> tuple[bool, str]:
+    async with session_scope() as session:
+        post = await session.get(Post, post_id)
+        if post is None:
+            return False, "пост не найден"
+        channel = await session.get(TargetChannel, post.target_channel_id) \
+            if post.target_channel_id else None
+        draft = post.draft_text or post.original_text or ""
+        title = channel.title if channel else "канал"
+        desc = channel.description if channel else ""
+    model = (await get_setting(Keys.DOUBLE_CHECK_MODEL)) or settings.effective_double_check_model
+    messages = [
+        {"role": "system", "content": DOUBLE_CHECK_SYSTEM.format(channel_title=title)},
+        {"role": "user", "content": DOUBLE_CHECK_USER.format(channel_description=desc, draft=draft[:TEXT_LIMIT])},
+    ]
+    resp, result, call_status, error_text = await _call_and_parse(
+        messages, model, settings.llm_rewrite_max_tokens, temperature=0.1, schema=DoubleCheckResult)
+    if resp is not None and resp.cost_usd:
+        await guards.add_llm_cost(resp.cost_usd)
+    async with session_scope() as session:
+        session.add(_make_call_row(post_id, LLMStage.REVISION, model, DOUBLE_CHECK_VERSION, messages,
+                                   resp, asdict(result) if result else None, call_status, error_text))
+        await session.commit()
+    if result is None:
+        return False, "двойная проверка не дала ответа — нужна ручная проверка"
+    return result.approve, result.note
+
+
+async def _set_double_check_review(post_id: int, note: str) -> None:
+    async with session_scope() as session:
+        post = await session.get(Post, post_id)
+        if post is None:
+            return
+        post.status = PostStatus.DOUBLE_CHECK_REVIEW
+        post.double_check_note = note
+        session.add(PostEvent(post_id=post_id, actor=EventActor.LLM, action="double_check_review",
+                              from_status=PostStatus.AWAITING_REVIEW.value,
+                              to_status=PostStatus.DOUBLE_CHECK_REVIEW.value, details={"note": note}))
+        await session.commit()
+    log.info("пост %s: двойная проверка вернула на ревью (%s)", post_id, note[:120])
+
+
+async def _autopilot_publish(post_id: int) -> None:
+    async with session_scope() as session:
+        post = await session.get(Post, post_id)
+        if post is None:
+            return
+        channel = await session.get(TargetChannel, post.target_channel_id) \
+            if post.target_channel_id else None
+        if channel is None:
+            return
+        day_start = owner_now().replace(hour=0, minute=0, second=0, microsecond=0)
+        published_today = await session.scalar(
+            select(func.count()).select_from(PublishJob).where(
+                PublishJob.target_channel_id == channel.id,
+                PublishJob.state == PublishJobState.DONE,
+                PublishJob.published_at >= day_start.astimezone(timezone.utc),
+            ))
+        if published_today is not None and published_today >= channel.daily_limit:
+            post.status = PostStatus.AWAITING_REVIEW
+            post.reject_reason = "автопилот: дневной лимит публикаций исчерпан"
+            session.add(PostEvent(post_id=post_id, actor=EventActor.SYSTEM, action="autopilot_limit",
+                                  to_status=PostStatus.AWAITING_REVIEW.value,
+                                  details={"reason": "daily_limit"}))
+            await session.commit()
+            log.info("пост %s: автопилот остановлен лимитом — в ревью", post_id)
+            return
+        post.status = PostStatus.APPROVED
+        post.autopilot = True
+        session.add(PostEvent(post_id=post_id, actor=EventActor.SYSTEM, action="autopilot_approved",
+                              to_status=PostStatus.APPROVED.value, details={"score": post.score}))
+        await session.commit()
+    ok, msg = await create_publish_job(post_id, PublishMode.NOW)
+    log.info("пост %s: автопилот -> публикация (%s)", post_id, msg)

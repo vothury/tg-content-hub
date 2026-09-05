@@ -76,3 +76,15 @@ class RewriteResult:
         if not isinstance(warnings, list):
             warnings = [str(warnings)]
         return cls(draft=draft, warnings=[str(w) for w in warnings][:10])
+
+
+@dataclass
+class DoubleCheckResult:
+    approve: bool
+    note: str = ""
+
+    @classmethod
+    def from_response(cls, content: str) -> "DoubleCheckResult":
+        data = extract_json(content)
+        return cls(approve=bool(data.get("approve", False)),
+                   note=str(data.get("note", "")).strip())
