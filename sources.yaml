@@ -36,8 +36,12 @@ targets:
     description: "Канал о кино: новости фильмов, трейлеры, кастинги, релизы, сборы, подборки"
     style: kino_style
     rewrite: false
-    # daily_limit: 6
-    # min_interval_min: 60
+    autopilot: true
+    autopilot_min_score: 8
+    review_if_uncertain: true
+    double_check: true
+    daily_limit: 30
+    min_interval_min: 5
 
   - username: testimfoto
     title: "Фото тест"

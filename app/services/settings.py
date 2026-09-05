@@ -30,6 +30,8 @@ class Keys:
     PREFILTER_BLACKLIST_WORDS = "prefilter.blacklist_words"
     MAX_MEDIA_DOWNLOAD_MB = "reader.max_media_download_mb"
     READER_DEFAULT_SOURCE_INTERVAL_SEC = "reader.default_source_interval_sec"
+    AUTOPILOT_MIN_SCORE = "autopilot.min_score"
+    DOUBLE_CHECK_MODEL = "llm.double_check_model"
 
 
 _ENV_DEFAULTS: dict[str, Any] = {
@@ -46,6 +48,8 @@ _ENV_DEFAULTS: dict[str, Any] = {
     Keys.PREFILTER_BLACKLIST_WORDS: settings.prefilter_blacklist_words,
     Keys.MAX_MEDIA_DOWNLOAD_MB: settings.max_media_download_mb,
     Keys.READER_DEFAULT_SOURCE_INTERVAL_SEC: settings.reader_default_source_interval_sec,
+    Keys.AUTOPILOT_MIN_SCORE: settings.autopilot_min_score,
+    Keys.DOUBLE_CHECK_MODEL: settings.double_check_model,
 }
 
 

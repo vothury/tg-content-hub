@@ -74,6 +74,10 @@ def parse_sources_text(text: str):
             "quiet_hours": t.get("quiet_hours"),
             "rewrite": t.get("rewrite"),
             "style": str(t.get("style") or "").strip() or None,
+            "autopilot": t.get("autopilot"),
+            "autopilot_min_score": t.get("autopilot_min_score"),
+            "review_if_uncertain": t.get("review_if_uncertain"),
+            "double_check": t.get("double_check"),
         })
 
     sources = []
@@ -136,6 +140,10 @@ async def apply_parsed(parsed) -> dict:
                                           daily_limit=cfg["daily_limit"] or 6, min_interval_min=cfg["min_interval_min"] or 60,
                                           quiet_hours=cfg["quiet_hours"],
                                           rewrite_enabled=True if cfg["rewrite"] is None else bool(cfg["rewrite"]),
+                                          autopilot=bool(cfg["autopilot"]),
+                                          autopilot_min_score=cfg["autopilot_min_score"],
+                                          review_if_uncertain=True if cfg["review_if_uncertain"] is None else bool(cfg["review_if_uncertain"]),
+                                          double_check=bool(cfg["double_check"]),
                                           style_profile_id=style_id))
                 stats["targets"][0] += 1
                 continue
@@ -146,6 +154,13 @@ async def apply_parsed(parsed) -> dict:
             if cfg["min_interval_min"] and ch.min_interval_min != cfg["min_interval_min"]: ch.min_interval_min = cfg["min_interval_min"]; changed = True
             if cfg["quiet_hours"] is not None and ch.quiet_hours != cfg["quiet_hours"]: ch.quiet_hours = cfg["quiet_hours"]; changed = True
             rw = True if cfg["rewrite"] is None else bool(cfg["rewrite"])
+            ap = bool(cfg["autopilot"])
+            if ch.autopilot != ap: ch.autopilot = ap; changed = True
+            if cfg["autopilot_min_score"] and ch.autopilot_min_score != cfg["autopilot_min_score"]: ch.autopilot_min_score = cfg["autopilot_min_score"]; changed = True
+            ric = True if cfg["review_if_uncertain"] is None else bool(cfg["review_if_uncertain"])
+            if ch.review_if_uncertain != ric: ch.review_if_uncertain = ric; changed = True
+            dc = bool(cfg["double_check"])
+            if ch.double_check != dc: ch.double_check = dc; changed = True
             if ch.rewrite_enabled != rw: ch.rewrite_enabled = rw; changed = True
             if ch.style_profile_id != style_id: ch.style_profile_id = style_id; changed = True
             if changed: stats["targets"][1] += 1

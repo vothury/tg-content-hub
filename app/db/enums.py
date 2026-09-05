@@ -19,6 +19,7 @@ class PostStatus(str, enum.Enum):
     NEEDS_MEDIA_REVIEW = "NEEDS_MEDIA_REVIEW"
     # Добавлено к списку ТЗ: сбой/непарсируемый ответ LLM -> ручной разбор
     NEEDS_MANUAL_REVIEW = "NEEDS_MANUAL_REVIEW"
+    DOUBLE_CHECK_REVIEW = "DOUBLE_CHECK_REVIEW"
     REVISION = "REVISION"
     MANUAL_EDITING = "MANUAL_EDITING"
     APPROVED = "APPROVED"

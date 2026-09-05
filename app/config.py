@@ -72,6 +72,10 @@ class Settings(BaseSettings):
     rewrite_providers: str = ""
     revision_providers: str = ""
 
+    # Автопилот (Этап 7)
+    autopilot_min_score: int = 8
+    double_check_model: str = ""  # пусто = модель правки
+
     # Ревью (Этап 4): период поиска постов без отправленной карточки
     review_poll_interval_sec: int = 30
 
@@ -91,6 +95,10 @@ class Settings(BaseSettings):
     @property
     def effective_revision_model(self) -> str:
         return self.revision_model or self.rewrite_model
+
+    @property
+    def effective_double_check_model(self) -> str:
+        return self.double_check_model or self.effective_revision_model
 
 
 @lru_cache

@@ -113,6 +113,11 @@ class TargetChannel(Base):
     description: Mapped[str | None] = mapped_column(Text)
     # Делать ли автоматический рерайт постов этого канала
     rewrite_enabled: Mapped[bool] = mapped_column(default=True)
+    # Автопилот (Этап 7): публикация без ручного ревью при уверенности модели
+    autopilot: Mapped[bool] = mapped_column(default=False)
+    autopilot_min_score: Mapped[int | None] = mapped_column(Integer)
+    review_if_uncertain: Mapped[bool] = mapped_column(default=True)
+    double_check: Mapped[bool] = mapped_column(default=False)
 
 class Post(Base):
     """Найденный пост источника. Жёсткая дедупликация: (source_id, source_message_id)."""
@@ -138,6 +143,10 @@ class Post(Base):
     score: Mapped[float | None] = mapped_column(Float)
     verdict_reason: Mapped[str | None] = mapped_column(Text)
     risks: Mapped[dict | None] = mapped_column(JSONB)
+
+    # Публикация автопилотом + причина/заметка двойной проверки
+    autopilot: Mapped[bool] = mapped_column(default=False)
+    double_check_note: Mapped[str | None] = mapped_column(Text)
 
     # Текущий черновик; история — в post_draft_versions
     draft_text: Mapped[str | None] = mapped_column(Text)

@@ -32,6 +32,8 @@ EDITABLE = [
     {"key": _k("MAX_MEDIA_DOWNLOAD_MB", "reader.max_media_download_mb"), "label": "Макс. размер медиа, МБ", "attr": "max_media_download_mb", "type": "number"},
     {"key": _k("PREFILTER_BLACKLIST_WORDS", "prefilter.blacklist_words"), "label": "Блэклист слов (через запятую)", "attr": "prefilter_blacklist_words", "type": "list"},
     {"key": _k("READER_DEFAULT_SOURCE_INTERVAL_SEC", "reader.default_source_interval_sec"), "label": "Интервал опроса источника, сек", "attr": "reader_default_source_interval_sec", "type": "number"},
+    {"key": _k("AUTOPILOT_MIN_SCORE"), "label": "Автопилот: мин. score", "attr": "autopilot_min_score", "type": "number"},
+    {"key": _k("DOUBLE_CHECK_MODEL"), "label": "Модель двойной проверки", "attr": "double_check_model", "type": "text"},
 ]
 
 ATTR_TO_KEY = {
@@ -47,6 +49,8 @@ ATTR_TO_KEY = {
     "prefilter_blacklist_words": _k("PREFILTER_BLACKLIST_WORDS"),
     "max_media_download_mb": _k("MAX_MEDIA_DOWNLOAD_MB"),
     "reader_default_source_interval_sec": _k("READER_DEFAULT_SOURCE_INTERVAL_SEC"),
+    "autopilot_min_score": _k("AUTOPILOT_MIN_SCORE"),
+    "double_check_model": _k("DOUBLE_CHECK_MODEL"),
 }
 
 
