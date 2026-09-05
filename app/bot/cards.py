@@ -11,7 +11,7 @@ from sqlalchemy import select
 from app.bot.keyboards import manual_review_keyboard, media_review_keyboard, review_keyboard
 from app.config import settings
 from app.db.enums import MediaType, PostStatus
-from app.db.models import MediaItem, Post, PostDraftVersion, Source, TargetChannel
+from app.db.models import MediaItem, Post, PostDraftVersion, PostEvent, Source, TargetChannel
 from app.db.session import session_scope
 from app.services.review import mark_card_sent
 
@@ -164,6 +164,24 @@ async def send_card(bot: Bot, chat_id: int, post_id: int) -> bool:
             log.exception("пост %s: не удалось отправить медиа", post_id)
 
     text, keyboard = build_card_text(data)
-    await bot.send_message(chat_id, text, reply_markup=keyboard)
-    await mark_card_sent(post_id, data["draft_version"])
+    msg = await bot.send_message(chat_id, text, reply_markup=keyboard)
+    await mark_card_sent(post_id, data["draft_version"], msg.message_id)
     return True
+
+
+async def clear_card_keyboard(bot: Bot, post_id: int) -> None:
+    """После публикации убирает кнопки с карточки, как при публикации через бота."""
+    async with session_scope() as session:
+        ev = (await session.execute(
+            select(PostEvent)
+            .where(PostEvent.post_id == post_id, PostEvent.action == "card_sent")
+            .order_by(PostEvent.id.desc()).limit(1)
+        )).scalar_one_or_none()
+    mid = (ev.details or {}).get("message_id") if ev is not None else None
+    chat = settings.allowed_owner_ids[0] if settings.allowed_owner_ids else None
+    if not mid or not chat:
+        return
+    try:
+        await bot.edit_message_reply_markup(chat_id=chat, message_id=mid, reply_markup=None)
+    except Exception:  # noqa: BLE001
+        log.warning("пост %s: не удалось снять кнопки с карточки", post_id)

@@ -337,6 +337,8 @@ async def _publish(bot: Bot, job_id: int) -> None:
         await session.commit()
     log.info("пост %s опубликован в @%s (сообщение %s)", post_id, channel.username, published_id)
     await _notify_owner(bot, f"✅ Пост #{post_id} опубликован в @{channel.username}")
+    from app.bot.cards import clear_card_keyboard
+    await clear_card_keyboard(bot, post_id)
 
 
 async def process_ready_jobs(bot) -> None:

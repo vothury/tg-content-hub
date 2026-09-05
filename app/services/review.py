@@ -36,7 +36,7 @@ async def approve(post_id: int, target_channel_id: int | None = None) -> ActionR
         post = await session.get(Post, post_id)
         if post is None:
             return ActionResult(False, "пост не найден")
-        if post.status is not PostStatus.AWAITING_REVIEW:
+        if post.status not in (PostStatus.AWAITING_REVIEW, PostStatus.DOUBLE_CHECK_REVIEW):
             return ActionResult(False, f"недоступно в статусе {post.status.value}")
 
         if post.target_channel_id is None and target_channel_id is None:
@@ -65,6 +65,7 @@ async def reject(post_id: int, reason: str = "") -> ActionResult:
     allowed = (
         PostStatus.AWAITING_REVIEW, PostStatus.NEEDS_MEDIA_REVIEW,
         PostStatus.NEEDS_MANUAL_REVIEW, PostStatus.REVISION, PostStatus.MANUAL_EDITING,
+        PostStatus.DOUBLE_CHECK_REVIEW,
     )
     async with session_scope() as session:
         post = await session.get(Post, post_id)
@@ -120,7 +121,7 @@ async def start_ai_revision(post_id: int) -> ActionResult:
         post = await session.get(Post, post_id)
         if post is None:
             return ActionResult(False, "пост не найден")
-        if post.status is not PostStatus.AWAITING_REVIEW:
+        if post.status not in (PostStatus.AWAITING_REVIEW, PostStatus.DOUBLE_CHECK_REVIEW):
             return ActionResult(False, f"недоступно в статусе {post.status.value}")
         if not post.draft_text:
             return ActionResult(False, "у поста ещё нет черновика")
@@ -136,7 +137,7 @@ async def start_manual_edit(post_id: int) -> ActionResult:
         post = await session.get(Post, post_id)
         if post is None:
             return ActionResult(False, "пост не найден")
-        if post.status is not PostStatus.AWAITING_REVIEW:
+        if post.status not in (PostStatus.AWAITING_REVIEW, PostStatus.DOUBLE_CHECK_REVIEW):
             return ActionResult(False, f"недоступно в статусе {post.status.value}")
         post.status = PostStatus.MANUAL_EDITING
         _event(session, post_id, EventActor.OWNER, "edit_requested",
@@ -167,7 +168,8 @@ async def apply_manual_edit(post_id: int, text: str) -> ActionResult:
         post = await session.get(Post, post_id)
         if post is None:
             return ActionResult(False, "пост не найден")
-        if post.status not in (PostStatus.MANUAL_EDITING, PostStatus.AWAITING_REVIEW):
+        if post.status not in (PostStatus.MANUAL_EDITING, PostStatus.AWAITING_REVIEW,
+                               PostStatus.DOUBLE_CHECK_REVIEW):
             return ActionResult(False, f"недоступно в статусе {post.status.value}")
         post.draft_text = text
         post.draft_version += 1
@@ -191,8 +193,8 @@ async def apply_ai_revision(post_id: int, comment: str) -> ActionResult:
     return ActionResult(ok, message)
 
 
-async def mark_card_sent(post_id: int, draft_version: int) -> None:
+async def mark_card_sent(post_id: int, draft_version: int, message_id: int | None = None) -> None:
     async with session_scope() as session:
         _event(session, post_id, EventActor.SYSTEM, "card_sent", None, None,
-               {"draft_version": draft_version})
+               {"draft_version": draft_version, "message_id": message_id})
         await session.commit()

@@ -560,10 +560,13 @@ async def _ensure_clean_draft(post_id: int) -> None:
         if post is None:
             await session.commit(); return
         if call_status is LLMCallStatus.OK and result is not None and result.draft:
-            post.draft_text = result.draft
-            post.draft_version += 1
-            session.add(PostDraftVersion(post_id=post_id, version=post.draft_version,
-                                         text=result.draft, origin=DraftOrigin.LLM_REWRITE))
+            cleaned = result.draft.strip()
+            if cleaned and cleaned != (post.draft_text or "").strip():
+                post.draft_text = cleaned
+                post.draft_version += 1
+                session.add(PostDraftVersion(
+                    post_id=post_id, version=post.draft_version,
+                    text=cleaned, origin=DraftOrigin.ORIGINAL))
         await session.commit()
 
 
