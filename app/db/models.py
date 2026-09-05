@@ -118,6 +118,8 @@ class TargetChannel(Base):
     autopilot_min_score: Mapped[int | None] = mapped_column(Integer)
     review_if_uncertain: Mapped[bool] = mapped_column(default=True)
     double_check: Mapped[bool] = mapped_column(default=False)
+    double_check_online: Mapped[bool] = mapped_column(default=False)
+    double_check_fact_strictness: Mapped[int | None] = mapped_column(Integer)
 
 class Post(Base):
     """Найденный пост источника. Жёсткая дедупликация: (source_id, source_message_id)."""

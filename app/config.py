@@ -76,6 +76,7 @@ class Settings(BaseSettings):
     autopilot_min_score: int = 8
     double_check_model: str = ""  # пусто = модель правки
     classify_verbose: bool = False  # подробный вердикт (reason/risks) — дороже и медленнее
+    double_check_fact_strictness: int = 4  # 1-10, если не задано у канала
 
     # Ревью (Этап 4): период поиска постов без отправленной карточки
     review_poll_interval_sec: int = 30

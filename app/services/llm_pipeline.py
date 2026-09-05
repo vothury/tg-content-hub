@@ -44,7 +44,7 @@ from app.services.llm.prompts import (
     CLEAN_VERSION,
     CLASSIFY_USER,
     CLASSIFY_VERSION,
-    DOUBLE_CHECK_SYSTEM,
+    build_double_check_prompt,
     DOUBLE_CHECK_USER,
     DOUBLE_CHECK_VERSION,
     REWRITE_SYSTEM_TEMPLATE,
@@ -577,18 +577,22 @@ async def _run_double_check(post_id: int) -> tuple[bool, str]:
             return False, "пост не найден"
         channel = await session.get(TargetChannel, post.target_channel_id) \
             if post.target_channel_id else None
+        source = await session.get(Source, post.source_id) if post.source_id else None
         draft = post.draft_text or post.original_text or ""
         verdict = post.verdict_reason or ""
         score = post.score
-        source = await session.get(Source, post.source_id) if post.source_id else None
         relevance = source.relevance if source is not None else None
-        title = channel.title if channel else "канал"
-        desc = channel.description if channel else ""
+        title = channel.title if channel is not None else "канал"
+        desc = channel.description if channel is not None else ""
+        online = bool(channel.double_check_online) if channel is not None else False
+        strictness = (channel.double_check_fact_strictness
+                      if channel is not None and channel.double_check_fact_strictness
+                      else settings.double_check_fact_strictness)
         model = (await get_setting(session, Keys.DOUBLE_CHECK_MODEL)) or settings.effective_revision_model
+        if online:
+            model = model + ":online"
     messages = [
-        {"role": "system", "content": DOUBLE_CHECK_SYSTEM.format(
-            relevance=relevance if relevance is not None else "—",
-            channel_title=title)},
+        {"role": "system", "content": build_double_check_prompt(title, relevance, online, strictness)},
         {"role": "user", "content": DOUBLE_CHECK_USER.format(
             channel_description=desc,
             relevance=relevance if relevance is not None else "—",

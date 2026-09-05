@@ -78,6 +78,8 @@ def parse_sources_text(text: str):
             "autopilot_min_score": t.get("autopilot_min_score"),
             "review_if_uncertain": t.get("review_if_uncertain"),
             "double_check": t.get("double_check"),
+            "double_check_online": t.get("double_check_online"),
+            "double_check_fact_strictness": t.get("double_check_fact_strictness"),
         })
 
     sources = []
@@ -144,6 +146,8 @@ async def apply_parsed(parsed) -> dict:
                                           autopilot_min_score=cfg["autopilot_min_score"],
                                           review_if_uncertain=True if cfg["review_if_uncertain"] is None else bool(cfg["review_if_uncertain"]),
                                           double_check=bool(cfg["double_check"]),
+                                          double_check_online=bool(cfg["double_check_online"]),
+                                          double_check_fact_strictness=cfg["double_check_fact_strictness"],
                                           style_profile_id=style_id))
                 stats["targets"][0] += 1
                 continue
@@ -164,6 +168,9 @@ async def apply_parsed(parsed) -> dict:
             if ch.rewrite_enabled != rw: ch.rewrite_enabled = rw; changed = True
             if ch.style_profile_id != style_id: ch.style_profile_id = style_id; changed = True
             if changed: stats["targets"][1] += 1
+            dco = bool(cfg["double_check_online"])
+            if ch.double_check_online != dco: ch.double_check_online = dco; changed = True
+            if cfg["double_check_fact_strictness"] and ch.double_check_fact_strictness != cfg["double_check_fact_strictness"]: ch.double_check_fact_strictness = cfg["double_check_fact_strictness"]; changed = True
         await session.flush()
         target_ids = {c.username: c.id for c in (await session.execute(select(TargetChannel))).scalars().all()}
 
