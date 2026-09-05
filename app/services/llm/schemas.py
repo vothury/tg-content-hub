@@ -39,6 +39,7 @@ class ClassifyResult:
     score: float
     reason: str
     risks: list[str] = field(default_factory=list)
+    category: str = ""
 
     @classmethod
     def from_response(cls, content: str) -> "ClassifyResult":
