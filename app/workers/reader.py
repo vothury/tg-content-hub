@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -82,6 +83,9 @@ def _extract_media(msg) -> tuple[MediaType | None, object | None]:
     if msg.video is not None:
         return MediaType.VIDEO, msg.video
     return None, None
+
+_MD_LINK = re.compile(r"\[([^\]]*)\]\(([^)]*)\)")
+
 
 def _annotate_links(text: str | None, entities) -> str | None:
     """Помечает ссылки/упоминания как [текст](url), чтобы модель видела их."""
