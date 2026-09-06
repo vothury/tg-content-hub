@@ -88,15 +88,17 @@ def _annotate_links(text: str | None, entities) -> str | None:
     if not text or not entities:
         return text
     from telethon.tl.types import (
-        MessageEntityMention, MessageEntityTextMention, MessageEntityTextUrl,
+        MessageEntityMention, MessageEntityMentionName, MessageEntityTextUrl,
     )
     repls = []
     for e in sorted(entities, key=lambda x: x.offset, reverse=True):
         url = None
         if isinstance(e, MessageEntityTextUrl):
             url = getattr(e, "url", "") or ""
-        elif isinstance(e, (MessageEntityMention, MessageEntityTextMention)):
+        elif isinstance(e, MessageEntityMention):
             url = "https://t.me/" + text[e.offset + 1:e.offset + e.length]
+        elif isinstance(e, MessageEntityMentionName):
+            url = f"tg://user?id={getattr(e, 'user_id', '')}"
         if url:
             span = text[e.offset:e.offset + e.length]
             repls.append((e.offset, e.offset + e.length, f"[{span}]({url})"))
