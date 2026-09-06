@@ -534,7 +534,7 @@ async def _autopilot_reject(post_id: int, reason: str) -> None:
 
 
 async def _ensure_clean_draft(post_id: int) -> None:
-    """Для каналов без рерайта: дешёвым вызовом убрать чужие подписи."""
+    """Для каналов без рерайта: дешёвым вызовом убрать чужие подписи/маркеры ссылок."""
     async with session_scope() as session:
         post = await session.get(Post, post_id)
         if post is None:
@@ -544,6 +544,9 @@ async def _ensure_clean_draft(post_id: int) -> None:
         if channel is not None and channel.rewrite_enabled:
             return  # рерайт уже чистит подписи (правило 7)
         text = post.draft_text or post.original_text or ""
+    # Нет ссылок/подписей — чистить нечего, модель не дёргаем
+    if "[" not in text and "t.me/" not in text and "telegram.me/" not in text and "@" not in text:
+        return
     model = await _model_for(Keys.PREFILTER_MODEL)
     messages = [
         {"role": "system", "content": CLEAN_SYSTEM},
@@ -582,15 +585,18 @@ async def _run_double_check(post_id: int) -> tuple[bool, str]:
         verdict = post.verdict_reason or ""
         score = post.score
         relevance = source.relevance if source is not None else None
-        title = channel.title if channel is not None else "канал"
-        desc = channel.description if channel is not None else ""
+        title = channel.title if channel else "канал"
+        desc = channel.description if channel else ""
         online = bool(channel.double_check_online) if channel is not None else False
         strictness = (channel.double_check_fact_strictness
                       if channel is not None and channel.double_check_fact_strictness
                       else settings.double_check_fact_strictness)
-        model = (await get_setting(session, Keys.DOUBLE_CHECK_MODEL)) or settings.effective_revision_model
+        base = (await get_setting(session, Keys.DOUBLE_CHECK_MODEL)) or settings.effective_revision_model
         if online:
-            model = model + ":online"
+            chosen = (await get_setting(session, Keys.DOUBLE_CHECK_ONLINE_MODEL)) or base
+            model = chosen + ":online"
+        else:
+            model = base
     messages = [
         {"role": "system", "content": build_double_check_prompt(title, relevance, online, strictness)},
         {"role": "user", "content": DOUBLE_CHECK_USER.format(

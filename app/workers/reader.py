@@ -87,8 +87,16 @@ def _extract_media(msg) -> tuple[MediaType | None, object | None]:
 _MD_LINK = re.compile(r"\[([^\]]*)\]\(([^)]*)\)")
 
 
+def _utf16_idx(text: str, off: int) -> int:
+    i = units = 0
+    n = len(text)
+    while units < off and i < n:
+        units += 2 if ord(text[i]) > 0xFFFF else 1
+        i += 1
+    return i
+
+
 def _annotate_links(text: str | None, entities) -> str | None:
-    """Помечает ссылки/упоминания как [текст](url), чтобы модель видела их."""
     if not text or not entities:
         return text
     from telethon.tl.types import (
@@ -96,16 +104,17 @@ def _annotate_links(text: str | None, entities) -> str | None:
     )
     repls = []
     for e in sorted(entities, key=lambda x: x.offset, reverse=True):
+        s = _utf16_idx(text, e.offset)
+        en = _utf16_idx(text, e.offset + e.length)
         url = None
         if isinstance(e, MessageEntityTextUrl):
             url = getattr(e, "url", "") or ""
         elif isinstance(e, MessageEntityMention):
-            url = "https://t.me/" + text[e.offset + 1:e.offset + e.length]
+            url = "https://t.me/" + text[s + 1:en]
         elif isinstance(e, MessageEntityMentionName):
             url = f"tg://user?id={getattr(e, 'user_id', '')}"
         if url:
-            span = text[e.offset:e.offset + e.length]
-            repls.append((e.offset, e.offset + e.length, f"[{span}]({url})"))
+            repls.append((s, en, f"[{text[s:en]}]({url})"))
     out = text
     for s, en, r in repls:
         out = out[:s] + r + out[en:]

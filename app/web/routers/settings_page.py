@@ -34,6 +34,7 @@ EDITABLE = [
     {"key": _k("READER_DEFAULT_SOURCE_INTERVAL_SEC", "reader.default_source_interval_sec"), "label": "Интервал опроса источника, сек", "attr": "reader_default_source_interval_sec", "type": "number"},
     {"key": _k("AUTOPILOT_MIN_SCORE"), "label": "Автопилот: мин. score", "attr": "autopilot_min_score", "type": "number"},
     {"key": _k("DOUBLE_CHECK_MODEL"), "label": "Модель двойной проверки", "attr": "double_check_model", "type": "text"},
+    {"key": _k("DOUBLE_CHECK_ONLINE_MODEL", "llm.double_check_online_model"), "label": "Модель онлайн-фактчекинга", "attr": "double_check_online_model", "type": "text"},
 ]
 
 ATTR_TO_KEY = {

@@ -75,6 +75,7 @@ class Settings(BaseSettings):
     # Автопилот (Этап 7)
     autopilot_min_score: int = 8
     double_check_model: str = ""  # пусто = модель правки
+    double_check_online_model: str = ""  # модель для online-фактчекинга (дешевле); пусто = модель double_check
     classify_verbose: bool = False  # подробный вердикт (reason/risks) — дороже и медленнее
     double_check_fact_strictness: int = 4  # 1-10, если не задано у канала
 
