@@ -72,8 +72,10 @@ class SourceSnapshot:
 # ---------- метаданные медиа ----------
 
 def _extract_media(msg) -> tuple[MediaType | None, object | None]:
-    # Link-preview (webpage) НЕ считается медиа: не тащим аватарки каналов из ссылок
-    if getattr(msg, "webpage", None) is not None and msg.photo is None and msg.video is None:
+    from telethon.tl.types import MessageMediaWebPage
+    # Link-preview (webpage) НЕ медиа: не тащим аватарки каналов/сайтов из ссылок.
+    # Проверяем тип ПЕРВЫМ: у webpage msg.photo может вернуть фото превью.
+    if isinstance(getattr(msg, "media", None), MessageMediaWebPage):
         return None, None
     if msg.photo is not None:
         return MediaType.PHOTO, msg.photo
