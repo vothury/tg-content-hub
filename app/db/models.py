@@ -144,6 +144,7 @@ class Post(Base):
     # Результат этапа оценки (LLM classify)
     score: Mapped[float | None] = mapped_column(Float)
     verdict_reason: Mapped[str | None] = mapped_column(Text)
+    canonical_text: Mapped[str | None] = mapped_column(Text)
     risks: Mapped[dict | None] = mapped_column(JSONB)
 
     # Публикация автопилотом + причина/заметка двойной проверки
@@ -210,6 +211,7 @@ class MediaItem(Base):
     mime: Mapped[str | None] = mapped_column(String(64))
     downloaded: Mapped[bool] = mapped_column(default=False)
     download_error: Mapped[str | None] = mapped_column(Text)
+    phash: Mapped[int | None] = mapped_column(BigInteger)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     post: Mapped[Post] = relationship(back_populates="media_items")

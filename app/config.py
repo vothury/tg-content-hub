@@ -97,6 +97,13 @@ class Settings(BaseSettings):
     # Веб-админка (Этап 6)
     admin_password: str = ""
     secret_key: str = ""
+    
+    # Дедупликация (Этап 7+)
+    dedup_window_days: int = 7
+    dedup_phash_max_distance: int = 8      # Хэмминг 0..64 для «то же изображение»
+    dedup_canonical_min_len: int = 30      # короче — канон игнорируем (защита от «🙂»)
+    dedup_canonical_cosine_min: float = 0.60
+    dedup_max_compare: int = 200
 
     @property
     def effective_revision_model(self) -> str:

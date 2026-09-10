@@ -57,6 +57,16 @@ EDITABLE = [
     {"key": _k("PREFILTER_BLACKLIST_WORDS", "prefilter.blacklist_words"), "label": "Блэклист слов (через запятую)", "attr": "prefilter_blacklist_words", "type": "list"},
     {"key": _k("READER_DEFAULT_SOURCE_INTERVAL_SEC", "reader.default_source_interval_sec"), "label": "Интервал опроса источника, сек", "attr": "reader_default_source_interval_sec", "type": "number"},
     {"key": _k("AUTOPILOT_MIN_SCORE"), "label": "Автопилот: мин. score", "attr": "autopilot_min_score", "type": "number"},
+    {"key": _k("DEDUP_WINDOW_DAYS"), "label": "Дедуп: окно, дней", "attr": "dedup_window_days", "type": "number",
+     "hint": "За сколько дней искать дубли среди постов того же целевого канала."},
+    {"key": _k("DEDUP_CANONICAL_COSINE_MIN"), "label": "Дедуп: порог похожести текста", "attr": "dedup_canonical_cosine_min", "type": "number",
+     "hint": "0..1 — косинус по символьным n-граммам канонической формы; выше = строже."},
+    {"key": _k("DEDUP_CANONICAL_MIN_LEN"), "label": "Дедуп: мин. длина канона", "attr": "dedup_canonical_min_len", "type": "number",
+     "hint": "Короче этого канон игнорируется (защита от тривиальных постов вроде «🙂»)."},
+    {"key": _k("DEDUP_PHASH_MAX_DISTANCE"), "label": "Дедуп: порог pHash", "attr": "dedup_phash_max_distance", "type": "number",
+     "hint": "Расстояние Хэмминга 0..64 для «то же изображение»; меньше = строже."},
+    {"key": _k("DEDUP_MAX_COMPARE"), "label": "Дедуп: максимум сравнений", "attr": "dedup_max_compare", "type": "number",
+     "hint": "Сколько недавних постов канала сравнивать (ограничивает нагрузку)."},
 ]
 
 ATTR_TO_KEY = {
@@ -79,6 +89,11 @@ ATTR_TO_KEY = {
     "double_check_providers": _k("DOUBLE_CHECK_PROVIDERS"),
     "double_check_online_model": _k("DOUBLE_CHECK_ONLINE_MODEL"),
     "double_check_online_providers": _k("DOUBLE_CHECK_ONLINE_PROVIDERS"),
+    "dedup_window_days": _k("DEDUP_WINDOW_DAYS"),
+    "dedup_phash_max_distance": _k("DEDUP_PHASH_MAX_DISTANCE"),
+    "dedup_canonical_min_len": _k("DEDUP_CANONICAL_MIN_LEN"),
+    "dedup_canonical_cosine_min": _k("DEDUP_CANONICAL_COSINE_MIN"),
+    "dedup_max_compare": _k("DEDUP_MAX_COMPARE"),
 }
 
 

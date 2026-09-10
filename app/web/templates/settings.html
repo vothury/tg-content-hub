@@ -20,6 +20,7 @@
   <div class="card">
     <div class="label">{{ e.label }} <span class="badge">{{ e.key }}</span></div>
     <div class="sub">текущее: {{ e.current }} · дефолт: {{ e.default }}</div>
+	{% if e.hint %}<div class="sub" style="opacity:.7">ⓘ {{ e.hint }}</div>{% endif %}
     <div class="actions">
       <form method="post" action="/settings/save">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

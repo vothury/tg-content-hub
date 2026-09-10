@@ -40,6 +40,7 @@ class ClassifyResult:
     reason: str
     risks: list[str] = field(default_factory=list)
     category: str = ""
+    canonical: str = ""
 
     @classmethod
     def from_response(cls, content: str) -> "ClassifyResult":
@@ -58,6 +59,7 @@ class ClassifyResult:
             score=max(0.0, min(10.0, score)),
             reason=str(data.get("reason", "")).strip(),
             risks=[str(r) for r in risks][:10],
+            canonical=str(data.get("canonical", "")).strip(),
         )
 
 

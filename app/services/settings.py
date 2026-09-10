@@ -37,6 +37,11 @@ class Keys:
     PREFILTER_PROVIDERS = "llm.prefilter_providers"
     DOUBLE_CHECK_PROVIDERS = "llm.double_check_providers"
     DOUBLE_CHECK_ONLINE_PROVIDERS = "llm.double_check_online_providers"
+    DEDUP_WINDOW_DAYS = "dedup.window_days"
+    DEDUP_PHASH_MAX_DISTANCE = "dedup.phash_max_distance"
+    DEDUP_CANONICAL_MIN_LEN = "dedup.canonical_min_len"
+    DEDUP_CANONICAL_COSINE_MIN = "dedup.canonical_cosine_min"
+    DEDUP_MAX_COMPARE = "dedup.max_compare"
 
 
 _ENV_DEFAULTS: dict[str, Any] = {
@@ -60,6 +65,11 @@ _ENV_DEFAULTS: dict[str, Any] = {
     Keys.PREFILTER_PROVIDERS: settings.prefilter_providers,
     Keys.DOUBLE_CHECK_PROVIDERS: settings.double_check_providers,
     Keys.DOUBLE_CHECK_ONLINE_PROVIDERS: settings.double_check_online_providers,
+    Keys.DEDUP_WINDOW_DAYS: settings.dedup_window_days,
+    Keys.DEDUP_PHASH_MAX_DISTANCE: settings.dedup_phash_max_distance,
+    Keys.DEDUP_CANONICAL_MIN_LEN: settings.dedup_canonical_min_len,
+    Keys.DEDUP_CANONICAL_COSINE_MIN: settings.dedup_canonical_cosine_min,
+    Keys.DEDUP_MAX_COMPARE: settings.dedup_max_compare,
 }
 
 
