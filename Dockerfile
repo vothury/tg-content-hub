@@ -6,6 +6,11 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
+# Системные зависимости: ffmpeg нужен для извлечения кадра видео (pHash).
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ffmpeg \
+ && rm -rf /var/lib/apt/lists/*
+
 # Слой зависимостей: кэшируется, пока не меняется pyproject.toml.
 # Зависимости берутся прямо из него — единый источник правды сохраняется.
 COPY pyproject.toml ./

@@ -84,6 +84,42 @@ def _extract_media(msg) -> tuple[MediaType | None, object | None]:
         return MediaType.VIDEO, msg.video
     return None, None
 
+
+def _dhash(img) -> int:
+    g = img.convert("L").resize((9, 8))
+    px = list(g.getdata())
+    h = 0
+    for r in range(8):
+        for c in range(8):
+            if px[r * 9 + c] > px[r * 9 + c + 1]:
+                h |= 1 << (r * 8 + c)
+    return h
+
+
+def _compute_phash(local_path, media_type) -> int | None:
+    """Перцептивный хеш: для фото — само изображение, для видео — первый кадр."""
+    try:
+        if media_type is MediaType.PHOTO:
+            from PIL import Image
+            with Image.open(local_path) as im:
+                return _dhash(im)
+        import os, subprocess, tempfile
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tf:
+            tmp = tf.name
+        subprocess.run(
+            ["ffmpeg", "-y", "-loglevel", "error", "-i", str(local_path),
+             "-vf", "select=eq(n\\,0)", "-vframes", "1", tmp],
+            check=True, timeout=30,
+        )
+        from PIL import Image
+        with Image.open(tmp) as im:
+            h = _dhash(im)
+        os.unlink(tmp)
+        return h
+    except Exception:  # noqa: BLE001 — нет PIL/ffmpeg: медиа просто без phash
+        return None
+
+
 _MD_LINK = re.compile(r"\[([^\]]*)\]\(([^)]*)\)")
 
 
@@ -201,6 +237,7 @@ async def _download_unit_media(client, snap: SourceSnapshot, unit) -> list[dict]
             "downloaded": False,
             "local_path": None,
             "download_error": None,
+            "phash": None,
             **_media_meta(media_type, media),
         }
 
@@ -216,6 +253,7 @@ async def _download_unit_media(client, snap: SourceSnapshot, unit) -> list[dict]
             saved = await client.download_media(media, file=str(target_dir))
             rel = Path(saved).resolve().relative_to(MEDIA_ROOT)
             row.update(downloaded=True, local_path=str(rel), size_bytes=Path(saved).stat().st_size)
+            row["phash"] = _compute_phash(saved, media_type)
         except Exception as exc:  # noqa: BLE001 — фиксируем и идём дальше
             row["download_error"] = f"{exc.__class__.__name__}: {exc}"
         rows.append(row)

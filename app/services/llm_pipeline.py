@@ -66,6 +66,7 @@ from app.services.prefilter import run_prefilter
 from app.services.publishing import create_publish_job
 from app.services.settings import Keys, get_providers, get_setting
 from app.services.times import owner_now
+from app.services.dedup import run_semantic_dedup
 
 
 log = logging.getLogger(__name__)
@@ -200,11 +201,6 @@ async def classify_post(post_id: int) -> None:
         relevance=relevance,
         verbose=verbose,
     )
-    system_prompt = build_classify_prompt(
-        channel_title=channel.title if channel is not None else None,
-        channel_description=channel.description if channel is not None else None,
-        relevance=relevance,
-    )
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": CLASSIFY_USER.format(text=original_text)},
@@ -256,10 +252,12 @@ async def classify_post(post_id: int) -> None:
             post.score = result.score
             post.verdict_reason = result.reason
             post.risks = result.risks
+            post.canonical_text = result.canonical
             session.add(PostEvent(
                 post_id=post_id, actor=EventActor.LLM, action="classified",
                 from_status=PostStatus.LLM_CLASSIFYING.value, to_status=PostStatus.CANDIDATE.value,
-                details={"score": result.score, "reason": result.reason, "risks": result.risks},
+                details={"score": result.score, "reason": result.reason,
+                         "risks": result.risks, "canonical": result.canonical},
             ))
             log.info("пост %s: классификация -> CANDIDATE (оценка %.1f)", post_id, result.score)
         else:
@@ -274,6 +272,8 @@ async def classify_post(post_id: int) -> None:
             ))
             log.info("пост %s: классификация -> UNSUITABLE (%s)", post_id, (result.reason or "")[:120])
         await session.commit()
+
+    await run_semantic_dedup(post_id)
         
 
 async def rewrite_post(post_id: int) -> None:

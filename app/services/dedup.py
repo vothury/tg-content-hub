@@ -1,0 +1,92 @@
+"""????????????? ????????????: ???????????? ????? ?????? + pHash ?????."""
+from __future__ import annotations
+
+import logging
+from collections import Counter
+from datetime import datetime, timedelta, timezone
+
+from sqlalchemy import select
+
+from app.db.enums import EventActor, PostStatus
+from app.db.models import MediaItem, Post, PostEvent
+from app.db.session import session_scope
+from app.services.settings import Keys, get_setting
+
+log = logging.getLogger("dedup")
+
+
+def _ngrams(text: str, n: int = 4):
+    t = "".join(ch.lower() for ch in text if ch.isalnum() or ch == " ")
+    t = " ".join(t.split())
+    return [t[i:i + n] for i in range(len(t) - n + 1)]
+
+
+def _cosine(a: str, b: str) -> float:
+    ca, cb = Counter(_ngrams(a)), Counter(_ngrams(b))
+    if not ca or not cb:
+        return 0.0
+    inter = sum((ca & cb).values())
+    return inter / ((sum(ca.values()) * sum(cb.values())) ** 0.5)
+
+
+def _hamming(a: int, b: int) -> int:
+    return bin(a ^ b).count("1")
+
+
+async def run_semantic_dedup(post_id: int) -> bool:
+    """True, ???? ???? ??????? DEDUPLICATED (?????? ???? ??????????)."""
+    async with session_scope() as session:
+        post = await session.get(Post, post_id)
+        if post is None or post.status is not PostStatus.CANDIDATE:
+            return False
+        window = int(await get_setting(session, Keys.DEDUP_WINDOW_DAYS))
+        ph_max = int(await get_setting(session, Keys.DEDUP_PHASH_MAX_DISTANCE))
+        min_len = int(await get_setting(session, Keys.DEDUP_CANONICAL_MIN_LEN))
+        cos_min = float(await get_setting(session, Keys.DEDUP_CANONICAL_COSINE_MIN))
+        max_cmp = int(await get_setting(session, Keys.DEDUP_MAX_COMPARE))
+
+        since = datetime.now(timezone.utc) - timedelta(days=window)
+        candidates = (await session.execute(
+            select(Post)
+            .where(Post.id != post_id,
+                   Post.target_channel_id == post.target_channel_id,
+                   Post.created_at >= since,
+                   Post.status != PostStatus.DEDUPLICATED)
+            .order_by(Post.id.desc()).limit(max_cmp)
+        )).scalars().all()
+        if not candidates:
+            return False
+
+        ids = [post_id] + [c.id for c in candidates]
+        ph_map: dict[int, list[int]] = {}
+        for m in (await session.execute(
+                select(MediaItem).where(MediaItem.post_id.in_(ids)))).scalars().all():
+            if m.phash is not None:
+                ph_map.setdefault(m.post_id, []).append(m.phash)
+
+        new_ph = ph_map.get(post_id, [])
+        new_canon = (post.canonical_text or "").strip()
+        dup_of = None
+        reason = None
+        for c in candidates:
+            c_ph = ph_map.get(c.id, [])
+            if new_ph and c_ph and any(_hamming(a, b) <= ph_max for a in new_ph for b in c_ph):
+                dup_of, reason = c.id, "media"
+                break
+            c_canon = (c.canonical_text or "").strip()
+            if (len(new_canon) >= min_len and len(c_canon) >= min_len
+                    and _cosine(new_canon, c_canon) >= cos_min):
+                dup_of, reason = c.id, "canonical"
+                break
+        if dup_of is None:
+            return False
+
+        post.status = PostStatus.DEDUPLICATED
+        session.add(PostEvent(
+            post_id=post_id, actor=EventActor.SYSTEM, action="deduplicated",
+            from_status=PostStatus.CANDIDATE.value, to_status=PostStatus.DEDUPLICATED.value,
+            details={"dup_of": dup_of, "reason": reason},
+        ))
+        await session.commit()
+    log.info("???? %s: ???????? ????? %s (%s)", post_id, dup_of, reason)
+    return True
