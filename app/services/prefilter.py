@@ -117,7 +117,8 @@ async def run_prefilter(post_id: int) -> None:
         source_filters = dict(source.filters) if source and source.filters else {}
         if "min_text_len" in source_filters:
             min_text_len = int(source_filters["min_text_len"])
-        blacklist.extend(str(w) for w in source_filters.get("blacklist_words", []))
+        if source_filters.get("blacklist_words") is not None:
+            blacklist = [str(w) for w in source_filters["blacklist_words"]]
 
         has_media = (
             await session.execute(
