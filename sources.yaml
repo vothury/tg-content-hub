@@ -46,7 +46,7 @@ targets:
     autopilot_min_score: 8
     review_if_uncertain: true
     double_check: true
-    double_check_online: true            # проверять спорные факты через веб-поиск (модель :online)
+    double_check_online: false            # проверять спорные факты через веб-поиск (модель :online)
     double_check_fact_strictness: 5      # важность точности фактов 1-10
     daily_limit: 30
     min_interval_min: 5

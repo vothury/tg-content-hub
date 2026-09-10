@@ -87,7 +87,7 @@ async def set_setting(session: AsyncSession, key: str, value: Any) -> None:
 async def get_providers(session: AsyncSession, key: str) -> dict | None:
     """Предпочтения провайдеров для поля 'provider' OpenRouter.
 
-    Принимает JSON-строку из .env или объект из app_settings.
+    Принимает JSON-строку из .env, объект или список из app_settings.
     Пусто/некорректно -> None (авто-маршрутизация).
     """
     value = await get_setting(session, key)
@@ -100,6 +100,8 @@ async def get_providers(session: AsyncSession, key: str) -> dict | None:
         except json.JSONDecodeError:
             log.warning("настройка %s: некорректный JSON — предпочтение провайдеров игнорируется", key)
             return None
+    if isinstance(value, list):
+        return {"order": value, "allow_fallbacks": True} if value else None
     if isinstance(value, dict) and value:
         return value
     return None
