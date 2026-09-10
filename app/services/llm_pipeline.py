@@ -598,8 +598,10 @@ async def _run_double_check(post_id: int) -> tuple[bool, str]:
         if online:
             chosen = (await get_setting(session, Keys.DOUBLE_CHECK_ONLINE_MODEL)) or base
             model = chosen + ":online"
+            providers = await _providers_for(Keys.DOUBLE_CHECK_ONLINE_PROVIDERS)
         else:
             model = base
+            providers = await _providers_for(Keys.DOUBLE_CHECK_PROVIDERS)
     messages = [
         {"role": "system", "content": build_double_check_prompt(title, relevance, online, strictness)},
         {"role": "user", "content": DOUBLE_CHECK_USER.format(
@@ -610,7 +612,9 @@ async def _run_double_check(post_id: int) -> tuple[bool, str]:
             draft=draft[:TEXT_LIMIT])},
     ]
     resp, result, call_status, error_text = await _call_and_parse(
-        messages, model, settings.llm_rewrite_max_tokens, temperature=0.1, schema=DoubleCheckResult)
+        messages, model, settings.llm_rewrite_max_tokens, temperature=0.1,
+        schema=DoubleCheckResult, provider=providers,
+    )
     if resp is not None and resp.cost_usd:
         await guards.add_llm_cost(resp.cost_usd)
     async with session_scope() as session:

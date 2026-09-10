@@ -24,17 +24,23 @@ def _k(name, fallback=None):
 
 
 EDITABLE = [
-    {"key": _k("CLASSIFY_MODEL", "llm.classify_model"), "label": "Модель классификации", "attr": "llm_classify_model", "type": "text"},
-    {"key": _k("REWRITE_MODEL", "llm.rewrite_model"), "label": "Модель рерайта", "attr": "llm_rewrite_model", "type": "text"},
-    {"key": _k("REVISION_MODEL", "llm.revision_model"), "label": "Модель правки", "attr": "llm_revision_model", "type": "text"},
-    {"key": _k("CLASSIFY_PROVIDERS", "llm.classify_providers"), "label": "Провайдеры классификации (JSON)", "attr": "llm_classify_providers", "type": "text"},
+    {"key": _k("CLASSIFY_MODEL", "llm.classify_model"), "label": "Модель классификации", "attr": "classify_model", "type": "text"},
+    {"key": _k("CLASSIFY_PROVIDERS", "llm.classify_providers"), "label": "Провайдеры классификации (JSON)", "attr": "classify_providers", "type": "text"},
+    {"key": _k("REWRITE_MODEL", "llm.rewrite_model"), "label": "Модель рерайта", "attr": "rewrite_model", "type": "text"},
+    {"key": _k("REWRITE_PROVIDERS", "llm.rewrite_providers"), "label": "Провайдеры рерайта (JSON)", "attr": "rewrite_providers", "type": "text"},
+    {"key": _k("REVISION_MODEL", "llm.revision_model"), "label": "Модель правки", "attr": "revision_model", "type": "text"},
+    {"key": _k("REVISION_PROVIDERS", "llm.revision_providers"), "label": "Провайдеры правки (JSON)", "attr": "revision_providers", "type": "text"},
+    {"key": _k("PREFILTER_MODEL", "llm.prefilter_model"), "label": "Модель очистки (clean)", "attr": "prefilter_model", "type": "text"},
+    {"key": _k("PREFILTER_PROVIDERS", "llm.prefilter_providers"), "label": "Провайдеры очистки (JSON)", "attr": "prefilter_providers", "type": "text"},
+    {"key": _k("DOUBLE_CHECK_MODEL"), "label": "Модель двойной проверки", "attr": "double_check_model", "type": "text"},
+    {"key": _k("DOUBLE_CHECK_PROVIDERS"), "label": "Провайдеры двойной проверки и онлайн (JSON)", "attr": "double_check_providers", "type": "text"},
+    {"key": _k("DOUBLE_CHECK_ONLINE_MODEL"), "label": "Модель онлайн-фактчекинга", "attr": "double_check_online_model", "type": "text"},
+    {"key": _k("DOUBLE_CHECK_ONLINE_PROVIDERS"), "label": "Провайдеры онлайн-фактчекинга (JSON)", "attr": "double_check_online_providers", "type": "text"},
     {"key": _k("MAX_LLM_BUDGET_USD_PER_DAY", "limits.max_llm_budget_usd_per_day"), "label": "Бюджет LLM, $/день", "attr": "max_llm_budget_usd_per_day", "type": "number"},
     {"key": _k("MAX_MEDIA_DOWNLOAD_MB", "reader.max_media_download_mb"), "label": "Макс. размер медиа, МБ", "attr": "max_media_download_mb", "type": "number"},
     {"key": _k("PREFILTER_BLACKLIST_WORDS", "prefilter.blacklist_words"), "label": "Блэклист слов (через запятую)", "attr": "prefilter_blacklist_words", "type": "list"},
     {"key": _k("READER_DEFAULT_SOURCE_INTERVAL_SEC", "reader.default_source_interval_sec"), "label": "Интервал опроса источника, сек", "attr": "reader_default_source_interval_sec", "type": "number"},
     {"key": _k("AUTOPILOT_MIN_SCORE"), "label": "Автопилот: мин. score", "attr": "autopilot_min_score", "type": "number"},
-    {"key": _k("DOUBLE_CHECK_MODEL"), "label": "Модель двойной проверки", "attr": "double_check_model", "type": "text"},
-    {"key": _k("DOUBLE_CHECK_ONLINE_MODEL", "llm.double_check_online_model"), "label": "Модель онлайн-фактчекинга", "attr": "double_check_online_model", "type": "text"},
 ]
 
 ATTR_TO_KEY = {
@@ -52,6 +58,11 @@ ATTR_TO_KEY = {
     "reader_default_source_interval_sec": _k("READER_DEFAULT_SOURCE_INTERVAL_SEC"),
     "autopilot_min_score": _k("AUTOPILOT_MIN_SCORE"),
     "double_check_model": _k("DOUBLE_CHECK_MODEL"),
+    "prefilter_model": _k("PREFILTER_MODEL"),
+    "prefilter_providers": _k("PREFILTER_PROVIDERS"),
+    "double_check_providers": _k("DOUBLE_CHECK_PROVIDERS"),
+    "double_check_online_model": _k("DOUBLE_CHECK_ONLINE_MODEL"),
+    "double_check_online_providers": _k("DOUBLE_CHECK_ONLINE_PROVIDERS"),
 }
 
 
