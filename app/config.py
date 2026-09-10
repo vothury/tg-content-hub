@@ -71,6 +71,9 @@ class Settings(BaseSettings):
     classify_providers: str = ""
     rewrite_providers: str = ""
     revision_providers: str = ""
+    prefilter_providers: str = ""
+    double_check_providers: str = ""
+    double_check_online_providers: str = ""
 
     # Автопилот (Этап 7)
     autopilot_min_score: int = 8

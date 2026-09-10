@@ -34,6 +34,9 @@ class Keys:
     DOUBLE_CHECK_MODEL = "llm.double_check_model"
     DOUBLE_CHECK_ONLINE_MODEL = "llm.double_check_online_model"
     CLASSIFY_VERBOSE = "llm.classify_verbose"
+    PREFILTER_PROVIDERS = "llm.prefilter_providers"
+    DOUBLE_CHECK_PROVIDERS = "llm.double_check_providers"
+    DOUBLE_CHECK_ONLINE_PROVIDERS = "llm.double_check_online_providers"
 
 
 _ENV_DEFAULTS: dict[str, Any] = {
@@ -54,6 +57,9 @@ _ENV_DEFAULTS: dict[str, Any] = {
     Keys.DOUBLE_CHECK_MODEL: settings.double_check_model,
     Keys.DOUBLE_CHECK_ONLINE_MODEL: settings.double_check_online_model,
     Keys.CLASSIFY_VERBOSE: settings.classify_verbose,
+    Keys.PREFILTER_PROVIDERS: settings.prefilter_providers,
+    Keys.DOUBLE_CHECK_PROVIDERS: settings.double_check_providers,
+    Keys.DOUBLE_CHECK_ONLINE_PROVIDERS: settings.double_check_online_providers,
 }
 
 

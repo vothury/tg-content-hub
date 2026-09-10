@@ -548,12 +548,15 @@ async def _ensure_clean_draft(post_id: int) -> None:
     if "[" not in text and "t.me/" not in text and "telegram.me/" not in text and "@" not in text:
         return
     model = await _model_for(Keys.PREFILTER_MODEL)
+    providers = await _providers_for(Keys.PREFILTER_PROVIDERS)
     messages = [
         {"role": "system", "content": CLEAN_SYSTEM},
         {"role": "user", "content": CLEAN_USER.format(text=text[:TEXT_LIMIT])},
     ]
     resp, result, call_status, error_text = await _call_and_parse(
-        messages, model, settings.llm_rewrite_max_tokens, temperature=0.0, schema=RewriteResult)
+        messages, model, settings.llm_rewrite_max_tokens, temperature=0.0,
+        schema=RewriteResult, provider=providers,
+    )
     if resp is not None and resp.cost_usd:
         await guards.add_llm_cost(resp.cost_usd)
     async with session_scope() as session:
