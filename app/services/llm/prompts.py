@@ -207,6 +207,8 @@ _DOUBLE_CHECK_BASE = """Ты — технический выпускающий �
 - пост СОВСЕМ из другой области;
 - запрещённый контент (оскорбления, шок, политика).
 
+{media_note}
+
 {facts}
 
 Если есть ХОТЯ БЫ одна грубая проблема — отклони и в note укажи, в чём именно ошиблась первая модель. Иначе — одобри.
@@ -220,12 +222,20 @@ _FACTS_ONLINE = """ФАКТЫ (важность точности {strictness}/10
 _FACTS_OFFLINE = """ФАКТЫ: веб-поиск НЕДОСТУПЕН. НЕ проверяй и НЕ утверждай внешние факты (даты релизов, рейтинги, участие) по своей памяти — ты можешь ошибиться. Отклоняй «факт» ТОЛЬКО при внутреннем противоречии в самом посте или очевидной бессмыслице.
 Строгость к внутренним ошибкам: {strictness}/10 (<=5 — только серьёзные; выше — придирчивее)."""
 
-def build_double_check_prompt(channel_title: str, relevance, online: bool, strictness: int) -> str:
+DC_MEDIA_NOTE = """ПОСТ СОДЕРЖИТ МЕДИА: {media_hint}. Текст — подпись к медиа; основное содержание может быть В МЕДИА (карточки фильмов, кадры, списки на изображениях).
+НЕ отклоняй за «обрывок», «отсутствующий список» или «битую структуру», если недостающая часть логично находится в медиа. «Битую структуру» считай ошибкой только когда текст сам по себе бессвязен независимо от медиа."""
+
+DC_MEDIA_NOTE_NONE = """МЕДИА НЕТ: текст — самостоятельный пост; «обрывок/битая структура» оценивай по тексту."""
+
+def build_double_check_prompt(channel_title: str, relevance, online: bool, strictness: int,
+                              media_hint: str | None = None) -> str:
     facts = (_FACTS_ONLINE if online else _FACTS_OFFLINE).format(strictness=strictness)
+    media_note = DC_MEDIA_NOTE.format(media_hint=media_hint) if media_hint else DC_MEDIA_NOTE_NONE
     return _DOUBLE_CHECK_BASE.format(
         channel_title=channel_title,
         relevance=relevance if relevance is not None else "—",
         facts=facts,
+        media_note=media_note,
     )
 
 DOUBLE_CHECK_USER = """Тематика канала: {channel_description}
