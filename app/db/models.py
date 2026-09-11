@@ -145,6 +145,7 @@ class Post(Base):
     score: Mapped[float | None] = mapped_column(Float)
     verdict_reason: Mapped[str | None] = mapped_column(Text)
     canonical_text: Mapped[str | None] = mapped_column(Text)
+    dedup_info: Mapped[dict | None] = mapped_column(JSONB)
     risks: Mapped[dict | None] = mapped_column(JSONB)
 
     # Публикация автопилотом + причина/заметка двойной проверки

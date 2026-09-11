@@ -1,4 +1,4 @@
-"""????????????? ????????????: ???????????? ????? ?????? + pHash ?????."""
+"""Семантическая дедупликация: каноническая форма текста + pHash медиа."""
 from __future__ import annotations
 
 import logging
@@ -34,7 +34,7 @@ def _hamming(a: int, b: int) -> int:
 
 
 async def run_semantic_dedup(post_id: int) -> bool:
-    """True, ???? ???? ??????? DEDUPLICATED (?????? ???? ??????????)."""
+    """True, если пост помечен DEDUPLICATED (первый пост выигрывает)."""
     async with session_scope() as session:
         post = await session.get(Post, post_id)
         if post is None or post.status is not PostStatus.CANDIDATE:
@@ -54,8 +54,6 @@ async def run_semantic_dedup(post_id: int) -> bool:
                    Post.status != PostStatus.DEDUPLICATED)
             .order_by(Post.id.desc()).limit(max_cmp)
         )).scalars().all()
-        if not candidates:
-            return False
 
         ids = [post_id] + [c.id for c in candidates]
         ph_map: dict[int, list[int]] = {}
@@ -68,17 +66,37 @@ async def run_semantic_dedup(post_id: int) -> bool:
         new_canon = (post.canonical_text or "").strip()
         dup_of = None
         reason = None
+        best_cos = 0.0
+        best_ph = None
         for c in candidates:
             c_ph = ph_map.get(c.id, [])
-            if new_ph and c_ph and any(_hamming(a, b) <= ph_max for a in new_ph for b in c_ph):
-                dup_of, reason = c.id, "media"
-                break
+            if new_ph and c_ph:
+                d = min(_hamming(a, b) for a in new_ph for b in c_ph)
+                best_ph = d if best_ph is None else min(best_ph, d)
+                if d <= ph_max:
+                    dup_of, reason = c.id, "media"
             c_canon = (c.canonical_text or "").strip()
-            if (len(new_canon) >= min_len and len(c_canon) >= min_len
-                    and _cosine(new_canon, c_canon) >= cos_min):
-                dup_of, reason = c.id, "canonical"
+            if len(new_canon) >= min_len and len(c_canon) >= min_len:
+                cos = _cosine(new_canon, c_canon)
+                best_cos = max(best_cos, cos)
+                if dup_of is None and cos >= cos_min:
+                    dup_of, reason = c.id, "canonical"
+            if dup_of is not None:
                 break
+
+        post.dedup_info = {
+            "dup_of": dup_of,
+            "reason": reason,
+            "best_canonical_cosine": round(best_cos, 3),
+            "best_phash_distance": best_ph,
+            "candidates": len(candidates),
+            "thresholds": {
+                "cosine": cos_min, "phash": ph_max,
+                "min_len": min_len, "window_days": window,
+            },
+        }
         if dup_of is None:
+            await session.commit()
             return False
 
         post.status = PostStatus.DEDUPLICATED
@@ -88,5 +106,5 @@ async def run_semantic_dedup(post_id: int) -> bool:
             details={"dup_of": dup_of, "reason": reason},
         ))
         await session.commit()
-    log.info("???? %s: ???????? ????? %s (%s)", post_id, dup_of, reason)
+    log.info("пост %s: дубликат поста %s (%s)", post_id, dup_of, reason)
     return True
