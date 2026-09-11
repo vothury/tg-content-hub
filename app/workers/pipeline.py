@@ -51,12 +51,28 @@ async def main() -> None:
     if not settings.openrouter_api_key:
         log.warning("OPENROUTER_API_KEY не задан — LLM-этапы выполняться не будут")
 
+    # Ждём готовности БД (postgres может стартовать позже pipeline)
+    for attempt in range(1, 61):
+        try:
+            await pending_post_ids(limit=1)
+            break
+        except Exception:  # noqa: BLE001
+            if attempt == 1:
+                log.warning("БД недоступна при старте — жду готовности...")
+            await asyncio.sleep(2)
+    else:
+        log.error("БД так и не стала доступна за 120 сек — завершаюсь")
+        return
+
     # Бэклог и незавершённые посты прошлых запусков
-    backlog = await pending_post_ids(limit=200)
-    if backlog:
-        log.info("бэклог: %d пост(ов) в работе", len(backlog))
-    for post_id in backlog:
-        await advance_post(post_id)
+    try:
+        backlog = await pending_post_ids(limit=200)
+        if backlog:
+            log.info("бэклог: %d пост(ов) в работе", len(backlog))
+        for post_id in backlog:
+            await advance_post(post_id)
+    except Exception:  # noqa: BLE001 — транзиентный сбой бэклога не роняет воркер
+        log.exception("сбой обработки стартового бэклога — продолжим в цикле")
 
     redis = get_redis()
     next_rescan = time.monotonic() + settings.pipeline_rescan_interval_sec

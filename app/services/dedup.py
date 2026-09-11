@@ -33,6 +33,18 @@ def _hamming(a: int, b: int) -> int:
     return bin((a ^ b) & 0xFFFFFFFFFFFFFFFF).count("1")
 
 
+def _containment(a: str, b: str) -> float:
+    ca, cb = Counter(_ngrams(a)), Counter(_ngrams(b))
+    if not ca or not cb:
+        return 0.0
+    inter = sum((ca & cb).values())
+    return inter / min(sum(ca.values()), sum(cb.values()))
+
+
+def _similarity(a: str, b: str) -> float:
+    return max(_cosine(a, b), _containment(a, b))
+
+
 async def run_semantic_dedup(post_id: int) -> bool:
     """True, если пост помечен DEDUPLICATED (первый пост выигрывает)."""
     async with session_scope() as session:
@@ -77,7 +89,7 @@ async def run_semantic_dedup(post_id: int) -> bool:
                     dup_of, reason = c.id, "media"
             c_canon = (c.canonical_text or "").strip()
             if len(new_canon) >= min_len and len(c_canon) >= min_len:
-                cos = _cosine(new_canon, c_canon)
+                cos = _similarity(new_canon, c_canon)
                 best_cos = max(best_cos, cos)
                 if dup_of is None and cos >= cos_min:
                     dup_of, reason = c.id, "canonical"
@@ -87,7 +99,7 @@ async def run_semantic_dedup(post_id: int) -> bool:
         post.dedup_info = {
             "dup_of": dup_of,
             "reason": reason,
-            "best_canonical_cosine": round(best_cos, 3),
+            "best_canonical_sim": round(best_cos, 3),
             "best_phash_distance": best_ph,
             "candidates": len(candidates),
             "thresholds": {
