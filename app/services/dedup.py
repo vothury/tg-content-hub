@@ -34,15 +34,12 @@ def _hamming(a: int, b: int) -> int:
 
 
 def _containment(a: str, b: str) -> float:
+    """Доля n-грамм короткого канона, содержащихся в длинном (ловит «один список полнее другого»)."""
     ca, cb = Counter(_ngrams(a)), Counter(_ngrams(b))
     if not ca or not cb:
         return 0.0
     inter = sum((ca & cb).values())
     return inter / min(sum(ca.values()), sum(cb.values()))
-
-
-def _similarity(a: str, b: str) -> float:
-    return max(_cosine(a, b), _containment(a, b))
 
 
 async def run_semantic_dedup(post_id: int) -> bool:
@@ -55,6 +52,7 @@ async def run_semantic_dedup(post_id: int) -> bool:
         ph_max = int(await get_setting(session, Keys.DEDUP_PHASH_MAX_DISTANCE))
         min_len = int(await get_setting(session, Keys.DEDUP_CANONICAL_MIN_LEN))
         cos_min = float(await get_setting(session, Keys.DEDUP_CANONICAL_COSINE_MIN))
+        cont_min = float(await get_setting(session, Keys.DEDUP_CANONICAL_CONTAINMENT_MIN))
         max_cmp = int(await get_setting(session, Keys.DEDUP_MAX_COMPARE))
 
         since = datetime.now(timezone.utc) - timedelta(days=window)
@@ -79,6 +77,7 @@ async def run_semantic_dedup(post_id: int) -> bool:
         dup_of = None
         reason = None
         best_cos = 0.0
+        best_cont = 0.0
         best_ph = None
         for c in candidates:
             c_ph = ph_map.get(c.id, [])
@@ -89,9 +88,11 @@ async def run_semantic_dedup(post_id: int) -> bool:
                     dup_of, reason = c.id, "media"
             c_canon = (c.canonical_text or "").strip()
             if len(new_canon) >= min_len and len(c_canon) >= min_len:
-                cos = _similarity(new_canon, c_canon)
+                cos = _cosine(new_canon, c_canon)
+                cont = _containment(new_canon, c_canon)
                 best_cos = max(best_cos, cos)
-                if dup_of is None and cos >= cos_min:
+                best_cont = max(best_cont, cont)
+                if dup_of is None and (cos >= cos_min or cont >= cont_min):
                     dup_of, reason = c.id, "canonical"
             if dup_of is not None:
                 break
@@ -100,10 +101,11 @@ async def run_semantic_dedup(post_id: int) -> bool:
             "dup_of": dup_of,
             "reason": reason,
             "best_canonical_sim": round(best_cos, 3),
+            "best_canonical_containment": round(best_cont, 3),
             "best_phash_distance": best_ph,
             "candidates": len(candidates),
             "thresholds": {
-                "cosine": cos_min, "phash": ph_max,
+                "cosine": cos_min, "containment": cont_min, "phash": ph_max,
                 "min_len": min_len, "window_days": window,
             },
         }

@@ -103,6 +103,7 @@ class Settings(BaseSettings):
     dedup_phash_max_distance: int = 8      # Хэмминг 0..64 для «то же изображение»
     dedup_canonical_min_len: int = 30      # короче — канон игнорируем (защита от «🙂»)
     dedup_canonical_cosine_min: float = 0.60
+    dedup_canonical_containment_min: float = 0.75  # доля n-грамм короткого канона в длинном
     dedup_max_compare: int = 200
 
     @property
