@@ -15,6 +15,9 @@ from app.services.settings import Keys, get_setting
 log = logging.getLogger("dedup")
 
 
+MEDIA_TEXT_FLOOR = 0.20  # минимальное совпадение канонов, чтобы считать media-матч дублем
+
+
 def _ngrams(text: str, n: int = 4):
     t = "".join(ch.lower() for ch in text if ch.isalnum() or ch == " ")
     t = " ".join(t.split())
@@ -85,7 +88,14 @@ async def run_semantic_dedup(post_id: int) -> bool:
                 d = min(_hamming(a, b) for a in new_ph for b in c_ph)
                 best_ph = d if best_ph is None else min(best_ph, d)
                 if d <= ph_max:
-                    dup_of, reason = c.id, "media"
+                    #Guard от коллизий dHash на «плоских» картинках: медиа-матч = дубль,
+                    #только если каноны не противоречат (или один тривиален).
+                    texts_ok = (
+                        len(new_canon) < min_len or len(c_canon) < min_len
+                        or _cosine(new_canon, c_canon) >= MEDIA_TEXT_FLOOR
+                    )
+                    if texts_ok:
+                        dup_of, reason = c.id, "media"
             c_canon = (c.canonical_text or "").strip()
             if len(new_canon) >= min_len and len(c_canon) >= min_len:
                 cos = _cosine(new_canon, c_canon)
