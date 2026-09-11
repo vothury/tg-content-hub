@@ -473,6 +473,47 @@ async def _idle_forever(reason: str) -> None:
         await asyncio.sleep(600)
 
 
+async def process_media_refresh(client: TelegramClient) -> None:
+    """Перескачивает медиа для постов с needs_media_refresh (возврат из дедупа)."""
+    async with session_scope() as session:
+        posts = (await session.execute(
+            select(Post).where(Post.needs_media_refresh.is_(True)).limit(5)
+        )).scalars().all()
+        items = [(p.id, p.source_id, p.source_message_id) for p in posts]
+    for post_id, source_id, msg_id in items:
+        try:
+            async with session_scope() as session:
+                src = await session.get(Source, source_id)
+            if src is None:
+                continue
+            snap = SourceSnapshot(
+                id=src.id, username=src.username, telegram_id=src.telegram_id,
+                last_read_message_id=None, poll_interval_sec=0, backfill_limit=0,
+                last_read_at=None, target_channel_id=src.target_channel_id,
+                fresh_window_min=0, fallback_count=0, fallback_max_age_hours=0,
+            )
+            entity = await resolve_entity(client, snap)
+            msgs = [m for m in await client.get_messages(entity, ids=[msg_id]) if m is not None]
+            if not msgs:
+                continue
+            unit = type("Unit", (), {"messages": msgs})()
+            rows = await _download_unit_media(client, snap, unit)
+            async with session_scope() as session:
+                for m in (await session.execute(
+                        select(MediaItem).where(MediaItem.post_id == post_id))).scalars().all():
+                    await session.delete(m)
+                for r in rows:
+                    session.add(MediaItem(post_id=post_id, **r))
+                p = await session.get(Post, post_id)
+                if p is not None:
+                    p.needs_media_refresh = False
+                await session.commit()
+            await enqueue_post(post_id)
+            log.info("пост %s: медиа перескачаны (%d)", post_id, len(rows))
+        except Exception:  # noqa: BLE001
+            log.exception("пост %s: не удалось перескачать медиа", post_id)
+
+
 async def main() -> None:
     if not settings.telegram_api_id or not settings.telegram_api_hash:
         await _idle_forever("TELEGRAM_API_ID/API_HASH не заданы в .env")
@@ -528,6 +569,7 @@ async def main() -> None:
                 except Exception:  # noqa: BLE001
                     log.exception("ошибка обработки источника #%s", snap.id)
                 await asyncio.sleep(2)  # щадящая пауза между источниками
+            await process_media_refresh(client)
             await monitor.heartbeat("reader")
             await asyncio.sleep(settings.reader_poll_interval_sec)
     finally:

@@ -9,8 +9,10 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from sqlalchemy import select
+
 from app.db.enums import DraftOrigin, EventActor, PostStatus
-from app.db.models import Post, PostDraftVersion, PostEvent, TargetChannel
+from app.db.models import MediaItem, Post, PostDraftVersion, PostEvent, TargetChannel
 from app.db.session import session_scope
 from app.services.queue import enqueue_post
 
@@ -81,6 +83,26 @@ async def reject(post_id: int, reason: str = "") -> ActionResult:
         await session.commit()
     log.info("пост %s отклонён владельцем", post_id)
     return ActionResult(True, f"пост #{post_id} отклонён")
+
+
+async def revive_from_dedup(post_id: int) -> ActionResult:
+    """Ложный дубль: вернуть в работу и перескачать медиа заново."""
+    async with session_scope() as session:
+        post = await session.get(Post, post_id)
+        if post is None:
+            return ActionResult(False, "пост не найден")
+        if post.status is not PostStatus.DEDUPLICATED:
+            return ActionResult(False, f"недоступно в статусе {post.status.value}")
+        post.status = PostStatus.CANDIDATE
+        post.dedup_info = None
+        post.needs_media_refresh = True
+        for m in (await session.execute(
+                select(MediaItem).where(MediaItem.post_id == post_id))).scalars().all():
+            await session.delete(m)
+        _event(session, post_id, EventActor.OWNER, "dedup_revived",
+               PostStatus.DEDUPLICATED.value, PostStatus.CANDIDATE.value)
+        await session.commit()
+    return ActionResult(True, "возвращён в работу; медиа будут скачаны заново")
 
 
 async def media_approve(post_id: int) -> ActionResult:

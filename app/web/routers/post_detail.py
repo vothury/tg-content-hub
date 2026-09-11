@@ -166,6 +166,11 @@ async def act_to_review(request: Request, post_id: int):
         f"/posts/{post_id}?msg={quote('возвращён в ревью')}", status_code=303)
 
 
+@router.post("/posts/{post_id}/dedup_revive", dependencies=[Depends(csrf_protect)])
+async def act_dedup_revive(request: Request, post_id: int):
+    return _back(post_id, await review.revive_from_dedup(post_id))
+
+
 def _media_root() -> Path:
     root = Path(settings.media_dir)
     if not root.is_absolute():

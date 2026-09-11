@@ -113,6 +113,14 @@
   </form>
 </div>
 <div class="card sub">«Вернуть в ревью» переведёт пост в AWAITING_REVIEW — дальше можно править текст и одобрять заново.</div>
+{% elif status == 'DEDUPLICATED' %}
+<div class="actions">
+  <form method="post" action="/posts/{{ p.id }}/dedup_revive">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button class="btn" type="submit">↩ Вернуть в работу (ложный дубль)</button>
+  </form>
+</div>
+<div class="card sub">Пост вернётся в CANDIDATE; медиа будут скачаны и обработаны заново.</div>
 {% else %}
 <div class="card sub">Для статуса {{ status }} действия ревью недоступны.</div>
 {% endif %}
