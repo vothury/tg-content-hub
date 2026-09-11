@@ -24,9 +24,11 @@ from app.db.enums import (
     PostStatus,
     PublishJobState,
     PublishMode,
+    MediaType,
 )
 from app.db.models import (
     LLMCall,
+    MediaItem,
     Post,
     PostDraftVersion,
     PostEvent,
@@ -83,6 +85,21 @@ async def _get_status(post_id: int) -> PostStatus | None:
 async def _model_for(key: str) -> str:
     async with session_scope() as session:
         return str(await get_setting(session, key))
+
+
+async def _media_hint(post_id: int) -> str | None:
+    async with session_scope() as session:
+        rows = (await session.execute(
+            select(MediaItem).where(MediaItem.post_id == post_id)
+        )).scalars().all()
+    n_video = sum(1 for m in rows if m.media_type is MediaType.VIDEO)
+    n_photo = sum(1 for m in rows if m.media_type is MediaType.PHOTO)
+    parts = []
+    if n_video:
+        parts.append(f"{n_video} видео")
+    if n_photo:
+        parts.append(f"{n_photo} фото")
+    return " + ".join(parts) or None
 
 
 _CJK_RE = re.compile(r"[\u2e80-\u9fff\uf900-\ufaff]")
@@ -191,6 +208,8 @@ async def classify_post(post_id: int) -> None:
         post.status = PostStatus.LLM_CLASSIFYING
         await session.commit()
 
+    media_hint = await _media_hint(post_id)
+
     async with session_scope() as session:
         verbose = bool(await get_setting(session, Keys.CLASSIFY_VERBOSE))
     model = await _model_for(Keys.CLASSIFY_MODEL)
@@ -200,6 +219,7 @@ async def classify_post(post_id: int) -> None:
         channel_description=channel.description if channel is not None else None,
         relevance=relevance,
         verbose=verbose,
+        media_hint=media_hint,
     )
     messages = [
         {"role": "system", "content": system_prompt},
@@ -602,8 +622,10 @@ async def _run_double_check(post_id: int) -> tuple[bool, str]:
         else:
             model = base
             providers = await _providers_for(Keys.DOUBLE_CHECK_PROVIDERS)
+    media_hint = await _media_hint(post_id)
     messages = [
-        {"role": "system", "content": build_double_check_prompt(title, relevance, online, strictness)},
+        {"role": "system", "content": build_double_check_prompt(
+            title, relevance, online, strictness, media_hint=media_hint)},
         {"role": "user", "content": DOUBLE_CHECK_USER.format(
             channel_description=desc,
             relevance=relevance if relevance is not None else "—",

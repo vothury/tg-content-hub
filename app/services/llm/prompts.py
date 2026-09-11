@@ -43,6 +43,11 @@ RELEVANCE_LOW = """РЕЖИМ ОЦЕНКИ: источник НИЗКОреле�
 Одобряй ТОЛЬКО посты категории ok, напрямую соответствующие тематике канала.
 Всё остальное отклоняй; в причине указывай «вне тематики канала»."""
 
+MEDIA_NOTE = """ПОСТ СОДЕРЖИТ МЕДИА: {media_hint}. Текст — подпись к медиа, а не самостоятельный пост.
+Оценивай связку «медиа + подпись». Если подпись не реклама/запрещённый контент, предполагай, что медиа соответствует тематике канала (источник релевантен), и НЕ занижай оценку только за краткость или «неполноту» подписи. Сомнения допустимы, но оценка 1-3 только из-за короткой подписи при наличии медиа — ошибка."""
+
+MEDIA_NOTE_NONE = """МЕДИА НЕТ: оценивай текст как самостоятельный пост."""
+
 CLASSIFY_SYSTEM_TEMPLATE = """Ты — редактор Telegram-канала «{channel_title}».
 Тематика канала: {channel_description}
 
@@ -55,6 +60,8 @@ CLASSIFY_SYSTEM_TEMPLATE = """Ты — редактор Telegram-канала «
 {criteria}
 
 {relevance_mode}
+
+{media_note}
 
 КАНОН: верни "canonical" — 1-2 предложения смыслового скелета события (кто/что/где/когда) на русском, БЕЗ названий источников, цитат, эмодзи и служебных фраз («ТАСС», «пресс-служба», «МОСКВА, …»). Для тривиальных постов (эмодзи, одно слово) — пустая строка. Для списков/подборок НЕ перечисляй все элементы — укажи тип, примерное количество и суть (напр., «подборка из ~14 спокойных мультфильмов для расслабления»).
 
@@ -79,7 +86,8 @@ REQ_MIN = """Требования компактности: "reason" ВСЕГД�
 REQ_VERBOSE = """Требования: "reason" — до 20 слов на русском (для ok можно пусто); "risks" — не более 3 пунктов."""
 
 def build_classify_prompt(channel_title: str | None, channel_description: str | None,
-                          relevance: int | None, verbose: bool = False) -> str:
+                          relevance: int | None, verbose: bool = False,
+                          media_hint: str | None = None) -> str:
     if relevance is None or 4 <= relevance <= 7:
         mode = RELEVANCE_MID
     elif relevance >= 8:
@@ -88,10 +96,12 @@ def build_classify_prompt(channel_title: str | None, channel_description: str | 
         mode = RELEVANCE_LOW
     description = (channel_description or "").strip() or "тематика не задана — используй здравый смысл"
     title = (channel_title or "").strip() or "Telegram-канал"
+    media_note = MEDIA_NOTE.format(media_hint=media_hint) if media_hint else MEDIA_NOTE_NONE
     return CLASSIFY_SYSTEM_TEMPLATE.format(
         channel_title=title, channel_description=description,
         criteria=CRITERIA, relevance_mode=mode,
         requirements=REQ_VERBOSE if verbose else REQ_MIN,
+        media_note=media_note,
     )
 
 
