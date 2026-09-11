@@ -45,6 +45,30 @@ def _containment(a: str, b: str) -> float:
     return inter / min(sum(ca.values()), sum(cb.values()))
 
 
+def _neg_delta(a: str, b: str) -> int:
+    return abs(a.count("не ") - b.count("не "))
+
+
+async def _confirm_same(a: str, b: str) -> bool:
+    """Дешёвый вызов: та же новость с той же полярностью, или отрицание/отмена."""
+    from app.config import settings
+    from app.services.llm.openrouter import chat_completion
+    from app.services.llm.prompts import DEDUP_CONFIRM_SYSTEM, DEDUP_CONFIRM_USER
+    from app.services.llm.schemas import DedupConfirmResult
+    async with session_scope() as session:
+        model = str(await get_setting(session, Keys.PREFILTER_MODEL))
+    messages = [
+        {"role": "system", "content": DEDUP_CONFIRM_SYSTEM},
+        {"role": "user", "content": DEDUP_CONFIRM_USER.format(a=a, b=b)},
+    ]
+    try:
+        resp = await chat_completion(messages, model, max_tokens=100, temperature=0.0)
+        return bool(DedupConfirmResult.from_response(resp.content).same)
+    except Exception:  # noqa: BLE001 — сбой подтверждения не ломает дедуп
+        log.warning("dedup-confirm не ответил — оставляем лексическое решение")
+        return True
+
+
 async def run_semantic_dedup(post_id: int) -> bool:
     """True, если пост помечен DEDUPLICATED (первый пост выигрывает)."""
     async with session_scope() as session:
@@ -88,13 +112,12 @@ async def run_semantic_dedup(post_id: int) -> bool:
                 d = min(_hamming(a, b) for a in new_ph for b in c_ph)
                 best_ph = d if best_ph is None else min(best_ph, d)
                 if d <= ph_max:
-                    #Guard от коллизий dHash на «плоских» картинках: медиа-матч = дубль,
-                    #только если каноны не противоречат (или один тривиален).
                     texts_ok = (
                         len(new_canon) < min_len or len(c_canon) < min_len
                         or _cosine(new_canon, c_canon) >= MEDIA_TEXT_FLOOR
                     )
-                    if texts_ok:
+                    if texts_ok and _neg_delta(new_canon, c_canon) < 2 \
+                            and await _confirm_same(new_canon, c_canon):
                         dup_of, reason = c.id, "media"
             c_canon = (c.canonical_text or "").strip()
             if len(new_canon) >= min_len and len(c_canon) >= min_len:
@@ -103,7 +126,9 @@ async def run_semantic_dedup(post_id: int) -> bool:
                 best_cos = max(best_cos, cos)
                 best_cont = max(best_cont, cont)
                 if dup_of is None and (cos >= cos_min or cont >= cont_min):
-                    dup_of, reason = c.id, "canonical"
+                    if _neg_delta(new_canon, c_canon) < 2 \
+                            and await _confirm_same(new_canon, c_canon):
+                        dup_of, reason = c.id, "canonical"
             if dup_of is not None:
                 break
 

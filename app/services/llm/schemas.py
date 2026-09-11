@@ -90,3 +90,15 @@ class DoubleCheckResult:
         data = extract_json(content)
         return cls(approve=bool(data.get("approve", False)),
                    note=str(data.get("note", "")).strip())
+
+
+@dataclass
+class DedupConfirmResult:
+    same: bool = False
+
+    @classmethod
+    def from_response(cls, content: str) -> "DedupConfirmResult":
+        data = extract_json(content)
+        if not isinstance(data, dict):
+            raise LLMParseError(f"ожидался JSON-объект: {str(data)[:300]!r}")
+        return cls(same=bool(data.get("same", False)))
