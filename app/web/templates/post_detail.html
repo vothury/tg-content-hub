@@ -156,7 +156,7 @@
 <div class="list">
   {% for m in media %}
   <div class="card"><span class="badge">{{ m.media_type.value }}</span>
-    <span class="sub">{{ m.preview_path or m.local_path or m.download_error or '—' }}</span>
+    <span class="sub">{{ m.preview_path or m.local_path or m.download_error or '—' }}</span></div>
   {% else %}<div class="card">Медиа нет</div>{% endfor %}
 </div>
 
