@@ -65,3 +65,6 @@ wait-web:    ## ждать готовности веб-админки после
 	  sleep 90; \
 	done; \
 	printf "\033[31m✗ api не ответил за ~30 мин — смотрите docker compose logs api\033[0m\n"; exit 1
+
+fix-media: ## опубликованные посты: превью вместо тяжёлых оригиналов
+	docker compose run --rm --entrypoint "python -m app.tools.backfill_previews" api
