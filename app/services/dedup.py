@@ -30,7 +30,7 @@ def _cosine(a: str, b: str) -> float:
 
 
 def _hamming(a: int, b: int) -> int:
-    return bin(a ^ b).count("1")
+    return bin((a ^ b) & 0xFFFFFFFFFFFFFFFF).count("1")
 
 
 async def run_semantic_dedup(post_id: int) -> bool:

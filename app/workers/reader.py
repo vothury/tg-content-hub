@@ -87,12 +87,14 @@ def _extract_media(msg) -> tuple[MediaType | None, object | None]:
 
 def _dhash(img) -> int:
     g = img.convert("L").resize((9, 8))
-    px = list(g.getdata())
+    px = g.tobytes()  # байты яркости вместо deprecated getdata()
     h = 0
     for r in range(8):
         for c in range(8):
             if px[r * 9 + c] > px[r * 9 + c + 1]:
                 h |= 1 << (r * 8 + c)
+    if h >= 1 << 63:
+        h -= 1 << 64  # приводим к signed int64 для PostgreSQL BigInteger
     return h
 
 
