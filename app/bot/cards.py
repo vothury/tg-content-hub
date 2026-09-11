@@ -75,7 +75,8 @@ async def load_card_data(post_id: int) -> dict | None:
             "draft_version": post.draft_version,
             "draft_origin": last_version.origin.value if last_version is not None else None,
             "media": [
-                {"type": m.media_type, "local_path": m.local_path, "downloaded": m.downloaded}
+                {"type": m.media_type, "local_path": m.local_path, "downloaded": m.downloaded,
+                 "preview_path": m.preview_path}
                 for m in media
             ],
         }
@@ -142,19 +143,16 @@ async def send_card(bot: Bot, chat_id: int, post_id: int) -> bool:
     first = True
     root = media_root()
     for m in data["media"]:
-        if not m["downloaded"] or not m["local_path"]:
+        if not m.get("preview_path"):
             continue
-        path = root / m["local_path"]
+        path = root / m["preview_path"]
         if not path.exists():
-            log.warning("пост %s: медиафайл не найден: %s", post_id, path)
+            log.warning("пост %s: превью не найдено: %s", post_id, path)
             continue
         file_caption = (
             f"🆕 Кандидат #{post_id} — @{data['source_username']}" if first else None
         )
-        if m["type"] is MediaType.VIDEO:
-            files.append(InputMediaVideo(media=FSInputFile(path), caption=file_caption))
-        else:
-            files.append(InputMediaPhoto(media=FSInputFile(path), caption=file_caption))
+        files.append(InputMediaPhoto(media=FSInputFile(path), caption=file_caption))
         first = False
 
     if files:

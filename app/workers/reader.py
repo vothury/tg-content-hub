@@ -98,28 +98,36 @@ def _dhash(img) -> int:
     return h
 
 
-def _compute_phash(local_path, media_type) -> int | None:
-    """Перцептивный хеш: для фото — само изображение, для видео — первый кадр."""
+def _make_preview_and_phash(local_path, media_type) -> tuple[str | None, int | None]:
+    """webp-превью (max side 480, quality 30) + phash. Для видео — первый кадр."""
     try:
-        if media_type is MediaType.PHOTO:
-            from PIL import Image
-            with Image.open(local_path) as im:
-                return _dhash(im)
-        import os, subprocess, tempfile
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tf:
-            tmp = tf.name
-        subprocess.run(
-            ["ffmpeg", "-y", "-loglevel", "error", "-i", str(local_path),
-             "-vf", "select=eq(n\\,0)", "-vframes", "1", tmp],
-            check=True, timeout=30,
-        )
         from PIL import Image
-        with Image.open(tmp) as im:
-            h = _dhash(im)
-        os.unlink(tmp)
-        return h
-    except Exception:  # noqa: BLE001 — нет PIL/ffmpeg: медиа просто без phash
-        return None
+        import os, subprocess, tempfile
+        src = None
+        if media_type is MediaType.VIDEO:
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tf:
+                src = tf.name
+            subprocess.run(
+                ["ffmpeg", "-y", "-loglevel", "error", "-i", str(local_path),
+                 "-vf", "select=eq(n\\,0)", "-vframes", "1", src],
+                check=True, timeout=30,
+            )
+        else:
+            src = str(local_path)
+        with Image.open(src) as im:
+            ph = _dhash(im)
+            prev = im.convert("RGB")
+            prev.thumbnail((480, 480))
+            prev_dir = Path(local_path).parent / "prev"
+            prev_dir.mkdir(parents=True, exist_ok=True)
+            prev_path = prev_dir / (Path(local_path).stem + ".webp")
+            prev.save(prev_path, "WEBP", quality=30)
+        if media_type is MediaType.VIDEO and src:
+            os.unlink(src)
+        rel = Path(prev_path).resolve().relative_to(MEDIA_ROOT)
+        return str(rel), ph
+    except Exception:  # noqa: BLE001 — нет PIL/ffmpeg: остаёмся без превью и phash
+        return None, None
 
 
 _MD_LINK = re.compile(r"\[([^\]]*)\]\(([^)]*)\)")
@@ -240,6 +248,7 @@ async def _download_unit_media(client, snap: SourceSnapshot, unit) -> list[dict]
             "local_path": None,
             "download_error": None,
             "phash": None,
+            "preview_path": None,
             **_media_meta(media_type, media),
         }
 
@@ -255,7 +264,9 @@ async def _download_unit_media(client, snap: SourceSnapshot, unit) -> list[dict]
             saved = await client.download_media(media, file=str(target_dir))
             rel = Path(saved).resolve().relative_to(MEDIA_ROOT)
             row.update(downloaded=True, local_path=str(rel), size_bytes=Path(saved).stat().st_size)
-            row["phash"] = _compute_phash(saved, media_type)
+            prev_rel, ph = _make_preview_and_phash(saved, media_type)
+            row["phash"] = ph
+            row["preview_path"] = prev_rel
         except Exception as exc:  # noqa: BLE001 — фиксируем и идём дальше
             row["download_error"] = f"{exc.__class__.__name__}: {exc}"
         rows.append(row)

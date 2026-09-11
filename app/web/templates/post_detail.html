@@ -11,16 +11,10 @@
 </div>
 
 {% if media %}
-<div class="section-title">Медиа</div>
+<div class="section-title">Медиа (превью)</div>
 <div class="list">
   {% for m in media %}
-    {% if m.downloaded and m.local_path %}
-      {% if m.media_type.value == 'video' %}
-      <video controls preload="metadata" src="/media/{{ m.local_path }}"></video>
-      {% else %}
-      <img src="/media/{{ m.local_path }}" alt="">
-      {% endif %}
-    {% endif %}
+    {% if m.preview_path %}<img src="/media/{{ m.preview_path }}" alt="">{% endif %}
   {% endfor %}
 </div>
 {% endif %}
@@ -154,7 +148,7 @@
 <div class="list">
   {% for m in media %}
   <div class="card"><span class="badge">{{ m.media_type.value }}</span>
-    <span class="sub">{{ m.local_path or m.download_error or '—' }}</span></div>
+    <span class="sub">{{ m.preview_path or m.local_path or m.download_error or '—' }}</span>
   {% else %}<div class="card">Медиа нет</div>{% endfor %}
 </div>
 
