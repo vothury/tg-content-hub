@@ -121,4 +121,8 @@ async def run_semantic_dedup(post_id: int) -> bool:
         ))
         await session.commit()
     log.info("пост %s: дубликат поста %s (%s)", post_id, dup_of, reason)
+    # Дубль никогда не публикуется — оригиналы медиа удаляем (phash остаётся в БД для дедупа).
+    # При ложном срабатывании владелец вернёт пост кнопкой «Вернуть в работу» — медиа перескачаются.
+    from app.services.publishing import purge_post_media
+    await purge_post_media(post_id)
     return True

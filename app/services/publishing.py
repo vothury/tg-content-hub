@@ -32,6 +32,32 @@ def _media_root() -> Path:
     return root
 
 
+async def purge_post_media(post_id: int) -> None:
+    """После публикации файлы медиа не нужны: удаляем с диска.
+    Строки MediaItem (тип, phash) остаются для дедупликации и истории."""
+    root = _media_root()
+    async with session_scope() as session:
+        rows = (await session.execute(
+            select(MediaItem).where(MediaItem.post_id == post_id)
+        )).scalars().all()
+        paths = [r.local_path for r in rows if r.local_path]
+        for r in rows:
+            r.local_path = None
+            r.downloaded = False
+        await session.commit()
+    for rel in paths:
+        p = root / rel
+        try:
+            if p.exists():
+                p.unlink()
+            # подчищаем пустые папки поста/источника
+            for d in (p.parent, p.parent.parent):
+                if d.exists() and not any(d.iterdir()):
+                    d.rmdir()
+        except Exception:  # noqa: BLE001 — очистка не должна ломать публикацию
+            log.warning("не удалось удалить медиафайл %s", p)
+
+
 def _in_quiet_hours(channel: TargetChannel, now_local: datetime) -> bool:
     qh = channel.quiet_hours or {}
     start_s, end_s = qh.get("start"), qh.get("end")
@@ -339,6 +365,7 @@ async def _publish(bot: Bot, job_id: int) -> None:
     await _notify_owner(bot, f"✅ Пост #{post_id} опубликован в @{channel.username}")
     from app.bot.cards import clear_card_keyboard
     await clear_card_keyboard(bot, post_id)
+    await purge_post_media(post_id)
 
 
 async def process_ready_jobs(bot) -> None:
