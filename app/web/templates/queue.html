@@ -2,6 +2,11 @@
 {% block title %}Очередь — TG Content Hub{% endblock %}
 {% block content %}
 <h2 class="section-title">Очередь публикации</h2>
+<form method="get" action="/queue" class="filters">
+  <input type="date" name="date_from" value="{{ f_date_from }}" title="с даты">
+  <input type="date" name="date_to" value="{{ f_date_to }}" title="по дату">
+  <button class="btn" type="submit">Фильтр</button>
+</form>
 <div class="list">
   {% for r in rows %}
   <div class="card">
@@ -15,6 +20,11 @@
     {% if r.url %}<div class="sub"><a href="{{ r.url }}" target="_blank" rel="noopener">Открыть в Telegram ↗</a></div>{% endif %}
   </div>
   {% else %}<div class="card">Задач нет</div>{% endfor %}
+</div>
+<div class="actions" style="margin-top:10px">
+  {% if page > 1 %}<a class="btn ghost" href="/queue?{{ base_qs }}&page={{ page - 1 }}">← Назад</a>{% endif %}
+  <span class="sub">стр. {{ page }} из {{ pages }} · всего {{ total }}</span>
+  {% if page < pages %}<a class="btn ghost" href="/queue?{{ base_qs }}&page={{ page + 1 }}">Вперёд →</a>{% endif %}
 </div>
 <script>
 var QSIG='{{ sig }}';

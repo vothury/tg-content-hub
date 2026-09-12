@@ -17,6 +17,8 @@
     {% endfor %}
   </select>
   <input type="text" name="q" value="{{ f_q }}" placeholder="Поиск по тексту">
+  <input type="date" name="date_from" value="{{ f_date_from }}" title="с даты">
+  <input type="date" name="date_to" value="{{ f_date_to }}" title="по дату">
   <button class="btn" type="submit">Фильтр</button>
 </form>
 <div class="list">
@@ -32,6 +34,11 @@
   {% else %}
   <div class="card">Нет постов по фильтру</div>
   {% endfor %}
+</div>
+<div class="actions" style="margin-top:10px">
+  {% if page > 1 %}<a class="btn ghost" href="/posts?{{ base_qs }}&page={{ page - 1 }}">← Назад</a>{% endif %}
+  <span class="sub">стр. {{ page }} из {{ pages }} · всего {{ total }}</span>
+  {% if page < pages %}<a class="btn ghost" href="/posts?{{ base_qs }}&page={{ page + 1 }}">Вперёд →</a>{% endif %}
 </div>
 <script>
 var LIST=document.querySelector('.list');

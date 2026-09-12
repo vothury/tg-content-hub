@@ -1,4 +1,5 @@
-from datetime import timezone
+from datetime import time, timezone
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
@@ -37,7 +38,19 @@ def _pubfmt(dt):
         else local.strftime("%d.%m %H:%M")
 
 
-async def _query_rows(status: str, channel: int, q: str):
+def _day_range(date_str: str):
+    """Границы(owner-local) суток в UTC для фильтра по дате."""
+    from datetime import datetime
+    d = datetime.strptime(date_str, "%Y-%m-%d").date()
+    tz = owner_tz()
+    start = datetime.combine(d, time.min, tzinfo=tz).astimezone(timezone.utc)
+    end = datetime.combine(d, time.max, tzinfo=tz).astimezone(timezone.utc)
+    return start, end
+
+
+async def _query_rows(status: str, channel: int, q: str,
+                      date_from: str = "", date_to: str = "",
+                      page: int = 1, per_page: int = 50):
     async with session_scope() as session:
         query = select(Post)
         if status:
@@ -49,6 +62,23 @@ async def _query_rows(status: str, channel: int, q: str):
             query = query.where(Post.target_channel_id == channel)
         if q:
             query = query.where(Post.original_text.ilike(f"%{q}%"))
+        if date_from:
+            try:
+                query = query.where(Post.created_at >= _day_range(date_from)[0])
+            except ValueError:
+                pass
+        if date_to:
+            try:
+                query = query.where(Post.created_at <= _day_range(date_to)[1])
+            except ValueError:
+                pass
+        total = (await session.execute(
+            select(func.count()).select_from(query.subquery()))).scalar() or 0
+        pages = max(1, (total + per_page - 1) // per_page)
+        page = min(max(1, page), pages)
+        posts = (await session.execute(
+            query.order_by(Post.id.desc())
+            .limit(per_page).offset((page - 1) * per_page))).scalars().all()
         posts = (await session.execute(
             query.order_by(Post.id.desc()).limit(100))).scalars().all()
         sources = {s.id: s.username for s in (
@@ -95,12 +125,16 @@ async def _query_rows(status: str, channel: int, q: str):
             "pub_time": _pubfmt(pub_map.get(p.id)),
             "date_label": _date_label(p.source_published_at or p.created_at),
         })
-    return rows, channels
-
+    return rows, channels, total, page, pages
+    
 
 @router.get("/posts")
-async def posts_list(request: Request, status: str = "", channel: int = 0, q: str = ""):
-    rows, channels = await _query_rows(status, channel, q)
+async def posts_list(request: Request, status: str = "", channel: int = 0, q: str = "",
+                     date_from: str = "", date_to: str = "", page: int = 1):
+    rows, channels, total, page, pages = await _query_rows(
+        status, channel, q, date_from, date_to, page)
+    base_qs = (f"status={quote(status)}&channel={channel}&q={quote(q)}"
+               f"&date_from={quote(date_from)}&date_to={quote(date_to)}")
     return templates.TemplateResponse(request, "posts.html", {
         "active": "posts",
         "csrf_token": get_csrf_token(request),
@@ -108,12 +142,15 @@ async def posts_list(request: Request, status: str = "", channel: int = 0, q: st
         "channels": channels,
         "statuses": [s.value for s in PostStatus],
         "f_status": status, "f_channel": channel, "f_q": q,
+        "f_date_from": date_from, "f_date_to": date_to,
+        "page": page, "pages": pages, "total": total, "base_qs": base_qs,
     })
 
 
 @router.get("/api/posts")
-async def api_posts(status: str = "", channel: int = 0, q: str = ""):
-    rows, _ = await _query_rows(status, channel, q)
+async def api_posts(status: str = "", channel: int = 0, q: str = "",
+                    date_from: str = "", date_to: str = "", page: int = 1):
+    rows, _, _, _, _ = await _query_rows(status, channel, q, date_from, date_to, page)
     return JSONResponse({"rows": rows})
 
 

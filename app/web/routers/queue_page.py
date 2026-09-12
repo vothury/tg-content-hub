@@ -1,3 +1,6 @@
+from datetime import time, timezone
+from urllib.parse import quote
+
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
@@ -16,11 +19,37 @@ def _snip(text: str) -> str:
     return t[:80] + (".." if len(t) > 80 else "")
 
 
-async def _queue_rows():
+def _day_range(date_str: str):
+    from datetime import datetime
+    from app.services.times import owner_tz
+    d = datetime.strptime(date_str, "%Y-%m-%d").date()
+    tz = owner_tz()
+    start = datetime.combine(d, time.min, tzinfo=tz).astimezone(timezone.utc)
+    end = datetime.combine(d, time.max, tzinfo=tz).astimezone(timezone.utc)
+    return start, end
+
+
+async def _queue_rows(page: int = 1, per_page: int = 50,
+                      date_from: str = "", date_to: str = ""):
     async with session_scope() as session:
+        base = select(PublishJob)
+        if date_from:
+            try:
+                base = base.where(PublishJob.created_at >= _day_range(date_from)[0])
+            except ValueError:
+                pass
+        if date_to:
+            try:
+                base = base.where(PublishJob.created_at <= _day_range(date_to)[1])
+            except ValueError:
+                pass
+        total = (await session.execute(
+            select(func.count()).select_from(base.subquery()))).scalar() or 0
+        pages = max(1, (total + per_page - 1) // per_page)
+        page = min(max(1, page), pages)
         jobs = (await session.execute(
-            select(PublishJob).order_by(PublishJob.id.desc()).limit(100)
-        )).scalars().all()
+            base.order_by(PublishJob.id.desc())
+            .limit(per_page).offset((page - 1) * per_page))).scalars().all()
         channels = (await session.execute(select(TargetChannel))).scalars().all()
         post_ids = [j.post_id for j in jobs]
         texts = {}
@@ -44,15 +73,18 @@ async def _queue_rows():
         for j in jobs
     ]
     sig = "|".join(f"{r['id']}:{r['state']}" for r in rows)
-    return rows, sig
+    return rows, sig, total, page, pages
 
 
 @router.get("/queue")
-async def queue_page(request: Request):
-    rows, sig = await _queue_rows()
+async def queue_page(request: Request, date_from: str = "", date_to: str = "", page: int = 1):
+    rows, sig, total, page, pages = await _queue_rows(page, 50, date_from, date_to)
+    base_qs = f"date_from={quote(date_from)}&date_to={quote(date_to)}"
     return templates.TemplateResponse(request, "queue.html", {
         "active": "queue", "csrf_token": get_csrf_token(request),
         "rows": rows, "sig": sig,
+        "f_date_from": date_from, "f_date_to": date_to,
+        "page": page, "pages": pages, "total": total, "base_qs": base_qs,
     })
 
 

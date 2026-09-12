@@ -14,7 +14,7 @@
 <div class="section-title">Медиа (превью)</div>
 <div class="list">
   {% for m in media %}
-    {% if m.preview_path %}<img src="/media/{{ m.preview_path }}" alt="">{% endif %}
+    {% if m.preview_path %}<img src="/media/{{ m.preview_path }}" alt="" style="max-width:480px;height:auto">{% endif %}
   {% endfor %}
 </div>
 {% endif %}
