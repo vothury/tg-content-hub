@@ -2,7 +2,8 @@ FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/app
 
 WORKDIR /app
 
@@ -12,18 +13,15 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 # Слой зависимостей: кэшируется, пока не меняется pyproject.toml.
-# Зависимости берутся прямо из него — единый источник правды сохраняется.
 COPY pyproject.toml ./
 RUN python -c 'import tomllib; d=tomllib.load(open("pyproject.toml","rb")); open("/tmp/reqs.txt","w").write(chr(10).join(d["project"]["dependencies"]))' \
  && pip install --no-cache-dir -r /tmp/reqs.txt
 
-# Код: пересобирается только этот слой и ниже.
-# Пакет НЕ устанавливаем через pip — код исполняется из /app (cwd), это делает
-# слой кода чистым COPY и ускоряет пересборку при правках до секунд.
+# Код: пересобирается только этот слой и ниже (секунды при правках .py).
 COPY app ./app
 COPY alembic.ini ./
 COPY alembic ./alembic
-# Раскомментируйте строку ниже, если compose НЕ монтирует ./config в контейнер:
+# Раскомментируйте, если compose НЕ монтирует ./config в контейнер:
 # COPY config ./config
 
 RUN useradd -m appuser \

@@ -102,6 +102,7 @@ async def run_semantic_dedup(post_id: int) -> bool:
         cos_min = float(await get_setting(session, Keys.DEDUP_CANONICAL_COSINE_MIN))
         cont_min = float(await get_setting(session, Keys.DEDUP_CANONICAL_CONTAINMENT_MIN))
         fact_min = float(await get_setting(session, Keys.DEDUP_FACT_CONTAINMENT_MIN))
+        luma_max = int(await get_setting(session, Keys.DEDUP_LUMA_MAX_DIFF))
         max_cmp = int(await get_setting(session, Keys.DEDUP_MAX_COMPARE))
 
         since = datetime.now(timezone.utc) - timedelta(days=window)
@@ -116,10 +117,14 @@ async def run_semantic_dedup(post_id: int) -> bool:
 
         ids = [post_id] + [c.id for c in candidates]
         ph_map: dict[int, list[int]] = {}
-        for m in (await session.execute(
-                select(MediaItem).where(MediaItem.post_id.in_(ids)))).scalars().all():
-            if m.phash is not None:
-                ph_map.setdefault(m.post_id, []).append(m.phash)
+        lm_map: dict[int, list[int]] = {}
+        for pid, ph, lm in (await session.execute(
+                select(MediaItem.post_id, MediaItem.phash, MediaItem.luma_mean)
+                .where(MediaItem.post_id.in_(ids)))).all():
+            if ph is not None:
+                ph_map.setdefault(pid, []).append(ph)
+            if lm is not None:
+                lm_map.setdefault(pid, []).append(lm)
 
         new_ph = ph_map.get(post_id, [])
         new_canon = (post.canonical_text or "").strip()
@@ -139,11 +144,20 @@ async def run_semantic_dedup(post_id: int) -> bool:
                 d = min(_hamming(a, b) for a in new_ph for b in c_ph)
                 best_ph = d if best_ph is None else min(best_ph, d)
                 if d <= ph_max:
+                    # Тексты: канон, а при его отсутствии — исходный текст (якоря/косинус).
+                    eff_new = new_canon if len(new_canon) >= min_len else (post.normalized_text or "")
+                    eff_c = c_canon if len(c_canon) >= min_len else (c.normalized_text or "")
                     texts_ok = (
-                        len(new_canon) < min_len or len(c_canon) < min_len
-                        or _cosine(new_canon, c_canon) >= MEDIA_TEXT_FLOOR
+                        eff_new.strip() == eff_c.strip()
+                        or _cosine(eff_new, eff_c) >= MEDIA_TEXT_FLOOR
+                        or _fact_sim(eff_new, eff_c) >= MEDIA_TEXT_FLOOR
                     )
-                    if texts_ok:
+                    # Яркость: чёрное и белое не могут быть одним изображением.
+                    lm_new = lm_map.get(post_id, [])
+                    lm_c = lm_map.get(c.id, [])
+                    luma_ok = (not lm_new or not lm_c) or any(
+                        abs(a - b) <= luma_max for a in lm_new for b in lm_c)
+                    if texts_ok and luma_ok:
                         dup_of, reason = c.id, "media"
             # Текстовый матч: ВСЕГДА подтверждаем моделью (отрицания, отмены, обновления и т.п.).
             if dup_of is None and len(new_canon) >= min_len and len(c_canon) >= min_len:
@@ -174,7 +188,8 @@ async def run_semantic_dedup(post_id: int) -> bool:
             "confirm": confirm_info,
             "thresholds": {
                 "cosine": cos_min, "containment": cont_min, "fact": fact_min,
-                "phash": ph_max, "min_len": min_len, "window_days": window,
+                "phash": ph_max, "luma": luma_max,
+                "min_len": min_len, "window_days": window,
             },
         }
         if dup_of is None:

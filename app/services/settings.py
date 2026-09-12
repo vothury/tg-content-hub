@@ -39,6 +39,7 @@ class Keys:
     DOUBLE_CHECK_ONLINE_PROVIDERS = "llm.double_check_online_providers"
     DEDUP_WINDOW_DAYS = "dedup.window_days"
     DEDUP_PHASH_MAX_DISTANCE = "dedup.phash_max_distance"
+    DEDUP_LUMA_MAX_DIFF = "dedup.luma_max_diff"
     DEDUP_CANONICAL_MIN_LEN = "dedup.canonical_min_len"
     DEDUP_CANONICAL_COSINE_MIN = "dedup.canonical_cosine_min"
     DEDUP_CANONICAL_CONTAINMENT_MIN = "dedup.canonical_containment_min"
@@ -69,6 +70,7 @@ _ENV_DEFAULTS: dict[str, Any] = {
     Keys.DOUBLE_CHECK_ONLINE_PROVIDERS: settings.double_check_online_providers,
     Keys.DEDUP_WINDOW_DAYS: settings.dedup_window_days,
     Keys.DEDUP_PHASH_MAX_DISTANCE: settings.dedup_phash_max_distance,
+    Keys.DEDUP_LUMA_MAX_DIFF: settings.dedup_luma_max_diff,
     Keys.DEDUP_CANONICAL_MIN_LEN: settings.dedup_canonical_min_len,
     Keys.DEDUP_CANONICAL_COSINE_MIN: settings.dedup_canonical_cosine_min,
     Keys.DEDUP_CANONICAL_CONTAINMENT_MIN: settings.dedup_canonical_containment_min,

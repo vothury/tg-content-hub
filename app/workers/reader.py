@@ -98,8 +98,8 @@ def _dhash(img) -> int:
     return h
 
 
-def _make_preview_and_phash(local_path, media_type) -> tuple[str | None, int | None]:
-    """webp-превью (max side 480, quality 30) + phash. Для видео — первый кадр."""
+def _make_preview_and_phash(local_path, media_type) -> tuple[str | None, int | None, int | None]:
+    """webp-превью (max side 480, quality 30) + phash + средняя яркость. Для видео — первый кадр."""
     try:
         from PIL import Image
         import os, subprocess, tempfile
@@ -116,6 +116,8 @@ def _make_preview_and_phash(local_path, media_type) -> tuple[str | None, int | N
             src = str(local_path)
         with Image.open(src) as im:
             ph = _dhash(im)
+            px = im.convert("L").resize((32, 32)).tobytes()
+            luma = sum(px) // len(px)
             prev = im.convert("RGB")
             prev.thumbnail((480, 480))
             prev_dir = Path(local_path).parent / "prev"
@@ -125,9 +127,9 @@ def _make_preview_and_phash(local_path, media_type) -> tuple[str | None, int | N
         if media_type is MediaType.VIDEO and src:
             os.unlink(src)
         rel = Path(prev_path).resolve().relative_to(MEDIA_ROOT)
-        return str(rel), ph
-    except Exception:  # noqa: BLE001 — нет PIL/ffmpeg: остаёмся без превью и phash
-        return None, None
+        return str(rel), ph, luma
+    except Exception:  # noqa: BLE001 — нет PIL/ffmpeg: без превью, phash и luma
+        return None, None, None
 
 
 _MD_LINK = re.compile(r"\[([^\]]*)\]\(([^)]*)\)")
@@ -249,6 +251,7 @@ async def _download_unit_media(client, snap: SourceSnapshot, unit) -> list[dict]
             "download_error": None,
             "phash": None,
             "preview_path": None,
+            "luma_mean": None,
             "original_name": None,
             **_media_meta(media_type, media),
         }
@@ -266,9 +269,10 @@ async def _download_unit_media(client, snap: SourceSnapshot, unit) -> list[dict]
             rel = Path(saved).resolve().relative_to(MEDIA_ROOT)
             row.update(downloaded=True, local_path=str(rel), size_bytes=Path(saved).stat().st_size)
             row["original_name"] = Path(saved).name
-            prev_rel, ph = _make_preview_and_phash(saved, media_type)
+            prev_rel, ph, luma = _make_preview_and_phash(saved, media_type)
             row["phash"] = ph
             row["preview_path"] = prev_rel
+            row["luma_mean"] = luma
         except Exception as exc:  # noqa: BLE001 — фиксируем и идём дальше
             row["download_error"] = f"{exc.__class__.__name__}: {exc}"
         rows.append(row)

@@ -69,6 +69,8 @@ EDITABLE = [
      "hint": "Короче этого канон игнорируется (защита от тривиальных постов вроде «🙂»)."},
     {"key": _k("DEDUP_PHASH_MAX_DISTANCE"), "label": "Дедуп: порог pHash", "attr": "dedup_phash_max_distance", "type": "number",
      "hint": "Расстояние Хэмминга 0..64 для «то же изображение»; меньше = строже."},
+    {"key": _k("DEDUP_LUMA_MAX_DIFF"), "label": "Дедуп: допуск яркости", "attr": "dedup_luma_max_diff", "type": "number",
+     "hint": "0..255 — макс. разница средней яркости изображений для media-матча; чёрное и белое не совпадут."},
     {"key": _k("DEDUP_MAX_COMPARE"), "label": "Дедуп: максимум сравнений", "attr": "dedup_max_compare", "type": "number",
      "hint": "Сколько недавних постов канала сравнивать (ограничивает нагрузку)."},
 ]
@@ -95,6 +97,7 @@ ATTR_TO_KEY = {
     "double_check_online_providers": _k("DOUBLE_CHECK_ONLINE_PROVIDERS"),
     "dedup_window_days": _k("DEDUP_WINDOW_DAYS"),
     "dedup_phash_max_distance": _k("DEDUP_PHASH_MAX_DISTANCE"),
+    "dedup_luma_max_diff": _k("DEDUP_LUMA_MAX_DIFF"),
     "dedup_canonical_containment_min": _k("DEDUP_CANONICAL_CONTAINMENT_MIN"),
     "dedup_fact_containment_min": _k("DEDUP_FACT_CONTAINMENT_MIN"),
     "dedup_canonical_min_len": _k("DEDUP_CANONICAL_MIN_LEN"),
