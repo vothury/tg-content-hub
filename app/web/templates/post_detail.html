@@ -32,6 +32,7 @@
 <div class="card">
   <div class="sub">Совпадение канона: {{ p.dedup_info.best_canonical_sim }} / порог {{ p.dedup_info.thresholds.cosine }}</div>
   <div class="sub">Совпадение (включение): {{ p.dedup_info.best_canonical_containment }} / порог {{ p.dedup_info.thresholds.containment }}</div>
+  <div class="sub">Совпадение якорей: {{ p.dedup_info.get('best_fact_containment', '—') }} / порог {{ p.dedup_info.thresholds.get('fact', '—') }}</div>
   <div class="sub">Расстояние pHash: {{ p.dedup_info.best_phash_distance if p.dedup_info.best_phash_distance is not none else '—' }} / порог {{ p.dedup_info.thresholds.phash }}</div>
   <div class="sub">Кандидатов: {{ p.dedup_info.candidates }} · окно {{ p.dedup_info.thresholds.window_days }} дн. · мин. канон {{ p.dedup_info.thresholds.min_len }}</div>
   {% if p.dedup_info.dup_of %}<div class="sub">Дубликат поста #{{ p.dedup_info.dup_of }} ({{ p.dedup_info.reason }})</div>{% endif %}

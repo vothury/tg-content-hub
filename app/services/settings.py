@@ -42,6 +42,7 @@ class Keys:
     DEDUP_CANONICAL_MIN_LEN = "dedup.canonical_min_len"
     DEDUP_CANONICAL_COSINE_MIN = "dedup.canonical_cosine_min"
     DEDUP_CANONICAL_CONTAINMENT_MIN = "dedup.canonical_containment_min"
+    DEDUP_FACT_CONTAINMENT_MIN = "dedup.fact_containment_min"
     DEDUP_MAX_COMPARE = "dedup.max_compare"
 
 
@@ -71,6 +72,7 @@ _ENV_DEFAULTS: dict[str, Any] = {
     Keys.DEDUP_CANONICAL_MIN_LEN: settings.dedup_canonical_min_len,
     Keys.DEDUP_CANONICAL_COSINE_MIN: settings.dedup_canonical_cosine_min,
     Keys.DEDUP_CANONICAL_CONTAINMENT_MIN: settings.dedup_canonical_containment_min,
+    Keys.DEDUP_FACT_CONTAINMENT_MIN: settings.dedup_fact_containment_min,
     Keys.DEDUP_MAX_COMPARE: settings.dedup_max_compare,
 }
 

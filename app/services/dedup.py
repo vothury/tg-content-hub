@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 
@@ -12,10 +13,30 @@ from app.db.models import MediaItem, Post, PostEvent
 from app.db.session import session_scope
 from app.services.settings import Keys, get_setting
 
+
 log = logging.getLogger("dedup")
 
 
 MEDIA_TEXT_FLOOR = 0.20  # минимальное совпадение канонов, чтобы считать media-матч дублем
+
+
+_FACT_QUOTED = re.compile(r"«([^»]+)»")
+_FACT_NAME = re.compile(r"[А-ЯЁA-Z][а-яёa-z]+(?: [А-ЯЁA-Z][а-яёa-z]+){0,2}")
+_FACT_DATE = re.compile(r"\d{1,2}\.\d{1,2}\.\d{4}|\d{4}-\d{2}-\d{2}|\d{1,2} [а-яё]+ \d{4}|\d{4}")
+
+
+def _fact_tokens(text: str) -> set[str]:
+    toks = {("«" + q.strip() + "»") for q in _FACT_QUOTED.findall(text.lower())}
+    toks |= {n.lower() for n in _FACT_NAME.findall(text)}
+    toks |= {d.strip() for d in _FACT_DATE.findall(text.lower())}
+    return toks
+
+
+def _fact_sim(a: str, b: str) -> float:
+    ta, tb = _fact_tokens(a), _fact_tokens(b)
+    if not ta or not tb:
+        return 0.0
+    return len(ta & tb) / min(len(ta), len(tb))
 
 
 def _ngrams(text: str, n: int = 4):
@@ -80,6 +101,7 @@ async def run_semantic_dedup(post_id: int) -> bool:
         min_len = int(await get_setting(session, Keys.DEDUP_CANONICAL_MIN_LEN))
         cos_min = float(await get_setting(session, Keys.DEDUP_CANONICAL_COSINE_MIN))
         cont_min = float(await get_setting(session, Keys.DEDUP_CANONICAL_CONTAINMENT_MIN))
+        fact_min = float(await get_setting(session, Keys.DEDUP_FACT_CONTAINMENT_MIN))
         max_cmp = int(await get_setting(session, Keys.DEDUP_MAX_COMPARE))
 
         since = datetime.now(timezone.utc) - timedelta(days=window)
@@ -105,6 +127,7 @@ async def run_semantic_dedup(post_id: int) -> bool:
         reason = None
         best_cos = 0.0
         best_cont = 0.0
+        best_fact = 0.0
         best_ph = None
         confirm_info = None
         for c in candidates:
@@ -126,12 +149,15 @@ async def run_semantic_dedup(post_id: int) -> bool:
             if dup_of is None and len(new_canon) >= min_len and len(c_canon) >= min_len:
                 cos = _cosine(new_canon, c_canon)
                 cont = _containment(new_canon, c_canon)
+                fact = _fact_sim(new_canon, c_canon)
                 best_cos = max(best_cos, cos)
                 best_cont = max(best_cont, cont)
-                if cos >= cos_min or cont >= cont_min:
+                best_fact = max(best_fact, fact)
+                if cos >= cos_min or cont >= cont_min or fact >= fact_min:
                     same = await _confirm_same(new_canon, c_canon)
                     confirm_info = {"candidate": c.id, "same": same,
-                                    "cos": round(cos, 3), "cont": round(cont, 3)}
+                                    "cos": round(cos, 3), "cont": round(cont, 3),
+                                    "fact": round(fact, 3)}
                     if same:
                         dup_of, reason = c.id, "canonical"
             if dup_of is not None:
@@ -142,12 +168,13 @@ async def run_semantic_dedup(post_id: int) -> bool:
             "reason": reason,
             "best_canonical_sim": round(best_cos, 3),
             "best_canonical_containment": round(best_cont, 3),
+            "best_fact_containment": round(best_fact, 3),
             "best_phash_distance": best_ph,
             "candidates": len(candidates),
             "confirm": confirm_info,
             "thresholds": {
-                "cosine": cos_min, "containment": cont_min, "phash": ph_max,
-                "min_len": min_len, "window_days": window,
+                "cosine": cos_min, "containment": cont_min, "fact": fact_min,
+                "phash": ph_max, "min_len": min_len, "window_days": window,
             },
         }
         if dup_of is None:

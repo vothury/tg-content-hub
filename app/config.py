@@ -105,6 +105,7 @@ class Settings(BaseSettings):
     dedup_canonical_cosine_min: float = 0.60
     dedup_canonical_containment_min: float = 0.75  # доля n-грамм короткого канона в длинном
     dedup_max_compare: int = 200
+    dedup_fact_containment_min: float = 0.70
 
     @property
     def effective_revision_model(self) -> str:
