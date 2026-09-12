@@ -1,36 +1,59 @@
 {% extends "base.html" %}
+{% from "charts.html" import bars %}
 {% block title %}Дашборд — TG Content Hub{% endblock %}
 {% block content %}
 <h2 class="section-title">Дашборд</h2>
 
+<div class="section-title">Требует внимания</div>
+<div class="grid cards">
+  {% for a in attention %}
+  <a class="card" href="{{ a.url }}" style="text-decoration:none">
+    <div class="label">{{ a.label }}</div>
+    <div class="value">{{ a.count }}</div>
+  </a>
+  {% endfor %}
+</div>
+
+<div class="section-title">Сегодня</div>
 <div class="grid cards">
   <div class="card">
-    <div class="label">Постов всего</div>
-    <div class="value">{{ total_posts }}</div>
+    <div class="label">Опубликовано</div>
+    <div class="value">{{ pub_today_total }}</div>
+    {% if pub_today_ch %}<div class="sub">{{ pub_today_ch }}</div>{% endif %}
   </div>
   <div class="card">
-    <div class="label">Расход LLM сегодня</div>
+    <div class="label">Расход LLM</div>
     <div class="value">${{ "%.4f"|format(spent) }}</div>
     <div class="sub">лимит ${{ "%.2f"|format(budget_limit) }}</div>
   </div>
   <div class="card">
-    <div class="label">Кандидатов сегодня</div>
-    <div class="value">{{ candidates }}</div>
-    <div class="sub">лимит {{ cand_limit }}</div>
+    <div class="label">Кандидатов</div>
+    <div class="value">{{ cand_today }}</div>
+  </div>
+  <div class="card">
+    <div class="label">Дублей отклонено</div>
+    <div class="value">{{ dup_today }}</div>
+  </div>
+  <div class="card">
+    <div class="label">Автопилот-публикаций</div>
+    <div class="value">{{ autopilot_today }}</div>
   </div>
 </div>
 
-<div class="section-title">Посты по статусам</div>
-<div class="grid cards">
-  {% for st, cnt in post_counts.items() %}
-  <div class="card"><div class="label">{{ st }}</div><div class="value">{{ cnt }}</div></div>
-  {% endfor %}
-</div>
+<div class="section-title">7 дней: опубликовано</div>
+<div class="card">{{ bars(pub_series, 80) }}</div>
 
-<div class="section-title">Очередь публикации</div>
-<div class="grid cards">
-  {% for st, cnt in job_counts.items() %}
-  <div class="card"><div class="label">{{ st }}</div><div class="value">{{ cnt }}</div></div>
-  {% endfor %}
+<div class="section-title">7 дней: расход LLM, $</div>
+<div class="card">{{ bars(spend_series, 80) }}</div>
+
+<div class="section-title">Последние события</div>
+<div class="list">
+  {% for f in feed %}
+  <div class="card">
+    <span class="badge">{{ f.action }}</span>
+    <a class="sub" href="/posts/{{ f.post_id }}">#{{ f.post_id }}</a>
+    <span class="sub">{{ f.when }}{% if f.note %} · {{ f.note }}{% endif %}</span>
+  </div>
+  {% else %}<div class="card">Событий нет</div>{% endfor %}
 </div>
 {% endblock %}
