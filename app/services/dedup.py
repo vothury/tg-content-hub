@@ -106,10 +106,12 @@ async def run_semantic_dedup(post_id: int) -> bool:
         best_cos = 0.0
         best_cont = 0.0
         best_ph = None
-        cleared = None
+        confirm_info = None
         for c in candidates:
             c_ph = ph_map.get(c.id, [])
             c_canon = (c.canonical_text or "").strip()
+            # Медиа-матч: самостоятельное доказательство; текстовое подтверждение не применимо.
+            # Guard от коллизий dHash — непротиворечивость текстов (MEDIA_TEXT_FLOOR).
             if new_ph and c_ph:
                 d = min(_hamming(a, b) for a in new_ph for b in c_ph)
                 best_ph = d if best_ph is None else min(best_ph, d)
@@ -119,30 +121,19 @@ async def run_semantic_dedup(post_id: int) -> bool:
                         or _cosine(new_canon, c_canon) >= MEDIA_TEXT_FLOOR
                     )
                     if texts_ok:
-                        nd = _neg_delta(new_canon, c_canon)
-                        if nd >= 2:
-                            cleared = {"candidate": c.id, "neg_delta": nd,
-                                       "confirm_same": None, "rejected_by": "negation"}
-                        elif await _confirm_same(new_canon, c_canon):
-                            dup_of, reason = c.id, "media"
-                        else:
-                            cleared = {"candidate": c.id, "neg_delta": nd,
-                                       "confirm_same": False, "rejected_by": "confirm"}
-            if len(new_canon) >= min_len and len(c_canon) >= min_len:
+                        dup_of, reason = c.id, "media"
+            # Текстовый матч: ВСЕГДА подтверждаем моделью (отрицания, отмены, обновления и т.п.).
+            if dup_of is None and len(new_canon) >= min_len and len(c_canon) >= min_len:
                 cos = _cosine(new_canon, c_canon)
                 cont = _containment(new_canon, c_canon)
                 best_cos = max(best_cos, cos)
                 best_cont = max(best_cont, cont)
-                if dup_of is None and (cos >= cos_min or cont >= cont_min):
-                    nd = _neg_delta(new_canon, c_canon)
-                    if nd >= 2:
-                        cleared = {"candidate": c.id, "cos": round(cos, 3), "cont": round(cont, 3),
-                                   "neg_delta": nd, "confirm_same": None, "rejected_by": "negation"}
-                    elif await _confirm_same(new_canon, c_canon):
+                if cos >= cos_min or cont >= cont_min:
+                    same = await _confirm_same(new_canon, c_canon)
+                    confirm_info = {"candidate": c.id, "same": same,
+                                    "cos": round(cos, 3), "cont": round(cont, 3)}
+                    if same:
                         dup_of, reason = c.id, "canonical"
-                    else:
-                        cleared = {"candidate": c.id, "cos": round(cos, 3), "cont": round(cont, 3),
-                                   "neg_delta": nd, "confirm_same": False, "rejected_by": "confirm"}
             if dup_of is not None:
                 break
 
@@ -153,18 +144,18 @@ async def run_semantic_dedup(post_id: int) -> bool:
             "best_canonical_containment": round(best_cont, 3),
             "best_phash_distance": best_ph,
             "candidates": len(candidates),
+            "confirm": confirm_info,
             "thresholds": {
                 "cosine": cos_min, "containment": cont_min, "phash": ph_max,
                 "min_len": min_len, "window_days": window,
             },
-            "cleared": cleared,
         }
         if dup_of is None:
-            if cleared is not None:
+            if confirm_info is not None:
                 session.add(PostEvent(
                     post_id=post_id, actor=EventActor.SYSTEM, action="dedup_cleared",
                     from_status=PostStatus.CANDIDATE.value, to_status=PostStatus.CANDIDATE.value,
-                    details=cleared,
+                    details=confirm_info,
                 ))
             await session.commit()
             return False
@@ -173,12 +164,10 @@ async def run_semantic_dedup(post_id: int) -> bool:
         session.add(PostEvent(
             post_id=post_id, actor=EventActor.SYSTEM, action="deduplicated",
             from_status=PostStatus.CANDIDATE.value, to_status=PostStatus.DEDUPLICATED.value,
-            details={"dup_of": dup_of, "reason": reason},
+            details={"dup_of": dup_of, "reason": reason, "confirm": confirm_info},
         ))
         await session.commit()
     log.info("пост %s: дубликат поста %s (%s)", post_id, dup_of, reason)
-    # Дубль никогда не публикуется — оригиналы медиа удаляем (phash остаётся в БД для дедупа).
-    # При ложном срабатывании владелец вернёт пост кнопкой «Вернуть в работу» — медиа перескачаются.
     from app.services.publishing import purge_post_media
     await purge_post_media(post_id)
     return True
