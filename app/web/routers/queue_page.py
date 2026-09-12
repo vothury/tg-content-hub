@@ -144,7 +144,7 @@ async def stats_page(request: Request, period: int = 7, date_from: str = "", dat
     model_cost, model_calls, model_tok = {}, {}, {}
     for cat, model, cost, it, ot in calls:
         k = lk(cat)
-        c = cost or 0.0
+        c = float(cost or 0)
         t = (it or 0) + (ot or 0)
         if k:
             cost_day[k] = cost_day.get(k, 0.0) + c
