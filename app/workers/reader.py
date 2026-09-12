@@ -249,6 +249,7 @@ async def _download_unit_media(client, snap: SourceSnapshot, unit) -> list[dict]
             "download_error": None,
             "phash": None,
             "preview_path": None,
+            "original_name": None,
             **_media_meta(media_type, media),
         }
 
@@ -264,6 +265,7 @@ async def _download_unit_media(client, snap: SourceSnapshot, unit) -> list[dict]
             saved = await client.download_media(media, file=str(target_dir))
             rel = Path(saved).resolve().relative_to(MEDIA_ROOT)
             row.update(downloaded=True, local_path=str(rel), size_bytes=Path(saved).stat().st_size)
+            row["original_name"] = Path(saved).name
             prev_rel, ph = _make_preview_and_phash(saved, media_type)
             row["phash"] = ph
             row["preview_path"] = prev_rel

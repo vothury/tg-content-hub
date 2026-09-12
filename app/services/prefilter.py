@@ -19,6 +19,7 @@ from app.db.enums import EventActor, PostStatus
 from app.db.models import MediaItem, Post, PostEvent, Source
 from app.db.session import session_scope
 from app.services.settings import Keys, get_setting
+from app.services.dedup import _hamming
 
 log = logging.getLogger(__name__)
 
@@ -96,18 +97,40 @@ async def run_prefilter(post_id: int) -> None:
                 )
             ).scalar_one_or_none()
             if duplicate_id is not None:
-                post.status = PostStatus.DEDUPLICATED
-                session.add(PostEvent(
-                    post_id=post.id,
-                    actor=EventActor.SYSTEM,
-                    action="deduplicated",
-                    from_status=PostStatus.NEW.value,
-                    to_status=PostStatus.DEDUPLICATED.value,
-                    details={"duplicate_of_post_id": duplicate_id, "text_hash": post.text_hash},
-                ))
-                await session.commit()
-                log.info("пост %s: дубликат поста %s -> DEDUPLICATED", post.id, duplicate_id)
-                return
+                min_len = int(await get_setting(session, Keys.DEDUP_CANONICAL_MIN_LEN))
+                norm_len = len((post.normalized_text or "").strip())
+                compatible = norm_len >= min_len
+                if not compatible:
+                    # Текст тривиален («🙂»): требуем совместимости медиа, иначе это не дубль
+                    ph_max = int(await get_setting(session, Keys.DEDUP_PHASH_MAX_DISTANCE))
+                    ph_new = list((await session.execute(
+                        select(MediaItem.phash).where(
+                            MediaItem.post_id == post.id,
+                            MediaItem.phash.isnot(None)))).scalars().all())
+                    ph_old = list((await session.execute(
+                        select(MediaItem.phash).where(
+                            MediaItem.post_id == duplicate_id,
+                            MediaItem.phash.isnot(None)))).scalars().all())
+                    if not ph_new and not ph_old:
+                        compatible = True
+                    elif ph_new and ph_old and any(
+                            _hamming(a, b) <= ph_max for a in ph_new for b in ph_old):
+                        compatible = True
+                if compatible:
+                    post.status = PostStatus.DEDUPLICATED
+                    session.add(PostEvent(
+                        post_id=post.id,
+                        actor=EventActor.SYSTEM,
+                        action="deduplicated",
+                        from_status=PostStatus.NEW.value,
+                        to_status=PostStatus.DEDUPLICATED.value,
+                        details={"duplicate_of_post_id": duplicate_id, "text_hash": post.text_hash},
+                    ))
+                    await session.commit()
+                    log.info("пост %s: дубликат поста %s -> DEDUPLICATED", post.id, duplicate_id)
+                    return
+                # иначе: совпадение хеша при тривиальном тексте и разных медиа — не дубль;
+                # решение примет семантическая дедупликация после классификации
 
         # 2) Правила: глобальные настройки + переопределения источника (sources.filters)
         min_text_len = int(await get_setting(session, Keys.PREFILTER_MIN_TEXT_LEN))
