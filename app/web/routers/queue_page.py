@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 
 from app.db.enums import PublishJobState
 from app.db.models import LLMCall, Post, PostEvent, PublishJob, TargetChannel
+from app.db.session import session_scope
 from app.services.times import owner_now, owner_tz
 from app.web.charts import bar_series, stacked_series
 from app.web.auth import get_csrf_token, require_auth
