@@ -1,35 +1,54 @@
 {% extends "base.html" %}
+{% from "charts.html" import bars, stacked %}
 {% block title %}Статистика — TG Content Hub{% endblock %}
 {% block content %}
 <h2 class="section-title">Статистика</h2>
+<form method="get" action="/stats" class="filters">
+  <select name="period">
+    <option value="7" {{ 'selected' if period == 7 and not date_from }}>7 дней</option>
+    <option value="14" {{ 'selected' if period == 14 and not date_from }}>14 дней</option>
+    <option value="30" {{ 'selected' if period == 30 and not date_from }}>30 дней</option>
+  </select>
+  <input type="date" name="date_from" value="{{ date_from }}" title="с даты">
+  <input type="date" name="date_to" value="{{ date_to }}" title="по дату">
+  <button class="btn" type="submit">Показать</button>
+</form>
 
-<div class="section-title">LLM по дням</div>
-<div class="list">
-  {% for d, cnt, cost in by_day %}
-  <div class="card"><span class="badge">{{ d }}</span><div class="sub">{{ cnt }} вызовов · ${{ '%.4f'|format(cost) }}</div></div>
-  {% else %}<div class="card">Нет данных</div>{% endfor %}
+<div class="card">
+  <div class="label">За период</div>
+  <div class="sub">Расход: ${{ total_cost }} · Опубликовано: {{ total_pub }} · Цена одного поста: {{ unit if unit is not none else '—' }}</div>
 </div>
 
-<div class="section-title">LLM по моделям</div>
+<div class="section-title">Опубликовано по дням</div>
+<div class="card">{{ bars(pub_series) }}</div>
+
+<div class="section-title">Расход LLM по дням (синий — {{ top_model or '—' }}, зелёный — остальные)</div>
+<div class="card">{{ stacked(spend_series) }}</div>
+
+<div class="section-title">Запросы LLM по дням</div>
+<div class="card">{{ bars(req_series) }}</div>
+
+<div class="section-title">Токены по дням</div>
+<div class="card">{{ bars(tok_series) }}</div>
+
+<div class="section-title">Дубли по дням</div>
+<div class="card">{{ bars(dup_series) }}</div>
+
+<div class="section-title">Отклонения по дням</div>
+<div class="card">{{ bars(rej_series) }}</div>
+
+<div class="section-title">Топ моделей по расходу</div>
 <div class="list">
-  {% for m, cnt, cost in by_model %}
-  <div class="card"><span class="badge">{{ m }}</span><div class="sub">{{ cnt }} вызовов · ${{ '%.4f'|format(cost) }}</div></div>
-  {% else %}<div class="card">Нет данных</div>{% endfor %}
+  {% for m in top_models %}
+  <div class="card"><span class="badge">{{ m.model }}</span>
+    <span class="sub">${{ m.cost }} · {{ m.calls }} вызовов · {{ m.tokens }} токенов</span></div>
+  {% else %}<div class="card">Нет вызовов за период</div>{% endfor %}
 </div>
 
-<div class="section-title">Публикации по дням</div>
+<div class="section-title">Публикации по каналам</div>
 <div class="list">
-  {% for d, cnt in pub_by_day %}
-  <div class="card"><span class="badge">{{ d }}</span><div class="sub">{{ cnt }} пост(ов)</div></div>
-  {% else %}<div class="card">Нет данных</div>{% endfor %}
-</div>
-
-<div class="section-title">Посты по статусам</div>
-<div class="list">
-  {% for st, cnt in status_rows %}
-  <a class="card" href="/posts?status={{ st.value }}">
-    <span class="badge st-{{ st.value|lower }}">{{ st.value }}</span><div class="sub">{{ cnt }} → смотреть</div>
-  </a>
-  {% endfor %}
+  {% for c in ch_rows %}
+  <div class="card"><span class="badge">@{{ c.channel }}</span><span class="sub">{{ c.count }}</span></div>
+  {% else %}<div class="card">Нет публикаций за период</div>{% endfor %}
 </div>
 {% endblock %}

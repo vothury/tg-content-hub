@@ -1,0 +1,18 @@
+{% macro bars(series, height=110) -%}
+<svg width="{{ series|length * 34 + 8 }}" height="{{ height }}" style="max-width:100%">
+  {% for s in series %}
+  <rect x="{{ loop.index0 * 34 + 4 }}" y="{{ height - 16 - s.h }}" width="26" height="{{ s.h }}" rx="3" fill="#4d8dff"><title>{{ s.label }}: {{ s.value }}</title></rect>
+  <text x="{{ loop.index0 * 34 + 17 }}" y="{{ height - 4 }}" font-size="9" text-anchor="middle" fill="#8a8f98">{{ s.label }}</text>
+  {% endfor %}
+</svg>
+{%- endmacro %}
+
+{% macro stacked(series, height=110) -%}
+<svg width="{{ series|length * 34 + 8 }}" height="{{ height }}" style="max-width:100%">
+  {% for s in series %}
+  <rect x="{{ loop.index0 * 34 + 4 }}" y="{{ height - 16 - s.h1 }}" width="26" height="{{ s.h1 }}" rx="2" fill="#4d8dff"><title>основная модель: {{ s.v1 }}</title></rect>
+  <rect x="{{ loop.index0 * 34 + 4 }}" y="{{ height - 16 - s.h1 - s.h2 }}" width="26" height="{{ s.h2 }}" rx="2" fill="#2fd08c"><title>остальные: {{ s.v2 }}</title></rect>
+  <text x="{{ loop.index0 * 34 + 17 }}" y="{{ height - 4 }}" font-size="9" text-anchor="middle" fill="#8a8f98">{{ s.label }}</text>
+  {% endfor %}
+</svg>
+{%- endmacro %}
