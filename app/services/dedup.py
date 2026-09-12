@@ -106,8 +106,10 @@ async def run_semantic_dedup(post_id: int) -> bool:
         best_cos = 0.0
         best_cont = 0.0
         best_ph = None
+        cleared = None
         for c in candidates:
             c_ph = ph_map.get(c.id, [])
+            c_canon = (c.canonical_text or "").strip()
             if new_ph and c_ph:
                 d = min(_hamming(a, b) for a in new_ph for b in c_ph)
                 best_ph = d if best_ph is None else min(best_ph, d)
@@ -116,19 +118,31 @@ async def run_semantic_dedup(post_id: int) -> bool:
                         len(new_canon) < min_len or len(c_canon) < min_len
                         or _cosine(new_canon, c_canon) >= MEDIA_TEXT_FLOOR
                     )
-                    if texts_ok and _neg_delta(new_canon, c_canon) < 2 \
-                            and await _confirm_same(new_canon, c_canon):
-                        dup_of, reason = c.id, "media"
-            c_canon = (c.canonical_text or "").strip()
+                    if texts_ok:
+                        nd = _neg_delta(new_canon, c_canon)
+                        if nd >= 2:
+                            cleared = {"candidate": c.id, "neg_delta": nd,
+                                       "confirm_same": None, "rejected_by": "negation"}
+                        elif await _confirm_same(new_canon, c_canon):
+                            dup_of, reason = c.id, "media"
+                        else:
+                            cleared = {"candidate": c.id, "neg_delta": nd,
+                                       "confirm_same": False, "rejected_by": "confirm"}
             if len(new_canon) >= min_len and len(c_canon) >= min_len:
                 cos = _cosine(new_canon, c_canon)
                 cont = _containment(new_canon, c_canon)
                 best_cos = max(best_cos, cos)
                 best_cont = max(best_cont, cont)
                 if dup_of is None and (cos >= cos_min or cont >= cont_min):
-                    if _neg_delta(new_canon, c_canon) < 2 \
-                            and await _confirm_same(new_canon, c_canon):
+                    nd = _neg_delta(new_canon, c_canon)
+                    if nd >= 2:
+                        cleared = {"candidate": c.id, "cos": round(cos, 3), "cont": round(cont, 3),
+                                   "neg_delta": nd, "confirm_same": None, "rejected_by": "negation"}
+                    elif await _confirm_same(new_canon, c_canon):
                         dup_of, reason = c.id, "canonical"
+                    else:
+                        cleared = {"candidate": c.id, "cos": round(cos, 3), "cont": round(cont, 3),
+                                   "neg_delta": nd, "confirm_same": False, "rejected_by": "confirm"}
             if dup_of is not None:
                 break
 
@@ -143,8 +157,15 @@ async def run_semantic_dedup(post_id: int) -> bool:
                 "cosine": cos_min, "containment": cont_min, "phash": ph_max,
                 "min_len": min_len, "window_days": window,
             },
+            "cleared": cleared,
         }
         if dup_of is None:
+            if cleared is not None:
+                session.add(PostEvent(
+                    post_id=post_id, actor=EventActor.SYSTEM, action="dedup_cleared",
+                    from_status=PostStatus.CANDIDATE.value, to_status=PostStatus.CANDIDATE.value,
+                    details=cleared,
+                ))
             await session.commit()
             return False
 
