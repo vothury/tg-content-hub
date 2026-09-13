@@ -68,3 +68,6 @@ wait-web:    ## ждать готовности веб-админки после
 
 fix-media: ## опубликованные посты: превью вместо тяжёлых оригиналов
 	docker compose run --rm --entrypoint "python -m app.tools.backfill_previews" api
+
+clean-media: ## чистка тома медиа: удалить ненужные оригиналы (превью и нужные для публикации не трогает)
+	docker compose run --rm --entrypoint "python -m app.tools.clean_media_volume" api
