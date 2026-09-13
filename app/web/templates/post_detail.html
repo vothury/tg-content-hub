@@ -167,7 +167,7 @@
   {% for e in events %}
   <div class="card"><span class="badge">{{ e.action }}</span>
     <span class="sub">{{ e.from_status or '' }} → {{ e.to_status or '' }}</span></div>
-    {% if e.details and e.action in ('deduplicated', 'dedup_cleared') %}<div class="sub">{{ e.details }}</div>{% endif %}
+    {% if e.details and e.action in ('deduplicated', 'dedup_cleared', 'double_check_attempt', 'double_check_recovered', 'double_check_review') %}<div class="sub">{{ e.details }}</div>{% endif %}
   {% else %}<div class="card">Событий нет</div>{% endfor %}
 </div>
 <script>

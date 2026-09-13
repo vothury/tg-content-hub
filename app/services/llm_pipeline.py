@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from dataclasses import asdict
@@ -633,19 +634,39 @@ async def _run_double_check(post_id: int) -> tuple[bool, str]:
             verdict=verdict or "нет",
             draft=draft[:TEXT_LIMIT])},
     ]
-    resp, result, call_status, error_text = await _call_and_parse(
-        messages, model, settings.llm_rewrite_max_tokens, temperature=0.1,
-        schema=DoubleCheckResult, provider=providers,
-    )
-    if resp is not None and resp.cost_usd:
-        await guards.add_llm_cost(resp.cost_usd)
-    async with session_scope() as session:
-        session.add(_make_call_row(post_id, LLMStage.REVISION, model, DOUBLE_CHECK_VERSION, messages,
-                                   resp, asdict(result) if result else None, call_status, error_text))
-        await session.commit()
-    if result is None:
-        return False, "двойная проверка не дала ответа — нужна ручная проверка"
-    return result.approve, result.note
+    max_attempts = 2
+    for attempt in range(1, max_attempts + 1):
+        resp, result, call_status, error_text = await _call_and_parse(
+            messages, model, settings.llm_rewrite_max_tokens, temperature=0.1,
+            schema=DoubleCheckResult, provider=providers,
+        )
+        if resp is not None and resp.cost_usd:
+            await guards.add_llm_cost(resp.cost_usd)
+        async with session_scope() as session:
+            session.add(_make_call_row(post_id, LLMStage.REVISION, model, DOUBLE_CHECK_VERSION, messages,
+                                       resp, asdict(result) if result else None, call_status, error_text))
+            session.add(PostEvent(
+                post_id=post_id, actor=EventActor.SYSTEM, action="double_check_attempt",
+                details={"attempt": attempt,
+                         "status": call_status.value if call_status else None,
+                         "error": error_text},
+            ))
+            await session.commit()
+        if result is not None:
+            if attempt > 1:
+                async with session_scope() as session:
+                    session.add(PostEvent(
+                        post_id=post_id, actor=EventActor.SYSTEM, action="double_check_recovered",
+                        details={"attempt": attempt},
+                    ))
+                    await session.commit()
+                log.info("пост %s: двойная проверка ответила с попытки %d", post_id, attempt)
+            return result.approve, result.note
+        if attempt < max_attempts:
+            log.warning("пост %s: двойная проверка не ответила (попытка %d) — повтор через 60 сек",
+                        post_id, attempt)
+            await asyncio.sleep(60)
+    return False, "двойная проверка не дала ответа — нужна ручная проверка"
 
 
 async def _set_double_check_review(post_id: int, note: str) -> None:
