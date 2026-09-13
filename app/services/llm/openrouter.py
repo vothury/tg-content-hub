@@ -81,6 +81,7 @@ async def chat_completion(
     max_tokens: int,
     temperature: float = 0.4,
     provider: dict | None = None,
+    reasoning_max_tokens: int | None = None,
 ) -> LLMResponse:
     """Вызов чат-комплишена с одной повторной попыткой. Бросает OpenRouterError."""
     payload = {
@@ -89,6 +90,9 @@ async def chat_completion(
         "max_tokens": max_tokens,
         "temperature": temperature,
     }
+    # Бюджет внутренних рассуждений: защищает от зацикливания reasoning-моделей
+    if reasoning_max_tokens:
+        payload["reasoning"] = {"max_tokens": reasoning_max_tokens}
     # Предпочтения провайдеров передаются как есть; пусто = авто-маршрутизация
     if provider:
         payload["provider"] = provider

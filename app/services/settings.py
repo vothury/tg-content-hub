@@ -26,6 +26,7 @@ class Keys:
     REVISION_PROVIDERS = "llm.revision_providers"
     MAX_LLM_BUDGET_USD_PER_DAY = "limits.max_llm_budget_usd_per_day"
     MAX_CANDIDATES_PER_DAY = "limits.max_candidates_per_day"
+    LLM_REASONING_MAX_TOKENS = "llm.reasoning_max_tokens"
     PREFILTER_MIN_TEXT_LEN = "prefilter.min_text_len"
     PREFILTER_BLACKLIST_WORDS = "prefilter.blacklist_words"
     MAX_MEDIA_DOWNLOAD_MB = "reader.max_media_download_mb"
@@ -57,6 +58,7 @@ _ENV_DEFAULTS: dict[str, Any] = {
     Keys.REVISION_PROVIDERS: settings.revision_providers,
     Keys.MAX_LLM_BUDGET_USD_PER_DAY: settings.max_llm_budget_usd_per_day,
     Keys.MAX_CANDIDATES_PER_DAY: settings.max_candidates_per_day,
+    Keys.LLM_REASONING_MAX_TOKENS: settings.llm_reasoning_max_tokens,
     Keys.PREFILTER_MIN_TEXT_LEN: settings.prefilter_min_text_len,
     Keys.PREFILTER_BLACKLIST_WORDS: settings.prefilter_blacklist_words,
     Keys.MAX_MEDIA_DOWNLOAD_MB: settings.max_media_download_mb,

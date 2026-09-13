@@ -173,14 +173,16 @@ def _make_call_row(post_id, stage, model, prompt_version, messages, resp, parsed
     )
 
 
-async def _call_and_parse(messages, model, max_tokens, temperature, schema, provider=None):
+async def _call_and_parse(messages, model, max_tokens, temperature, schema, provider=None,
+                          reasoning_max_tokens: int | None = None):
     """Вызов модели + парсинг. Возвращает (ответ, результат, статус, текст ошибки)."""
     resp: LLMResponse | None = None
     result = None
     call_status = LLMCallStatus.OK
     error_text: str | None = None
     try:
-        resp = await chat_completion(messages, model, max_tokens, temperature=temperature, provider=provider)
+        resp = await chat_completion(messages, model, max_tokens, temperature=temperature,
+                                     provider=provider, reasoning_max_tokens=reasoning_max_tokens)
         result = schema.from_response(resp.content)
     except OpenRouterError as exc:
         call_status, error_text = LLMCallStatus.ERROR, str(exc)
@@ -227,7 +229,8 @@ async def classify_post(post_id: int) -> None:
         {"role": "user", "content": CLASSIFY_USER.format(text=original_text)},
     ]
     resp, result, call_status, error_text = await _call_and_parse(
-        messages, model, settings.llm_classify_max_tokens, temperature=0.2, schema=ClassifyResult
+        messages, model, settings.llm_classify_max_tokens, temperature=0.2, schema=ClassifyResult,
+        reasoning_max_tokens=settings.llm_reasoning_max_tokens,
     )
     if resp is not None and resp.cost_usd:
         await guards.add_llm_cost(resp.cost_usd)
@@ -639,6 +642,7 @@ async def _run_double_check(post_id: int) -> tuple[bool, str]:
         resp, result, call_status, error_text = await _call_and_parse(
             messages, model, settings.llm_rewrite_max_tokens, temperature=0.1,
             schema=DoubleCheckResult, provider=providers,
+            reasoning_max_tokens=settings.llm_reasoning_max_tokens,
         )
         if resp is not None and resp.cost_usd:
             await guards.add_llm_cost(resp.cost_usd)

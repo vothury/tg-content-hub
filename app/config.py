@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     openrouter_request_timeout_sec: int = 90
     llm_classify_max_tokens: int = 8000
     llm_rewrite_max_tokens: int = 15000
+    llm_reasoning_max_tokens: int = 1000   # бюджет reasoning для classify/double-check
     # Как часто пайплайн пересматривает «застрявшие» посты при пустой очереди
     pipeline_rescan_interval_sec: int = 60
 
