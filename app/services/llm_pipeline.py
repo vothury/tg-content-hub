@@ -182,7 +182,10 @@ async def _call_and_parse(messages, model, max_tokens, temperature, schema, prov
     call_status = LLMCallStatus.OK
     error_text: str | None = None
     try:
-        resp = await chat_completion(messages, model, max_tokens, temperature=temperature,
+        # max_tokens = лимит финального ответа стадии + бюджет рассуждений:
+        # рассуждения тарифицируются внутри max_tokens, ответ не должен голодать
+        resp = await chat_completion(messages, model, max_tokens + (reasoning_max_tokens or 0),
+                                     temperature=temperature,
                                      provider=provider, reasoning_max_tokens=reasoning_max_tokens)
         result = schema.from_response(resp.content)
     except OpenRouterError as exc:
@@ -190,7 +193,9 @@ async def _call_and_parse(messages, model, max_tokens, temperature, schema, prov
     except LLMParseError as exc:
         call_status = LLMCallStatus.PARSE_ERROR
         if resp is not None and resp.finish_reason == "length":
-            error_text = f"ответ модели обрезан лимитом токенов: {exc}"
+            detail = ("рассуждения исчерпали лимит, финальный ответ пуст"
+                      if not (resp.content or "").strip() else "финальный ответ обрезан лимитом")
+            error_text = f"лимит токенов исчерпан ({detail}): {exc}"
         else:
             error_text = str(exc)
     except Exception as exc:  # noqa: BLE001
