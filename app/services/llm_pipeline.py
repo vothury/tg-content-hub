@@ -117,7 +117,8 @@ async def _translate_to_russian(text: str, model: str, providers) -> tuple[str |
         {"role": "user", "content": text},
     ]
     try:
-        resp = await chat_completion(messages, model, max_tokens=300, temperature=0.0, provider=providers)
+        resp = await chat_completion(messages, model, max_tokens=300, temperature=0.0, provider=providers,
+                                     reasoning_max_tokens=settings.llm_reasoning_small)
         translated = (resp.content or "").strip()
         if translated and not _has_cjk(translated):
             return translated, resp
@@ -346,6 +347,7 @@ async def rewrite_post(post_id: int) -> None:
     resp, result, call_status, error_text = await _call_and_parse(
         messages, model, settings.llm_rewrite_max_tokens, temperature=0.4,
         schema=RewriteResult, provider=providers,
+        reasoning_max_tokens=settings.llm_reasoning_rewrite,
     )
     if resp is not None and resp.cost_usd:
         await guards.add_llm_cost(resp.cost_usd)
@@ -461,6 +463,7 @@ async def revise_draft(post_id: int, comment: str) -> tuple[bool, str]:
     resp, result, call_status, error_text = await _call_and_parse(
         messages, model, settings.llm_rewrite_max_tokens, temperature=0.7,
         schema=RewriteResult, provider=providers,
+        reasoning_max_tokens=settings.llm_reasoning_rewrite,
     )
     if resp is not None and resp.cost_usd:
         await guards.add_llm_cost(resp.cost_usd)
@@ -580,6 +583,7 @@ async def _ensure_clean_draft(post_id: int) -> None:
     resp, result, call_status, error_text = await _call_and_parse(
         messages, model, settings.llm_rewrite_max_tokens, temperature=0.0,
         schema=RewriteResult, provider=providers,
+        reasoning_max_tokens=settings.llm_reasoning_small,
     )
     if resp is not None and resp.cost_usd:
         await guards.add_llm_cost(resp.cost_usd)
@@ -642,7 +646,8 @@ async def _run_double_check(post_id: int) -> tuple[bool, str]:
         resp, result, call_status, error_text = await _call_and_parse(
             messages, model, settings.llm_rewrite_max_tokens, temperature=0.1,
             schema=DoubleCheckResult, provider=providers,
-            reasoning_max_tokens=settings.llm_reasoning_max_tokens,
+            reasoning_max_tokens=(settings.llm_reasoning_online_check if online
+                                  else settings.llm_reasoning_max_tokens),
         )
         if resp is not None and resp.cost_usd:
             await guards.add_llm_cost(resp.cost_usd)

@@ -64,6 +64,9 @@ class Settings(BaseSettings):
     llm_classify_max_tokens: int = 8000
     llm_rewrite_max_tokens: int = 15000
     llm_reasoning_max_tokens: int = 1000   # бюджет reasoning для classify/double-check
+    llm_reasoning_rewrite: int = 2000      # рерайт под стиль / правка ИИ
+    llm_reasoning_online_check: int = 2500 # двойная проверка с фактчекингом в интернете
+    llm_reasoning_small: int = 300         # чистка, перевод, подтверждение дубля
     # Как часто пайплайн пересматривает «застрявшие» посты при пустой очереди
     pipeline_rescan_interval_sec: int = 60
 

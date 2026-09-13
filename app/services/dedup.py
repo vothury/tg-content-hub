@@ -83,7 +83,8 @@ async def _confirm_same(a: str, b: str) -> bool:
         {"role": "user", "content": DEDUP_CONFIRM_USER.format(a=a, b=b)},
     ]
     try:
-        resp = await chat_completion(messages, model, max_tokens=100, temperature=0.0)
+        resp = await chat_completion(messages, model, max_tokens=100, temperature=0.0,
+                                     reasoning_max_tokens=settings.llm_reasoning_small)
         return bool(DedupConfirmResult.from_response(resp.content).same)
     except Exception:  # noqa: BLE001 — сбой подтверждения не ломает дедуп
         log.warning("dedup-confirm не ответил — оставляем лексическое решение")
