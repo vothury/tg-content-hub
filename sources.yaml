@@ -85,7 +85,6 @@ sources:
       min_text_len: 1
       blacklist_words: ["#реклама", "# реклама"]
 
-
   - username: go_tests
     kind: test
     target: testimfoto
@@ -94,10 +93,18 @@ sources:
       min_text_len: 1
       blacklist_words: ["#реклама", "# реклама"]
 
-
   - username: kino_filmach
     kind: external
     target: testimfilm
+    relevance: 9
+    filters:
+      min_text_len: 1
+      blacklist_words: ["#реклама", "# реклама"]
+    # poll_interval_sec: 300
+
+  - username: istoriya
+    kind: external
+    target: testimfoto
     relevance: 9
     filters:
       min_text_len: 1

@@ -93,6 +93,7 @@ def parse_sources_text(text: str):
         f = s.get("filters") or {}
         sources.append({
             "username": _norm_username(s["username"]),
+            "title": str(s.get("title") or "").strip() or None,
             "kind": kind,
             "target": _norm_username(s["target"]) if s.get("target") else None,
             "enabled": bool(s.get("enabled", True)),
@@ -187,7 +188,8 @@ async def apply_parsed(parsed) -> dict:
             tgt = target_ids.get(e["target"])
             src = existing_s.get((e["username"], e["target"]))
             if src is None:
-                src = Source(username=e["username"], kind=e["kind"], enabled=e["enabled"], target_channel_id=tgt,
+                src = Source(username=e["username"], title=e["title"] or e["username"],
+                             kind=e["kind"], enabled=e["enabled"], target_channel_id=tgt,
                              poll_interval_sec=e["poll_interval_sec"] or d_interval,
                              fresh_window_min=e["fresh_window_min"] or d_window,
                              fallback_count=e["fallback_count"] if e["fallback_count"] is not None else d_fb,
@@ -198,6 +200,7 @@ async def apply_parsed(parsed) -> dict:
             else:
                 keep.add(src.id); changed = False
                 if src.kind != e["kind"]: src.kind = e["kind"]; changed = True
+                if e["title"] and src.title != e["title"]: src.title = e["title"]; changed = True
                 if src.enabled != e["enabled"]: src.enabled = e["enabled"]; changed = True
                 if src.target_channel_id != tgt: src.target_channel_id = tgt; changed = True
                 if e["poll_interval_sec"] and src.poll_interval_sec != e["poll_interval_sec"]: src.poll_interval_sec = e["poll_interval_sec"]; changed = True
