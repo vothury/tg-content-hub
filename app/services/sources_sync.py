@@ -177,10 +177,15 @@ async def apply_parsed(parsed) -> dict:
 
 
         keep = set()
-        existing_s = {s.username: s for s in (await session.execute(select(Source))).scalars().all()}
+        id2uname = {c.id: c.username for c in (
+            await session.execute(select(TargetChannel))).scalars().all()}
+        existing_s = {
+            (s.username, id2uname.get(s.target_channel_id)): s
+            for s in (await session.execute(select(Source))).scalars().all()
+        }
         for e in sources_cfg:
             tgt = target_ids.get(e["target"])
-            src = existing_s.get(e["username"])
+            src = existing_s.get((e["username"], e["target"]))
             if src is None:
                 src = Source(username=e["username"], kind=e["kind"], enabled=e["enabled"], target_channel_id=tgt,
                              poll_interval_sec=e["poll_interval_sec"] or d_interval,

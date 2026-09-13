@@ -91,7 +91,9 @@ async def run_prefilter(post_id: int) -> None:
             duplicate_id = (
                 await session.execute(
                     select(Post.id)
-                    .where(Post.text_hash == post.text_hash, Post.id < post.id)
+                    .where(Post.text_hash == post.text_hash,
+                           Post.target_channel_id == post.target_channel_id,
+                           Post.id < post.id)
                     .order_by(Post.id.desc())
                     .limit(1)
                 )
