@@ -12,6 +12,12 @@ restart:
 logs:          ## хвосты логов всех сервисов
 	docker compose logs -f --tail=100
 
+logs2:         ## краткие логи: только сервисы приложения (без postgres/redis)
+	docker compose logs -f --tail=100 reader pipeline bot scheduler api
+
+logs3:         ## все логи минус инфраструктурный шум (redis save, pg checkpoints, httpx, access 200)
+	docker compose logs -f --tail=200 | grep -vE --line-buffered 'Background saving|Saving\.\.\.|DB saved on disk|Fork CoW|changes in [0-9]+ seconds|checkpoint (starting|complete)|httpx: HTTP Request|telethon\.|HTTP/1\.1" 200|GET /media/|GET /api/|GET /healthz|GET /favicon'
+
 ps:
 	docker compose ps
 
