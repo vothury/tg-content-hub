@@ -40,6 +40,7 @@ targets:
   - username: testimfilm
     title: "Кино тест"
     description: "Канал о кино: новости фильмов, трейлеры, кастинги, релизы, сборы, подборки"
+    dup_recap: false        # дубли публикуются с блоком «Ранее об этом уже писали»
     style: kino_style
     rewrite: false
     autopilot: true
@@ -54,6 +55,7 @@ targets:
   - username: testimfoto
     title: "Фото тест"
     description: "Фото-канал: атмосферные кадры, фотоподборки, визуальные истории"
+    dup_recap: true        # дубли публикуются с блоком «Ранее об этом уже писали»
     rewrite: false
     autopilot: true
     autopilot_min_score: 8

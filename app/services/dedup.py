@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 
 from app.db.enums import EventActor, PostStatus
-from app.db.models import MediaItem, Post, PostEvent
+from app.db.models import MediaItem, Post, PostEvent, TargetChannel
 from app.db.session import session_scope
 from app.services.settings import Keys, get_setting
 
@@ -194,7 +194,9 @@ async def run_semantic_dedup(post_id: int) -> bool:
             },
         }
         if dup_of is not None:
-            enabled = int(await get_setting(session, Keys.PUBLISH_DUP_RECAP_ENABLED))
+            channel = (await session.get(TargetChannel, post.target_channel_id)
+                       if post.target_channel_id is not None else None)
+            enabled = bool(channel.dup_recap_enabled) if channel is not None else False
             window_h = int(await get_setting(session, Keys.PUBLISH_DUP_RECAP_WINDOW_HOURS))
             orig = await session.get(Post, dup_of)
             orig_dt = orig.source_published_at if orig is not None else None

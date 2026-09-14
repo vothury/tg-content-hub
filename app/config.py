@@ -67,7 +67,6 @@ class Settings(BaseSettings):
     llm_reasoning_rewrite: int = 2000      # рерайт под стиль / правка ИИ
     llm_reasoning_online_check: int = 2500 # двойная проверка с фактчекингом в интернете
     llm_reasoning_small: int = 300         # чистка, перевод, подтверждение дубля
-    publish_dup_recap_enabled: int = 1     # 1 = дубли опубликованных тем публикуются с блоком «ранее писали»
     publish_dup_recap_window_hours: int = 24
     llm_double_check_max_tokens: int = 800 # токены финального ответа двойной проверки (поверх reasoning)
     publish_dup_recap_window_hours: int = 24  # окно «ранее писали» для дублей-агрегаторов

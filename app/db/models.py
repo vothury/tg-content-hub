@@ -113,6 +113,7 @@ class TargetChannel(Base):
     description: Mapped[str | None] = mapped_column(Text)
     # Делать ли автоматический рерайт постов этого канала
     rewrite_enabled: Mapped[bool] = mapped_column(default=True)
+    dup_recap_enabled: Mapped[bool] = mapped_column(default=False)
     # Автопилот (Этап 7): публикация без ручного ревью при уверенности модели
     autopilot: Mapped[bool] = mapped_column(default=False)
     autopilot_min_score: Mapped[int | None] = mapped_column(Integer)

@@ -73,6 +73,7 @@ def parse_sources_text(text: str):
             "min_interval_min": t.get("min_interval_min"),
             "quiet_hours": t.get("quiet_hours"),
             "rewrite": t.get("rewrite"),
+            "dup_recap": bool(t.get("dup_recap", False)),
             "style": str(t.get("style") or "").strip() or None,
             "autopilot": t.get("autopilot"),
             "autopilot_min_score": t.get("autopilot_min_score"),
@@ -166,6 +167,7 @@ async def apply_parsed(parsed) -> dict:
                                           daily_limit=cfg["daily_limit"] or 6, min_interval_min=cfg["min_interval_min"] or 60,
                                           quiet_hours=cfg["quiet_hours"],
                                           rewrite_enabled=True if cfg["rewrite"] is None else bool(cfg["rewrite"]),
+                                          dup_recap_enabled=bool(cfg["dup_recap"]),
                                           autopilot=bool(cfg["autopilot"]),
                                           autopilot_min_score=cfg["autopilot_min_score"],
                                           review_if_uncertain=True if cfg["review_if_uncertain"] is None else bool(cfg["review_if_uncertain"]),
@@ -190,6 +192,8 @@ async def apply_parsed(parsed) -> dict:
             dc = bool(cfg["double_check"])
             if ch.double_check != dc: ch.double_check = dc; changed = True
             if ch.rewrite_enabled != rw: ch.rewrite_enabled = rw; changed = True
+            dr = bool(cfg["dup_recap"])
+            if ch.dup_recap_enabled != dr: ch.dup_recap_enabled = dr; changed = True
             if ch.style_profile_id != style_id: ch.style_profile_id = style_id; changed = True
             if changed: stats["targets"][1] += 1
             dco = bool(cfg["double_check_online"])
