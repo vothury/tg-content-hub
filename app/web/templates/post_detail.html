@@ -5,6 +5,7 @@
 {% if msg %}<div class="card msg">{{ msg }}</div>{% endif %}
 <div class="card">
   <div class="label">@{{ source }} → @{{ channel }} · оценка {{ p.score if p.score is not none else '—' }}</div>
+  <div class="sub">Следующий шаг: {{ next_step }}</div>
   {% if p.verdict_reason %}<div class="sub">Вердикт: {{ p.verdict_reason }}</div>{% endif %}
   {% if p.autopilot %}<div class="sub">🤖 Опубликовано автопилотом{% if channel_obj and channel_obj.double_check %} · двойная проверка: одобрена{% endif %}</div>{% endif %}
   {% if p.double_check_note %}<div class="sub" style="color:#ff9c9c">⛔ Двойная проверка отклонила: {{ p.double_check_note }}</div>{% endif %}

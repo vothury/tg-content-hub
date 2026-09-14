@@ -11,6 +11,7 @@ from app.db.session import session_scope
 from app.services.times import owner_now, owner_tz
 from app.web.auth import get_csrf_token, require_auth
 from app.web.templating import templates
+from app.web.next_step import next_step_hint
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 
@@ -86,6 +87,7 @@ async def _query_rows(status: str, channel: int, q: str,
         channels = (await session.execute(
             select(TargetChannel).order_by(TargetChannel.id))).scalars().all()
         ch_map = {c.id: c.username for c in channels}
+        ch_obj = {c.id: c for c in channels}
         ids = [p.id for p in posts]
         media_map: dict = {}
         if ids:
@@ -124,6 +126,7 @@ async def _query_rows(status: str, channel: int, q: str,
             "text": txt[:80] + (".." if len(txt) > 80 else ""),
             "pub_time": _pubfmt(pub_map.get(p.id)),
             "date_label": _date_label(p.source_published_at or p.created_at),
+            "next_step": next_step_hint(p, ch_obj.get(p.target_channel_id)),
         })
     return rows, channels, total, page, pages
     

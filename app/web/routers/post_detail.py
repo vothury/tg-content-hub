@@ -11,6 +11,7 @@ from app.db.models import (
 )
 from app.db.session import session_scope
 from app.services import review
+from app.web.next_step import next_step_hint
 from app.web.auth import csrf_protect, get_csrf_token, require_auth
 from app.web.templating import templates
 
@@ -88,6 +89,7 @@ async def post_detail(request: Request, post_id: int, msg: str = ""):
         "channels": channels,
         "jobs": jobs,
         "channel_obj": channel,
+        "next_step": next_step_hint(post, channel),
     })
 
 

@@ -26,7 +26,7 @@
   <a class="row" data-date="{{ r.date_label }}" href="/posts/{{ r.id }}">
     <span class="row-id">#{{ r.id }}</span>
     {% if r.when %}<span class="badge">{{ r.when }}</span>{% endif %}
-    <span class="badge st-{{ r.status|lower }}">{{ r.status }}{% if r.status == 'PUBLISHED' and r.pub_time %} {{ r.pub_time }}{% endif %}</span>
+    <span class="badge st-{{ r.status|lower }}" title="{{ r.next_step }}">{{ r.status }}{% if r.status == 'PUBLISHED' and r.pub_time %} {{ r.pub_time }}{% endif %}</span>
     {% if r.media %}<span class="badge">📎 {{ r.media|unique|join('+') }}</span>{% endif %}
     <span class="row-text">{{ r.text }}</span>
     <span class="row-meta">@{{ r.source }} → @{{ r.channel }}</span>
@@ -48,7 +48,7 @@ function rowHtml(r){
   var when=r.when?'<span class="badge">'+esc(r.when)+'</span>':'';
   var pub=r.status=='PUBLISHED'&&r.pub_time?' '+esc(r.pub_time):'';
   return '<a class="row" data-date="'+esc(r.date_label)+'" href="/posts/'+r.id+'"><span class="row-id">#'+r.id+'</span>'+when
-    +'<span class="badge st-'+r.status.toLowerCase()+'">'+esc(r.status)+pub+'</span>'+media
+    +'<span class="badge st-'+r.status.toLowerCase()+'" title="'+esc(r.next_step)+'">'+esc(r.status)+pub+'</span>'+media
     +'<span class="row-text">'+esc(r.text)+'</span>'
     +'<span class="row-meta">@'+esc(r.source)+' → @'+esc(r.channel)+'</span></a>';
 }
