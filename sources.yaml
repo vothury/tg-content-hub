@@ -76,37 +76,58 @@ targets:
 #   Свежесть (если не указано — глобальные значения из .env):
 #     fresh_window_min, fallback_count, fallback_max_age_hours
 
+# Общий набор фильтров, чтобы не дублировать на каждый источник
+x_filters_default: &filters_default
+  min_text_len: 1
+  blacklist_words: ["#реклама", "# реклама"]
+
 sources:
+  # ================= источники для: testimfilm =================
   - username: go_tests
     kind: test
     target: testimfilm
     relevance: 9
-    filters:
-      min_text_len: 1
-      blacklist_words: ["#реклама", "# реклама"]
-
-  - username: go_tests
-    kind: test
-    target: testimfoto
-    relevance: 7
-    filters:
-      min_text_len: 1
-      blacklist_words: ["#реклама", "# реклама"]
+    filters: *filters_default
 
   - username: kino_filmach
     kind: external
     target: testimfilm
     relevance: 9
-    filters:
-      min_text_len: 1
-      blacklist_words: ["#реклама", "# реклама"]
+    filters: *filters_default
     # poll_interval_sec: 300
+
+  - username: kino_redakciya
+    kind: external
+    target: testimfilm
+    relevance: 9
+    filters: *filters_default
+    # poll_interval_sec: 300
+
+  - username: KinoFactZone
+    kind: external
+    target: testimfilm
+    relevance: 9
+    filters: *filters_default
+    # poll_interval_sec: 300    
+
+
+  # ================= источники для: testimfoto =================
+  - username: go_tests
+    kind: test
+    target: testimfoto
+    relevance: 7
+    filters: *filters_default
 
   - username: istoriya
     kind: external
     target: testimfoto
     relevance: 9
-    filters:
-      min_text_len: 1
-      blacklist_words: ["#реклама", "# реклама"]
+    filters: *filters_default
+    # poll_interval_sec: 300
+
+  - username: BSPhistorychannel
+    kind: external
+    target: testimfoto
+    relevance: 9
+    filters: *filters_default
     # poll_interval_sec: 300
