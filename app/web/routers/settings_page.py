@@ -88,6 +88,10 @@ EDITABLE = [
      "hint": "0..255 — макс. разница средней яркости изображений для media-матча; чёрное и белое не совпадут."},
     {"key": _k("DEDUP_MAX_COMPARE"), "label": "Дедуп: максимум сравнений", "attr": "dedup_max_compare", "type": "number",
      "hint": "Сколько недавних постов канала сравнивать (ограничивает нагрузку)."},
+    {"key": _k("PUBLISH_DUP_RECAP_ENABLED"), "label": "Публикация: блок «ранее писали»", "attr": "publish_dup_recap_enabled", "type": "number",
+     "hint": "1 = дубль уже опубликованной темы публикуется с блоком предыдущих упоминаний; 0 = текущее поведение (дубль подавляется)."},
+    {"key": _k("PUBLISH_DUP_RECAP_WINDOW_HOURS"), "label": "Публикация: окно «ранее писали», часов", "attr": "publish_dup_recap_window_hours", "type": "number",
+     "hint": "Сколько часов с первой публикации темы считать её «той же темой»; старше — новая тема без блока."},
 ]
 
 ATTR_TO_KEY = {
@@ -124,6 +128,8 @@ ATTR_TO_KEY = {
     "dedup_canonical_min_len": _k("DEDUP_CANONICAL_MIN_LEN"),
     "dedup_canonical_cosine_min": _k("DEDUP_CANONICAL_COSINE_MIN"),
     "dedup_max_compare": _k("DEDUP_MAX_COMPARE"),
+    "publish_dup_recap_enabled": _k("PUBLISH_DUP_RECAP_ENABLED"),
+    "publish_dup_recap_window_hours": _k("PUBLISH_DUP_RECAP_WINDOW_HOURS"),
 }
 
 

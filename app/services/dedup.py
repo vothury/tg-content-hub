@@ -193,6 +193,47 @@ async def run_semantic_dedup(post_id: int) -> bool:
                 "min_len": min_len, "window_days": window,
             },
         }
+        if dup_of is not None:
+            enabled = int(await get_setting(session, Keys.PUBLISH_DUP_RECAP_ENABLED))
+            window_h = int(await get_setting(session, Keys.PUBLISH_DUP_RECAP_WINDOW_HOURS))
+            orig = await session.get(Post, dup_of)
+            orig_dt = orig.source_published_at if orig is not None else None
+            orig_is_pub = orig is not None and orig.status is PostStatus.PUBLISHED
+            in_window = (orig_dt is not None
+                         and (datetime.now(timezone.utc) - orig_dt) <= timedelta(hours=window_h))
+            if enabled and orig_is_pub and in_window:
+                # Собираем ВСЕ опубликованные посты темы в окне (хронологически)
+                recap = []
+                for c in candidates:
+                    if c.status is not PostStatus.PUBLISHED or c.source_published_at is None:
+                        continue
+                    if (datetime.now(timezone.utc) - c.source_published_at) > timedelta(hours=window_h):
+                        continue
+                    c_canon2 = (c.canonical_text or "").strip()
+                    matched = False
+                    c_ph2 = ph_map.get(c.id, [])
+                    if new_ph and c_ph2:
+                        if min(_hamming(a, b) for a in new_ph for b in c_ph2) <= ph_max:
+                            matched = True
+                    if not matched and len(new_canon) >= min_len and len(c_canon2) >= min_len:
+                        if (_cosine(new_canon, c_canon2) >= cos_min
+                                or _containment(new_canon, c_canon2) >= cont_min
+                                or _fact_sim(new_canon, c_canon2) >= fact_min):
+                            matched = await _confirm_same(new_canon, c_canon2)
+                    if matched:
+                        recap.append((c.source_published_at, c.id))
+                recap.sort(key=lambda x: x[0])
+                post.recap_ids = [pid for _, pid in recap]
+                post.dedup_info = {**(post.dedup_info or {}), "recap": post.recap_ids}
+                session.add(PostEvent(
+                    post_id=post_id, actor=EventActor.SYSTEM, action="recap_attached",
+                    from_status=PostStatus.CANDIDATE.value, to_status=PostStatus.CANDIDATE.value,
+                    details={"recap": post.recap_ids},
+                ))
+                await session.commit()
+                log.info("пост %s: дубль опубликованной темы — публикуется с блоком «ранее писали» %s",
+                         post_id, post.recap_ids)
+                return False  # не подавляем: пост продолжит конвейер с блоком
         if dup_of is None:
             if confirm_info is not None:
                 session.add(PostEvent(

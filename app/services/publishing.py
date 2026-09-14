@@ -11,14 +11,14 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from aiogram import Bot
-from aiogram.types import FSInputFile, InputMediaPhoto, InputMediaVideo
+from aiogram.types import FSInputFile, InputMediaPhoto, InputMediaVideo, MessageEntity
 from sqlalchemy import func, select, update
 
 from app.config import settings
 from app.db.enums import EventActor, MediaType, PostStatus, PublishJobState, PublishMode
-from app.db.models import MediaItem, Post, PostEvent, PublishJob, TargetChannel
+from app.db.models import MediaItem, Post, PostEvent, PublishJob, Source, TargetChannel
 from app.db.session import session_scope
-from app.services.times import owner_now
+from app.services.times import owner_now, owner_tz
 
 log = logging.getLogger(__name__)
 
@@ -241,13 +241,54 @@ async def _claim_job(job_id: int) -> bool:
         return result.rowcount == 1
 
 
+async def _recap_rows(post_id: int) -> list:
+    async with session_scope() as session:
+        post = await session.get(Post, post_id)
+        ids = list(post.recap_ids or []) if post is not None else []
+        if not ids:
+            return []
+        rows = (await session.execute(
+            select(Post.id, Post.post_url, Post.source_published_at, Source.title, Source.username)
+            .select_from(Post)
+            .join(Source, Source.id == Post.source_id)
+            .where(Post.id.in_(ids)))).all()
+    return [tuple(r) for r in rows]
+
+
+def _build_recap(text: str, rows: list) -> tuple[str, list]:
+    rows = sorted(rows, key=lambda r: r[2] or datetime.min.replace(tzinfo=timezone.utc))
+    base = text.rstrip()
+    out = base + "\n\nРанее об этом уже писали:"
+    entities = []
+    for rid, url, dt, title, uname in rows:
+        name = (title or uname or f"источник {rid}")
+        when = dt.astimezone(owner_tz()).strftime("%d.%m, %H:%M") if dt else "—"
+        line = f"\n• {name} — {when}"
+        offset = len(out) + 3  # "\n• " = 3 символа
+        out += line
+        if url:
+            entities.append(MessageEntity(type="text_link", offset=offset, length=len(name), url=url))
+    return out, entities
+
+
+def _shift_entities(entities: list, cut: int) -> list:
+    out = []
+    for e in entities:
+        if e.offset >= cut:
+            e.offset -= cut
+            out.append(e)
+    return out
+
+
 async def _send_to_channel(bot: Bot, chat_id: int, post: Post) -> int:
-    """Отправка поста (медиа + текст) без parse-режима. Возвращает id сообщения."""
+    """Отправка поста (медиа + текст + блок «ранее писали») без parse-режима."""
     text = post.draft_text or post.original_text or ""
+    rows = await _recap_rows(post.id)
+    entities: list = []
+    if rows:
+        text, entities = _build_recap(text, rows)
     root = _media_root()
-    media = (
-        await _select_media(post.id)
-    )
+    media = await _select_media(post.id)
     files: list = []
     first = True
     for m in media:
@@ -256,20 +297,29 @@ async def _send_to_channel(bot: Bot, chat_id: int, post: Post) -> int:
         path = root / m["local_path"]
         if not path.exists():
             continue
-        caption = text[:CAPTION_LIMIT] if first else None
-        if m["media_type"] is MediaType.VIDEO:
-            files.append(InputMediaVideo(media=FSInputFile(path), caption=caption))
+        if first and len(text) <= CAPTION_LIMIT:
+            caption, cap_entities = text, (entities or None)
+        elif first:
+            caption = text[:CAPTION_LIMIT]
+            cap_entities = [e for e in entities if e.offset + e.length <= CAPTION_LIMIT] or None
         else:
-            files.append(InputMediaPhoto(media=FSInputFile(path), caption=caption))
+            caption, cap_entities = None, None
+        if m["media_type"] is MediaType.VIDEO:
+            files.append(InputMediaVideo(media=FSInputFile(path), caption=caption,
+                                         caption_entities=cap_entities))
+        else:
+            files.append(InputMediaPhoto(media=FSInputFile(path), caption=caption,
+                                         caption_entities=cap_entities))
         first = False
 
     if files:
         sent = await bot.send_media_group(chat_id, media=files)
         published_id = sent[0].message_id
         if len(text) > CAPTION_LIMIT:
-            await bot.send_message(chat_id, text[CAPTION_LIMIT:])
+            await bot.send_message(chat_id, text[CAPTION_LIMIT:],
+                                   entities=_shift_entities(entities, CAPTION_LIMIT))
         return published_id
-    message = await bot.send_message(chat_id, text)
+    message = await bot.send_message(chat_id, text, entities=entities or None)
     return message.message_id
 
 

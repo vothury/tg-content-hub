@@ -147,6 +147,7 @@ class Post(Base):
     canonical_text: Mapped[str | None] = mapped_column(Text)
     dedup_info: Mapped[dict | None] = mapped_column(JSONB)
     needs_media_refresh: Mapped[bool] = mapped_column(default=False)
+    recap_ids: Mapped[list | None] = mapped_column(JSONB)
     risks: Mapped[dict | None] = mapped_column(JSONB)
 
     # Публикация автопилотом + причина/заметка двойной проверки
