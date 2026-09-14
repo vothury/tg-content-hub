@@ -82,6 +82,7 @@ def parse_sources_text(text: str):
             "double_check_fact_strictness": t.get("double_check_fact_strictness"),
         })
 
+
     sources = []
     for i, s in enumerate(raw.get("sources") or [], 1):
         if not s.get("username"):
@@ -105,6 +106,28 @@ def parse_sources_text(text: str):
             "filters": {"min_text_len": f.get("min_text_len"), "blacklist_words": f.get("blacklist_words")},
         })
     return targets, sources, styles
+
+
+def report(targets, sources, styles) -> str:
+    """Краткий отчёт о содержимом + перекрёстные проверки без применения."""
+    problems = []
+    t_names = {t["username"] for t in targets}
+    st_names = {s["name"] for s in styles}
+    seen = set()
+    for i, s in enumerate(sources, 1):
+        key = (s["username"], s["target"])
+        if key in seen:
+            problems.append(f"sources №{i}: дубль пары username+target {key}")
+        seen.add(key)
+        if not s["target"]:
+            problems.append(f"sources №{i}: не задан target")
+        elif s["target"] not in t_names:
+            problems.append(f"sources №{i}: target @{s['target']} не описан в targets")
+    for t in targets:
+        if t["style"] and t["style"] not in st_names:
+            problems.append(f"targets @{t['username']}: style '{t['style']}' не описан в styles")
+    head = f"OK: targets={len(targets)} sources={len(sources)} styles={len(styles)}"
+    return head if not problems else head + "\n" + "\n".join("• " + p for p in problems)
 
 
 def load_sources_file(path=DEFAULT_PATH):
