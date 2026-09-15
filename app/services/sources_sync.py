@@ -58,6 +58,10 @@ def parse_sources_text(text: str):
         web.append({
             "name": str(w.get("name") or "").strip() or url,
             "url": url,
+            "feed_url": str(w.get("feed_url") or "").strip() or None,
+            "list_selector": str(w.get("list_selector") or "").strip() or None,
+            "title_selector": str(w.get("title_selector") or "").strip() or None,
+            "link_selector": str(w.get("link_selector") or "").strip() or None,
             "rewrite_source": bool(w.get("rewrite_source", False)),
         })
 
@@ -191,12 +195,18 @@ async def apply_parsed(parsed) -> dict:
             w = existing_w.get(e["url"])
             if w is None:
                 session.add(EditorialWebSource(
-                    name=e["name"], url=e["url"],
+                    name=e["name"], url=e["url"], feed_url=e["feed_url"],
+                    list_selector=e["list_selector"], title_selector=e["title_selector"],
+                    link_selector=e["link_selector"],
                     rewrite_source=e["rewrite_source"], enabled=True))
                 stats["editorial_web"][0] += 1
             else:
                 changed = False
                 if w.name != e["name"]: w.name = e["name"]; changed = True
+                if w.feed_url != e["feed_url"]: w.feed_url = e["feed_url"]; changed = True
+                if w.list_selector != e["list_selector"]: w.list_selector = e["list_selector"]; changed = True
+                if w.title_selector != e["title_selector"]: w.title_selector = e["title_selector"]; changed = True
+                if w.link_selector != e["link_selector"]: w.link_selector = e["link_selector"]; changed = True
                 if w.rewrite_source != e["rewrite_source"]: w.rewrite_source = e["rewrite_source"]; changed = True
                 if not w.enabled: w.enabled = True; changed = True
                 if changed: stats["editorial_web"][1] += 1

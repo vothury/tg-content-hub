@@ -139,6 +139,8 @@ class EditorialWebSource(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(255))
     url: Mapped[str] = mapped_column(Text, unique=True)
+    # Приоритетная стратегия: RSS/Atom-лента (детерминированно, без HTML и модели)
+    feed_url: Mapped[str | None] = mapped_column(Text)
     # Источник качественной аналитики для режима «Рерайт»
     rewrite_source: Mapped[bool] = mapped_column(default=False)
     enabled: Mapped[bool] = mapped_column(default=True)
