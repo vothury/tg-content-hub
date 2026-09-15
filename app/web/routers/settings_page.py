@@ -114,8 +114,6 @@ EDITABLE = [
      "hint": "0..255 — макс. разница средней яркости изображений для media-матча; чёрное и белое не совпадут."},
     {"key": _k("DEDUP_MAX_COMPARE"), "label": "Дедуп: максимум сравнений", "attr": "dedup_max_compare", "type": "number",
      "hint": "Сколько недавних постов канала сравнивать (ограничивает нагрузку)."},
-    {"key": _k("PUBLISH_DUP_RECAP_WINDOW_HOURS"), "label": "Публикация: окно «ранее писали», часов", "attr": "publish_dup_recap_window_hours", "type": "number",
-     "hint": "Сколько часов с первой публикации темы считать её «той же темой»; старше — новая тема без блока."},
 ]
 
 ATTR_TO_KEY = {
@@ -165,8 +163,18 @@ ATTR_TO_KEY = {
     "dedup_canonical_min_len": _k("DEDUP_CANONICAL_MIN_LEN"),
     "dedup_canonical_cosine_min": _k("DEDUP_CANONICAL_COSINE_MIN"),
     "dedup_max_compare": _k("DEDUP_MAX_COMPARE"),
-    "publish_dup_recap_window_hours": _k("PUBLISH_DUP_RECAP_WINDOW_HOURS"),
 }
+
+GROUPS = [
+    ("Виртуальная редакция", ("editorial_",), ()),
+    ("Модели и провайдеры", (), ("_model", "_providers")),
+    ("LLM: лимиты рассуждений и ответа", ("llm_reasoning_", "llm_double_check_"), ()),
+    ("Дедупликация", ("dedup_",), ()),
+    ("Публикация, автопилот, recap", ("autopilot_", "publish_"), ()),
+    ("Префильтр и медиа", ("prefilter_", "max_media_"), ()),
+    ("Лимиты конвейера и reader", ("max_llm_", "max_candidates_", "reader_"), ()),
+]
+
 
 
 @router.get("/settings")
@@ -184,11 +192,24 @@ async def settings_page(request: Request, msg: str = ""):
                 default = _providers_to_str(default)
             editable.append({
                 "key": e["key"], "label": e["label"], "type": e["type"],
+                "attr": e["attr"], "hint": e.get("hint", ""),
                 "current": current, "default": default,
             })
         sources = (await session.execute(select(Source).order_by(Source.id))).scalars().all()
         channels = (await session.execute(select(TargetChannel).order_by(TargetChannel.id))).scalars().all()
         styles = (await session.execute(select(StyleProfile).order_by(StyleProfile.id))).scalars().all()
+
+    groups = []
+    for title, starts, ends in GROUPS:
+        cards = [e for e in editable
+                 if e["attr"].startswith(starts) or e["attr"].endswith(ends)]
+        if cards:
+            groups.append((title, cards))
+    placed = {e["attr"] for _, cards in groups for e in cards}
+    rest = [e for e in editable if e["attr"] not in placed]
+    if rest:
+        groups.append(("Прочее", rest))
+
 
     ch_map = {c.id: c.username for c in channels}
     style_names = {s.id: s.name for s in styles}
@@ -241,6 +262,7 @@ async def settings_page(request: Request, msg: str = ""):
         "rows": rows,
         "overrides": overrides,
         "editable": editable,
+        "groups": groups,
         "summary": summary,
     })
 
@@ -268,6 +290,55 @@ async def settings_save(request: Request, key: str = Form(...), value: str = For
             row.value = val
         await session.commit()
     return RedirectResponse(f"/settings?msg={quote('сохранено')}", status_code=303)
+
+
+@router.post("/settings/save_all", dependencies=[Depends(csrf_protect)])
+async def settings_save_all(request: Request):
+    form = await request.form()
+    saved = 0
+    async with session_scope() as session:
+        for e in EDITABLE:
+            if e["attr"] not in form:
+                continue
+            raw = (form[e["attr"]] or "").strip()
+            current = await get_setting(session, e["key"])
+            if e["type"] == "providers":
+                cur_order = list((current or {}).get("order") or []) \
+                    if isinstance(current, dict) else \
+                    ([x for x in _providers_to_str(current).split(", ") if x] if current else [])
+                order = [w.strip() for w in raw.replace("\n", ",").split(",") if w.strip()]
+                if cur_order == order:
+                    continue
+                val = {"order": order, "allow_fallbacks": True} if order else {}
+            elif e["type"] == "list":
+                cur_list = list(current or []) if isinstance(current, list) else []
+                val = [w.strip() for w in raw.replace("\n", ",").split(",") if w.strip()]
+                if cur_list == val:
+                    continue
+            elif e["type"] == "number":
+                try:
+                    val = int(raw) if raw.lstrip("-").isdigit() else float(raw)
+                except ValueError:
+                    continue
+                try:
+                    if float(current or 0) == float(val):
+                        continue
+                except (TypeError, ValueError):
+                    pass
+            else:
+                val = raw
+                if str(current if current is not None else "") == val:
+                    continue
+            row = (await session.execute(
+                select(AppSetting).where(AppSetting.key == e["key"]))).scalar_one_or_none()
+            if row is None:
+                session.add(AppSetting(key=e["key"], value=val))
+            else:
+                row.value = val
+            saved += 1
+        await session.commit()
+    return RedirectResponse(
+        f"/settings?msg={quote('сохранено изменений: ' + str(saved))}", status_code=303)
 
 
 @router.post("/settings/reset", dependencies=[Depends(csrf_protect)])

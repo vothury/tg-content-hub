@@ -40,7 +40,7 @@ targets:
   - username: testimfilm
     title: "Кино тест"
     description: "Канал о кино: новости фильмов, трейлеры, кастинги, релизы, сборы, подборки"
-    dup_recap: false        # дубли публикуются с блоком «Ранее об этом уже писали»
+    dup_recap: false        # true = дубль опубликованной темы публикуется с блоком «Ранее об этом уже писали»; false = дубль подавляется без блока
     style: kino_style
     rewrite: false
     autopilot: true
@@ -66,6 +66,29 @@ targets:
     daily_limit: 30
     min_interval_min: 5
     # стиль не указан -> профиль default
+
+  # Канал-агрегатор: склад сырья из релевантных TG-каналов
+  - username: moskva_novostroy
+    title: "Москва Новострой агрегатор"
+    description: "Агрегатор новостей о новостройках Москвы и Подмосковья (сырьё для редакции)"
+    rewrite: false
+    autopilot: true
+    autopilot_min_score: 7
+    review_if_uncertain: false
+    double_check: false
+    daily_limit: 40
+    min_interval_min: 5
+
+  # Редакционный канал: сюда публикует виртуальная редакция
+  - username: testim_novostroyki
+    title: "Тест Новостройки Москвы"
+    description: "Аналитика недвижимости Москвы и ближнего Подмосковья: разборы, синтез сигналов, тренды"
+    editorial: true            # канал виртуальной редакции
+    rewrite: true
+    autopilot: false
+    double_check: false
+    daily_limit: 3
+    min_interval_min: 60
 
 # --- Источники (откуда читаем) -------------------------------------------------
 #   kind       — test (канал-лаборатория) | external (внешний канал)
@@ -110,8 +133,7 @@ sources:
     target: testimfilm
     relevance: 9
     filters: *filters_default
-    # poll_interval_sec: 300    
-
+    # poll_interval_sec: 300 
 
   # ================= источники для: testimfoto =================
   - username: go_tests
@@ -133,3 +155,54 @@ sources:
     relevance: 9
     filters: *filters_default
     # poll_interval_sec: 300
+
+  # ================= Сырьё для агрегатора =================
+  - username: cool_construction
+    kind: external
+    target: moskva_novostroy
+    relevance: 8
+  - username: labirint_investora
+    kind: external
+    target: moskva_novostroy
+    relevance: 8
+  - username: NeginskiMsk
+    kind: external
+    target: moskva_novostroy
+    relevance: 8
+  - username: tochkarealty
+    kind: external
+    target: moskva_novostroy
+    relevance: 8
+  - username: ria_realty
+    kind: external
+    target: moskva_novostroy
+    relevance: 8
+  - username: glavmo
+    kind: external
+    target: moskva_novostroy
+    relevance: 8
+
+  # Сам агрегатор как сырьё редакции: не публикуется и не классифицируется
+  - username: moskva_novostroy
+    kind: external
+    editorial_only: true
+    relevance: 9
+
+# --- Web-источники редакции -------------------------------------------------
+# Web-источники редакции (новая секция; синхронизируется тем же sources-sync)
+editorial_web:
+  - name: "РБК Недвижимость"
+    url: "https://realty.rbc.ru/"
+  - name: "IRN"
+    url: "https://www.irn.ru/news/"
+  - name: "Дом.РФ (Инвестминт)"
+    url: "https://investmint.ru/domrf/news/"
+  - name: "ЕРЗ.РФ"
+    url: "https://erzrf.ru/news"
+  - name: "Интерфакс Недвижимость"
+    url: "https://realty.interfax.ru/"
+  - name: "ЦИАН Новости"
+    url: "https://www.cian.ru/novosti/"
+  - name: "Коммерсантъ (аналитика)"
+    url: "https://www.kommersant.ru/theme/117"
+    rewrite_source: true

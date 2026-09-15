@@ -14,30 +14,44 @@
   {% endfor %}
 </div>
 
-<div class="section-title">Редактируемые runtime-настройки</div>
-<div class="list">
-  {% for e in editable %}
-  <div class="card">
-    <div class="label">{{ e.label }} <span class="badge">{{ e.key }}</span></div>
-    <div class="sub">текущее: {{ e.current }} · дефолт: {{ e.default }}</div>
-	{% if e.hint %}<div class="sub" style="opacity:.7">ⓘ {{ e.hint }}</div>{% endif %}
-    <div class="actions">
-      <form method="post" action="/settings/save">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <input type="hidden" name="key" value="{{ e.key }}">
-        <input type="hidden" name="vtype" value="{{ e.type }}">
-        <input type="text" name="value" value="{{ e.current }}" placeholder="{{ e.default }}">
-        <button class="btn" type="submit">Сохранить</button>
-      </form>
-      <form method="post" action="/settings/reset">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <input type="hidden" name="key" value="{{ e.key }}">
-        <button class="btn ghost" type="submit">Сбросить</button>
-      </form>
+<style>
+.savebar{position:fixed;left:0;right:0;bottom:0;padding:10px 16px;background:rgba(18,21,27,.95);border-top:1px solid #2a2f3a;display:flex;gap:12px;align-items:center;z-index:60}
+.savebar .hint{opacity:.75;font-size:12px}
+main.content{padding-bottom:84px}
+</style>
+
+<form method="post" action="/settings/save_all" id="setform">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  {% for title, cards in groups %}
+  <div class="section-title">{{ title }}</div>
+  <div class="list">
+    {% for e in cards %}
+    <div class="card">
+      <div class="label">{{ e.label }} <span class="badge">{{ e.key }}</span></div>
+      <div class="sub">дефолт: {{ e.default }}</div>
+      {% if e.hint %}<div class="sub" style="opacity:.7">ⓘ {{ e.hint }}</div>{% endif %}
+      <div class="actions">
+        <input type="text" name="{{ e.attr }}" value="{{ e.current }}" placeholder="{{ e.default }}">
+        <button class="btn ghost" type="button" onclick="resetKey('{{ e.key }}')">Сбросить</button>
+      </div>
     </div>
+    {% endfor %}
   </div>
   {% endfor %}
+</form>
+
+<div class="savebar">
+  <span class="hint">Правьте значения в полях — сохранится всё разом; «Сбросить» возвращает одно значение к дефолту</span>
+  <button class="btn" type="submit" form="setform">💾 Сохранить всё</button>
 </div>
+
+<script>
+function resetKey(k){
+  if(!confirm('Сбросить '+k+' к значению по умолчанию?'))return;
+  var f=new FormData();f.append('csrf_token','{{ csrf_token }}');f.append('key',k);
+  fetch('/settings/reset',{method:'POST',body:f}).then(function(){location.reload();});
+}
+</script>
 
 <div class="section-title">Все настройки (применённые)</div>
 <div class="list">
