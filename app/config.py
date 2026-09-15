@@ -85,6 +85,7 @@ class Settings(BaseSettings):
     editorial_budget_usd_per_day: float = 1.5
     editorial_chief_model: str = ""                            # пусто = effective_revision_model
     editorial_journalist_model: str = ""                       # пусто = prefilter-модель
+    editorial_browse_model: str = ""                           # пусто = модель журналиста + ":online"
 
     # Как часто пайплайн пересматривает «застрявшие» посты при пустой очереди
     pipeline_rescan_interval_sec: int = 60

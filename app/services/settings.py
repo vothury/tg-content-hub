@@ -45,6 +45,7 @@ class Keys:
     EDITORIAL_BUDGET_USD_PER_DAY = "editorial.budget_usd_per_day"
     EDITORIAL_CHIEF_MODEL = "editorial.chief_model"
     EDITORIAL_JOURNALIST_MODEL = "editorial.journalist_model"
+    EDITORIAL_BROWSE_MODEL = "editorial.browse_model"
     PREFILTER_MIN_TEXT_LEN = "prefilter.min_text_len"
     PREFILTER_BLACKLIST_WORDS = "prefilter.blacklist_words"
     MAX_MEDIA_DOWNLOAD_MB = "reader.max_media_download_mb"
@@ -96,6 +97,7 @@ _ENV_DEFAULTS: dict[str, Any] = {
     Keys.EDITORIAL_BUDGET_USD_PER_DAY: settings.editorial_budget_usd_per_day,
     Keys.EDITORIAL_CHIEF_MODEL: settings.editorial_chief_model,
     Keys.EDITORIAL_JOURNALIST_MODEL: settings.editorial_journalist_model,
+    Keys.EDITORIAL_BROWSE_MODEL: settings.editorial_browse_model,
     Keys.PREFILTER_MIN_TEXT_LEN: settings.prefilter_min_text_len,
     Keys.PREFILTER_BLACKLIST_WORDS: settings.prefilter_blacklist_words,
     Keys.MAX_MEDIA_DOWNLOAD_MB: settings.max_media_download_mb,
