@@ -150,3 +150,24 @@ class HeadlineTitleResult:
         if not title:
             raise LLMParseError("пустой заголовок")
         return cls(title=title)
+
+
+@dataclass
+class HeadlinePickResult:
+    items: list = field(default_factory=list)
+
+    @classmethod
+    def from_response(cls, content: str) -> "HeadlinePickResult":
+        data = json.loads(_strip_code_fence(content))
+        raw = data.get("items") if isinstance(data, dict) else data
+        if not isinstance(raw, list):
+            raise LLMParseError("ожидался список items")
+        items = []
+        for x in raw:
+            if isinstance(x, dict):
+                try:
+                    i = int(x.get("i"))
+                except (TypeError, ValueError):
+                    continue
+                items.append({"i": i, "title": str(x.get("title") or "").strip()})
+        return cls(items=items)

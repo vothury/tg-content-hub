@@ -8,6 +8,8 @@ from __future__ import annotations
 import hashlib
 import logging
 from datetime import datetime, timedelta, timezone
+from html.parser import HTMLParser
+from urllib.parse import urldefrag, urljoin
 
 import httpx
 from sqlalchemy import select
@@ -22,7 +24,7 @@ from app.services.llm.prompts import (
     JOURNALIST_TG_SYSTEM, JOURNALIST_TG_USER,
     JOURNALIST_WEB_SYSTEM, JOURNALIST_WEB_USER,
 )
-from app.services.llm.schemas import HeadlineListResult, HeadlineTitleResult
+from app.services.llm.schemas import HeadlinePickResult, HeadlineTitleResult
 from app.services.settings import Keys, get_providers, get_setting
 from app.services.times import owner_now
 
@@ -71,6 +73,57 @@ async def _existing() -> tuple[set, set, set]:
     return urls, hashes, posts
 
 
+class _AnchorParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.items: list[tuple[str, str]] = []
+        self._href = None
+        self._buf = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "a":
+            self._href = dict(attrs).get("href")
+            self._buf = []
+        elif self._href is not None and tag in ("script", "style"):
+            self._href = None
+
+    def handle_data(self, data):
+        if self._href is not None:
+            self._buf.append(data)
+
+    def handle_endtag(self, tag):
+        if tag == "a" and self._href is not None:
+            text = " ".join("".join(self._buf).split())
+            self.items.append((text, self._href))
+            self._href = None
+            self._buf = []
+
+
+def _extract_anchors(html: str, base_url: str, limit: int = 300):
+    """Детерминированно собирает (текст, абсолютный url) из <a> страницы."""
+    p = _AnchorParser()
+    try:
+        p.feed(html)
+    except Exception:  # noqa: BLE001 — битый HTML не роняет фазу
+        pass
+    out = []
+    seen = set()
+    for text, href in p.items:
+        if not href or href.startswith(("#", "javascript:", "mailto:")):
+            continue
+        text = text.strip()
+        if not (12 <= len(text) <= 250):
+            continue
+        url, _ = urldefrag(urljoin(base_url, href))
+        if url in seen:
+            continue
+        seen.add(url)
+        out.append((text, url))
+        if len(out) >= limit:
+            break
+    return out
+
+
 async def _fetch_web() -> int:
     added = 0
     async with session_scope() as session:
@@ -81,7 +134,7 @@ async def _fetch_web() -> int:
     urls_seen, hashes_seen, _ = await _existing()
     for sid, name, url in rows:
         try:
-            async with httpx.AsyncClient(timeout=30, follow_redirects=True,
+            async with httpx.AsyncClient(timeout=45, follow_redirects=True,
                                          headers={"User-Agent": UA}) as client:
                 r = await client.get(url)
             if r.status_code != 200:
@@ -92,27 +145,45 @@ async def _fetch_web() -> int:
             log.warning("journalist: %s -> ошибка загрузки: %s: %s",
                         name, exc.__class__.__name__, exc)
             continue
-        try:
-            result = await _call_json(
-                [{"role": "system", "content": JOURNALIST_WEB_SYSTEM},
-                 {"role": "user", "content": JOURNALIST_WEB_USER.format(base_url=url, html=html)}],
-                model, providers, 1500, HeadlineListResult)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("journalist: %s -> ошибка извлечения: %s: %s",
-                        name, exc.__class__.__name__, exc)
+        anchors = _extract_anchors(html, url)
+        if not anchors:
+            log.warning("journalist: %s -> не найдено ссылок (возможно, JS-рендеринг)", name)
             continue
+        listing = "\n".join(f"{i}. {t}" for i, (t, u) in enumerate(anchors, 1))
+        result = None
+        for attempt in (1, 2):
+            try:
+                result = await _call_json(
+                    [{"role": "system", "content": JOURNALIST_WEB_SYSTEM},
+                     {"role": "user", "content": JOURNALIST_WEB_USER.format(listing=listing)}],
+                    model, providers, 1200, HeadlinePickResult)
+                break
+            except Exception as exc:  # noqa: BLE001
+                if attempt == 2:
+                    log.warning("journalist: %s -> ошибка извлечения: %s: %s",
+                                name, exc.__class__.__name__, exc)
+                else:
+                    log.info("journalist: %s -> повтор после ошибки разбора ответа", name)
+        if result is None:
+            continue
+        picked = result.items[:MAX_PER_SOURCE]
+        if not picked:
+            log.info("journalist: %s -> модель не выбрала заголовков", name)
         async with session_scope() as session:
-            for it in result.items[:MAX_PER_SOURCE]:
-                u = it["url"] or None
-                if u and u in urls_seen:
+            for it in picked:
+                idx = it["i"] - 1
+                if idx < 0 or idx >= len(anchors):
                     continue
-                th = _h(it["title"])
+                base_title, u = anchors[idx]
+                title = it["title"] or base_title
+                if u in urls_seen:
+                    continue
+                th = _h(title)
                 if th in hashes_seen:
                     continue
                 session.add(Headline(source_kind="web", source_name=name, url=u,
-                                     title=it["title"], title_hash=th))
-                if u:
-                    urls_seen.add(u)
+                                     title=title, title_hash=th))
+                urls_seen.add(u)
                 hashes_seen.add(th)
                 added += 1
             src = await session.get(EditorialWebSource, sid)
