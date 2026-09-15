@@ -117,7 +117,10 @@ def parse_sources_text(text: str):
             "fallback_count": s.get("fallback_count"),
             "fallback_max_age_hours": s.get("fallback_max_age_hours"),
             "relevance": _parse_relevance(s.get("relevance"), i),
-            "filters": {"min_text_len": f.get("min_text_len"), "blacklist_words": f.get("blacklist_words")},
+            "filters": {k: v for k, v in {
+                "min_text_len": f.get("min_text_len"),
+                "blacklist_words": f.get("blacklist_words"),
+            }.items() if v is not None},
         })
     return targets, sources, styles, web
 

@@ -140,7 +140,7 @@ async def run_prefilter(post_id: int) -> None:
 
         source = await session.get(Source, post.source_id)
         source_filters = dict(source.filters) if source and source.filters else {}
-        if "min_text_len" in source_filters:
+        if source_filters.get("min_text_len") is not None:
             min_text_len = int(source_filters["min_text_len"])
         if source_filters.get("blacklist_words") is not None:
             blacklist = [str(w) for w in source_filters["blacklist_words"]]
