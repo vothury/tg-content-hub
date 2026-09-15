@@ -32,6 +32,19 @@ class Keys:
     LLM_REASONING_SMALL = "llm.reasoning_small"
     LLM_DOUBLE_CHECK_MAX_TOKENS = "llm.double_check_max_tokens"
     PUBLISH_DUP_RECAP_WINDOW_HOURS = "publish.dup_recap_window_hours"
+    EDITORIAL_ENABLED = "editorial.enabled"
+    EDITORIAL_CYCLE_TIMES = "editorial.cycle_times"
+    EDITORIAL_PUBLISH_WINDOWS = "editorial.publish_windows"
+    EDITORIAL_PREPARED_HOURS = "editorial.prepared_hours"
+    EDITORIAL_PUBLISHED_HOURS = "editorial.published_hours"
+    EDITORIAL_WRITER_MODE = "editorial.writer_mode"
+    EDITORIAL_WRITER_MODEL = "editorial.writer_model"
+    EDITORIAL_AUTO_PUBLISH = "editorial.auto_publish"
+    EDITORIAL_POST_MAX_CHARS = "editorial.post_max_chars"
+    EDITORIAL_REWRITE_MAX_PER_DAY = "editorial.rewrite_max_per_day"
+    EDITORIAL_BUDGET_USD_PER_DAY = "editorial.budget_usd_per_day"
+    EDITORIAL_CHIEF_MODEL = "editorial.chief_model"
+    EDITORIAL_JOURNALIST_MODEL = "editorial.journalist_model"
     PREFILTER_MIN_TEXT_LEN = "prefilter.min_text_len"
     PREFILTER_BLACKLIST_WORDS = "prefilter.blacklist_words"
     MAX_MEDIA_DOWNLOAD_MB = "reader.max_media_download_mb"
@@ -70,6 +83,19 @@ _ENV_DEFAULTS: dict[str, Any] = {
     Keys.LLM_REASONING_SMALL: settings.llm_reasoning_small,
     Keys.LLM_DOUBLE_CHECK_MAX_TOKENS: settings.llm_double_check_max_tokens,
     Keys.PUBLISH_DUP_RECAP_WINDOW_HOURS: settings.publish_dup_recap_window_hours,
+    Keys.EDITORIAL_ENABLED: settings.editorial_enabled,
+    Keys.EDITORIAL_CYCLE_TIMES: settings.editorial_cycle_times,
+    Keys.EDITORIAL_PUBLISH_WINDOWS: settings.editorial_publish_windows,
+    Keys.EDITORIAL_PREPARED_HOURS: settings.editorial_prepared_hours,
+    Keys.EDITORIAL_PUBLISHED_HOURS: settings.editorial_published_hours,
+    Keys.EDITORIAL_WRITER_MODE: settings.editorial_writer_mode,
+    Keys.EDITORIAL_WRITER_MODEL: settings.editorial_writer_model,
+    Keys.EDITORIAL_AUTO_PUBLISH: settings.editorial_auto_publish,
+    Keys.EDITORIAL_POST_MAX_CHARS: settings.editorial_post_max_chars,
+    Keys.EDITORIAL_REWRITE_MAX_PER_DAY: settings.editorial_rewrite_max_per_day,
+    Keys.EDITORIAL_BUDGET_USD_PER_DAY: settings.editorial_budget_usd_per_day,
+    Keys.EDITORIAL_CHIEF_MODEL: settings.editorial_chief_model,
+    Keys.EDITORIAL_JOURNALIST_MODEL: settings.editorial_journalist_model,
     Keys.PREFILTER_MIN_TEXT_LEN: settings.prefilter_min_text_len,
     Keys.PREFILTER_BLACKLIST_WORDS: settings.prefilter_blacklist_words,
     Keys.MAX_MEDIA_DOWNLOAD_MB: settings.max_media_download_mb,

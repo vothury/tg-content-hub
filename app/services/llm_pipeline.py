@@ -411,6 +411,12 @@ async def advance_post(post_id: int) -> None:
         if status is None:
             return
 
+        async with session_scope() as session:
+            post_row = await session.get(Post, post_id)
+            src_row = await session.get(Source, post_row.source_id) if post_row is not None else None
+        if src_row is not None and src_row.editorial_only:
+            return  # сырьё виртуальной редакции: copy-конвейер не трогаем
+
         if status is PostStatus.NEW:
             await run_prefilter(post_id)
             status = await _get_status(post_id)

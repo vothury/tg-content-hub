@@ -70,6 +70,22 @@ class Settings(BaseSettings):
     publish_dup_recap_window_hours: int = 24
     llm_double_check_max_tokens: int = 800 # токены финального ответа двойной проверки (поверх reasoning)
     publish_dup_recap_window_hours: int = 24  # окно «ранее писали» для дублей-агрегаторов
+
+    # ---- Виртуальная редакция ----
+    editorial_enabled: int = 1
+    editorial_cycle_times: str = "07:30,12:30,17:30"          # journalist→chief→gather одним циклом
+    editorial_publish_windows: str = "08:00-10:00,12:00-15:00,17:00-20:00"
+    editorial_prepared_hours: int = 5                          # память: темы в работе/готовы
+    editorial_published_hours: int = 36                        # память: опубликованное
+    editorial_writer_mode: str = "journalist"                  # journalist | model
+    editorial_writer_model: str = ""                           # пусто = journalist-модель
+    editorial_auto_publish: int = 0                            # 0 = ручное ревью владельца
+    editorial_post_max_chars: int = 500
+    editorial_rewrite_max_per_day: int = 1
+    editorial_budget_usd_per_day: float = 1.5
+    editorial_chief_model: str = ""                            # пусто = effective_revision_model
+    editorial_journalist_model: str = ""                       # пусто = prefilter-модель
+
     # Как часто пайплайн пересматривает «застрявшие» посты при пустой очереди
     pipeline_rescan_interval_sec: int = 60
 

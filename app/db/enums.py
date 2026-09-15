@@ -74,3 +74,21 @@ class PublishJobState(str, enum.Enum):
     IN_PROGRESS = "in_progress"
     DONE = "done"
     FAILED = "failed"
+
+
+class TopicKind(str, enum.Enum):
+    HYPOTHESIS = "hypothesis"   # сюжет/гипотеза: сбор → проверка → статья
+    REWRITE = "rewrite"         # готовый качественный материал: адаптация под канал
+
+class TopicStatus(str, enum.Enum):
+    IN_WORK = "in_work"
+    READY = "ready"
+    PUBLISHED = "published"
+    DROPPED = "dropped"
+
+class ArticleStatus(str, enum.Enum):
+    DRAFT = "draft"
+    REVIEW = "review"
+    APPROVED = "approved"
+    PUBLISHED = "published"
+    REJECTED = "rejected"

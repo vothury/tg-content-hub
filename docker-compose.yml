@@ -104,6 +104,22 @@ services:
       redis:
         condition: service_healthy
 
+  # Виртуальная редакция: циклы журналист → главред → сбор/текст
+  editorial:
+    image: tg-content-hub:latest
+    restart: unless-stopped
+    command: python -m app.workers.editorial
+    env_file: .env
+    mem_limit: 320m
+    logging: *default-logging
+    volumes:
+      - media:/app/media
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
   # Этап 4: бот ревью (лонг-поллинг — входящие порты не нужны)
   bot:
     image: tg-content-hub:latest

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Редакция — TG Content Hub{% endblock %}
+{% block content %}
+<h2 class="section-title">Виртуальная редакция</h2>
+<div class="card">
+  <div class="label">Поток заголовков</div>
+  <div class="sub">всего собрано: {{ head_count }}</div>
+</div>
+
+<div class="section-title">Web-источники</div>
+<div class="list">
+  {% for w in web_sources %}
+  <div class="card"><span class="badge">{{ 'рерайт-источник' if w.rewrite_source else 'лента' }}</span>
+    <span class="sub">{{ w.name }} · {{ w.url }} · {{ 'вкл' if w.enabled else 'выкл' }}</span></div>
+  {% else %}<div class="card">Нет web-источников (секция editorial_web в sources.yaml)</div>{% endfor %}
+</div>
+
+<div class="section-title">Темы главреда</div>
+<div class="list">
+  {% for t in topics %}
+  <div class="card">
+    <span class="badge">{{ t.kind.value }}</span>
+    <span class="badge st-{{ 'published' if t.status.value == 'published' else ('failed' if t.status.value == 'dropped' else 'scheduled') }}">{{ t.status.value }}</span>
+    <div class="label">{{ t.theme }}</div>
+    {% if t.hypothesis %}<div class="sub">Гипотеза: {{ t.hypothesis }}</div>{% endif %}
+    {% if t.verdict %}<div class="sub">Вердикт: {{ t.verdict }}{% if t.verdict_note %} — {{ t.verdict_note }}{% endif %}</div>{% endif %}
+    {% set a = articles.get(t.id) %}
+    {% if a %}<div class="sub">Статья: {{ a.status.value }} (v{{ a.version }})</div>{% endif %}
+  </div>
+  {% else %}<div class="card">Тем пока нет — главред начнёт с Шага 3</div>{% endfor %}
+</div>
+{% endblock %}

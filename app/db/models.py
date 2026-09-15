@@ -31,6 +31,9 @@ from app.db.enums import (
     PublishJobState,
     PublishMode,
     SourceKind,
+    ArticleStatus,
+    TopicKind,
+    TopicStatus,
 )
 
 
@@ -70,6 +73,9 @@ class Source(Base):
 
     # Релевантность источника целевому каналу (1-10): влияет на строгость классификации
     relevance: Mapped[int | None] = mapped_column(Integer)
+
+    # Сырьё виртуальной редакции: посты не проходят copy-конвейер, их читает журналист
+    editorial_only: Mapped[bool] = mapped_column(default=False)
 
 class StyleProfile(Base):
     """Стилевой профиль целевого канала: промпты, примеры, режим сохранения тона."""
@@ -114,6 +120,8 @@ class TargetChannel(Base):
     # Делать ли автоматический рерайт постов этого канала
     rewrite_enabled: Mapped[bool] = mapped_column(default=True)
     dup_recap_enabled: Mapped[bool] = mapped_column(default=False)
+    # Канал виртуальной редакции: публикации редакции, дисциплина 1-3 поста/день
+    editorial: Mapped[bool] = mapped_column(default=False)
     # Автопилот (Этап 7): публикация без ручного ревью при уверенности модели
     autopilot: Mapped[bool] = mapped_column(default=False)
     autopilot_min_score: Mapped[int | None] = mapped_column(Integer)
@@ -121,6 +129,102 @@ class TargetChannel(Base):
     double_check: Mapped[bool] = mapped_column(default=False)
     double_check_online: Mapped[bool] = mapped_column(default=False)
     double_check_fact_strictness: Mapped[int | None] = mapped_column(Integer)
+
+
+class EditorialWebSource(Base):
+    """Web-источник виртуальной редакции: лента заголовков."""
+
+    __tablename__ = "editorial_web_sources"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(255))
+    url: Mapped[str] = mapped_column(Text, unique=True)
+    # Источник качественной аналитики для режима «Рерайт»
+    rewrite_source: Mapped[bool] = mapped_column(default=False)
+    enabled: Mapped[bool] = mapped_column(default=True)
+    # Задел под детерминированный парсинг (Шаг 2): CSS-селекторы ленты
+    list_selector: Mapped[str | None] = mapped_column(Text)
+    title_selector: Mapped[str | None] = mapped_column(Text)
+    link_selector: Mapped[str | None] = mapped_column(Text)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class Headline(Base):
+    """Единица потока заголовков для главреда (web или tg), без дедупликации смыслов."""
+
+    __tablename__ = "editorial_headlines"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_kind: Mapped[str] = mapped_column(String(8))  # web | tg
+    source_name: Mapped[str | None] = mapped_column(String(255))
+    url: Mapped[str | None] = mapped_column(Text, unique=True)
+    post_id: Mapped[int | None] = mapped_column(ForeignKey("posts.id"), index=True)
+    title: Mapped[str] = mapped_column(Text)
+    title_hash: Mapped[str] = mapped_column(String(64), index=True)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    consumed_by_chief_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Topic(Base):
+    """Решение главреда + редакционное задание (гипотеза или рерайт)."""
+
+    __tablename__ = "editorial_topics"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[TopicKind] = mapped_column(_enum(TopicKind, "topic_kind"))
+    theme: Mapped[str] = mapped_column(Text)
+    hypothesis: Mapped[str | None] = mapped_column(Text)
+    why_interesting: Mapped[str | None] = mapped_column(Text)
+    materials: Mapped[list | None] = mapped_column(JSONB)  # headline ids / url
+    confirm_signals: Mapped[str | None] = mapped_column(Text)
+    refute_signals: Mapped[str | None] = mapped_column(Text)
+    priority: Mapped[str | None] = mapped_column(String(16))
+    status: Mapped[TopicStatus] = mapped_column(
+        _enum(TopicStatus, "topic_status"), default=TopicStatus.IN_WORK, index=True)
+    verdict: Mapped[str | None] = mapped_column(String(16))  # confirmed|partial|refuted
+    verdict_note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    materials_rows: Mapped[list["Material"]] = relationship(back_populates="topic")
+    article: Mapped["Article | None"] = relationship(back_populates="topic", uselist=False)
+
+
+class Material(Base):
+    """Дочитанный первоисточник по заданию главреда."""
+
+    __tablename__ = "editorial_materials"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    topic_id: Mapped[int] = mapped_column(ForeignKey("editorial_topics.id", ondelete="CASCADE"), index=True)
+    url: Mapped[str | None] = mapped_column(Text)
+    post_id: Mapped[int | None] = mapped_column(ForeignKey("posts.id"))
+    title: Mapped[str | None] = mapped_column(Text)
+    full_text: Mapped[str | None] = mapped_column(Text)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    topic: Mapped[Topic] = relationship(back_populates="materials_rows")
+
+
+class Article(Base):
+    """Статья/пост редакции: черновик → ревью → публикация."""
+
+    __tablename__ = "editorial_articles"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    topic_id: Mapped[int] = mapped_column(ForeignKey("editorial_topics.id"), unique=True)
+    draft_text: Mapped[str | None] = mapped_column(Text)
+    version: Mapped[int] = mapped_column(default=1)
+    status: Mapped[ArticleStatus] = mapped_column(
+        _enum(ArticleStatus, "article_status"), default=ArticleStatus.DRAFT, index=True)
+    publish_job_id: Mapped[int | None] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    topic: Mapped[Topic] = relationship(back_populates="article")
+
 
 class Post(Base):
     """Найденный пост источника. Жёсткая дедупликация: (source_id, source_message_id)."""

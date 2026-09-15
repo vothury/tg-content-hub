@@ -29,6 +29,7 @@
     <a href="/posts" class="{{ 'active' if active == 'posts' else '' }}">Посты</a>
     <a href="/queue" class="{{ 'active' if active == 'queue' else '' }}">Очередь</a>
     <a href="/stats" class="{{ 'active' if active == 'stats' else '' }}">Статистика</a>
+    <a class="nav {{ 'active' if active == 'editorial' }}" href="/editorial">Редакция</a>
     <a href="/settings" class="{{ 'active' if active == 'settings' else '' }}">Настройки</a>
     <a href="/content" class="{{ 'active' if active == 'content' else '' }}">Контент</a>
     <form method="post" action="/logout" class="menu-logout">

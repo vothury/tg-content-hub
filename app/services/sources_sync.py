@@ -11,7 +11,7 @@ from sqlalchemy import select
 
 from app.config import settings
 from app.db.enums import SourceKind
-from app.db.models import Source, StyleProfile, TargetChannel
+from app.db.models import EditorialWebSource, Source, StyleProfile, TargetChannel
 from app.db.session import session_scope
 
 log = logging.getLogger("sources_sync")
@@ -50,6 +50,17 @@ def parse_sources_text(text: str):
     except yaml.YAMLError as exc:
         raise SourcesFileError(f"некорректный YAML: {exc}")
 
+    web = []
+    for i, w in enumerate(raw.get("editorial_web") or [], 1):
+        url = str(w.get("url") or "").strip()
+        if not url:
+            raise SourcesFileError(f"editorial_web №{i}: обязательно url")
+        web.append({
+            "name": str(w.get("name") or "").strip() or url,
+            "url": url,
+            "rewrite_source": bool(w.get("rewrite_source", False)),
+        })
+
     styles = []
     for i, s in enumerate(raw.get("styles") or [], 1):
         name = str(s.get("name") or "").strip()
@@ -74,6 +85,7 @@ def parse_sources_text(text: str):
             "quiet_hours": t.get("quiet_hours"),
             "rewrite": t.get("rewrite"),
             "dup_recap": bool(t.get("dup_recap", False)),
+            "editorial": bool(t.get("editorial", False)),
             "style": str(t.get("style") or "").strip() or None,
             "autopilot": t.get("autopilot"),
             "autopilot_min_score": t.get("autopilot_min_score"),
@@ -99,6 +111,7 @@ def parse_sources_text(text: str):
             "kind": kind,
             "target": _norm_username(s["target"]) if s.get("target") else None,
             "enabled": bool(s.get("enabled", True)),
+            "editorial_only": bool(s.get("editorial_only", False)),
             "poll_interval_sec": s.get("poll_interval_sec"),
             "fresh_window_min": s.get("fresh_window_min"),
             "fallback_count": s.get("fallback_count"),
@@ -106,10 +119,10 @@ def parse_sources_text(text: str):
             "relevance": _parse_relevance(s.get("relevance"), i),
             "filters": {"min_text_len": f.get("min_text_len"), "blacklist_words": f.get("blacklist_words")},
         })
-    return targets, sources, styles
+    return targets, sources, styles, web
 
 
-def report(targets, sources, styles) -> str:
+def report(targets, sources, styles, web=None) -> str:
     """Краткий отчёт о содержимом + перекрёстные проверки без применения."""
     problems = []
     t_names = {t["username"] for t in targets}
@@ -127,7 +140,16 @@ def report(targets, sources, styles) -> str:
     for t in targets:
         if t["style"] and t["style"] not in st_names:
             problems.append(f"targets @{t['username']}: style '{t['style']}' не описан в styles")
-    head = f"OK: targets={len(targets)} sources={len(sources)} styles={len(styles)}"
+    web = web or []
+    urls = [w["url"] for w in web]
+    if len(urls) != len(set(urls)):
+        problems.append("editorial_web: есть дубли url")
+    ed_targets = [t["username"] for t in targets if t["editorial"]]
+    for s in sources:
+        if s["editorial_only"] and s["username"] not in t_names:
+            problems.append(f"sources: editorial_only @{s['username']} не описан в targets (агрегатор должен быть каналом)")
+    head = (f"OK: targets={len(targets)} sources={len(sources)} styles={len(styles)} "
+            f"editorial_web={len(web)} editorial_channels={ed_targets}")
     return head if not problems else head + "\n" + "\n".join("• " + p for p in problems)
 
 
@@ -139,7 +161,7 @@ def load_sources_file(path=DEFAULT_PATH):
 
 
 async def apply_parsed(parsed) -> dict:
-    targets_cfg, sources_cfg, styles_cfg = parsed
+    targets_cfg, sources_cfg, styles_cfg, web_cfg = parsed
     stats = {"styles": [0, 0], "targets": [0, 0], "sources": [0, 0], "disabled": 0}
     d_interval = getattr(settings, "reader_default_source_interval_sec", 300)
     d_window = getattr(settings, "reader_fresh_window_min", 60)
@@ -158,6 +180,29 @@ async def apply_parsed(parsed) -> dict:
         await session.flush()
         style_ids = {sp.name: sp.id for sp in (await session.execute(select(StyleProfile))).scalars().all()}
 
+        stats["editorial_web"] = [0, 0]
+        existing_w = {w.url: w for w in (
+            await session.execute(select(EditorialWebSource))).scalars().all()}
+        keep_w = set()
+        for e in web_cfg:
+            w = existing_w.get(e["url"])
+            if w is None:
+                session.add(EditorialWebSource(
+                    name=e["name"], url=e["url"],
+                    rewrite_source=e["rewrite_source"], enabled=True))
+                stats["editorial_web"][0] += 1
+            else:
+                changed = False
+                if w.name != e["name"]: w.name = e["name"]; changed = True
+                if w.rewrite_source != e["rewrite_source"]: w.rewrite_source = e["rewrite_source"]; changed = True
+                if not w.enabled: w.enabled = True; changed = True
+                if changed: stats["editorial_web"][1] += 1
+            keep_w.add(e["url"])
+        for w in existing_w.values():
+            if w.url not in keep_w and w.enabled:
+                w.enabled = False
+        await session.flush()
+
         existing = {c.username: c for c in (await session.execute(select(TargetChannel))).scalars().all()}
         for cfg in targets_cfg:
             style_id = style_ids.get(cfg["style"])
@@ -168,6 +213,7 @@ async def apply_parsed(parsed) -> dict:
                                           quiet_hours=cfg["quiet_hours"],
                                           rewrite_enabled=True if cfg["rewrite"] is None else bool(cfg["rewrite"]),
                                           dup_recap_enabled=bool(cfg["dup_recap"]),
+                                          editorial=bool(cfg["editorial"]),
                                           autopilot=bool(cfg["autopilot"]),
                                           autopilot_min_score=cfg["autopilot_min_score"],
                                           review_if_uncertain=True if cfg["review_if_uncertain"] is None else bool(cfg["review_if_uncertain"]),
@@ -194,6 +240,8 @@ async def apply_parsed(parsed) -> dict:
             if ch.rewrite_enabled != rw: ch.rewrite_enabled = rw; changed = True
             dr = bool(cfg["dup_recap"])
             if ch.dup_recap_enabled != dr: ch.dup_recap_enabled = dr; changed = True
+            ed = bool(cfg["editorial"])
+            if ch.editorial != ed: ch.editorial = ed; changed = True
             if ch.style_profile_id != style_id: ch.style_profile_id = style_id; changed = True
             if changed: stats["targets"][1] += 1
             dco = bool(cfg["double_check_online"])
@@ -221,7 +269,8 @@ async def apply_parsed(parsed) -> dict:
                              fresh_window_min=e["fresh_window_min"] or d_window,
                              fallback_count=e["fallback_count"] if e["fallback_count"] is not None else d_fb,
                              fallback_max_age_hours=e["fallback_max_age_hours"] if e["fallback_max_age_hours"] is not None else d_fb_h,
-                             relevance=e["relevance"], filters=e["filters"])
+                             relevance=e["relevance"], filters=e["filters"],
+                             editorial_only=e["editorial_only"])
                 session.add(src); stats["sources"][0] += 1
                 await session.flush(); keep.add(src.id)
             else:
@@ -235,6 +284,7 @@ async def apply_parsed(parsed) -> dict:
                 if e["fallback_count"] is not None and src.fallback_count != e["fallback_count"]: src.fallback_count = e["fallback_count"]; changed = True
                 if e["fallback_max_age_hours"] is not None and src.fallback_max_age_hours != e["fallback_max_age_hours"]: src.fallback_max_age_hours = e["fallback_max_age_hours"]; changed = True
                 if src.relevance != e["relevance"]: src.relevance = e["relevance"]; changed = True
+                if src.editorial_only != e["editorial_only"]: src.editorial_only = e["editorial_only"]; changed = True
                 if src.filters != e["filters"]: src.filters = e["filters"]; changed = True
                 if changed: stats["sources"][1] += 1
         for src in existing_s.values():
