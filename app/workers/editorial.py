@@ -41,11 +41,12 @@ def _next_cycle_at(times: str):
 
 
 async def run_cycle() -> None:
+    from app.services.editorial_journalist import run_journalist_phase
     log.info("редакция: цикл начат")
-    # Фаза 1 (Шаг 2): журналист — заголовки web + tg-агрегатора в headlines
+    await run_journalist_phase()
     # Фаза 2 (Шаг 3): главред — решения hypothesis/rewrite, задания в topics
     # Фаза 3 (Шаг 4): сбор материалов, вердикт, текст статьи в articles
-    log.info("редакция: цикл завершён (фазы появятся в следующих шагах)")
+    log.info("редакция: цикл завершён (фаза журналиста отработала)")
 
 
 async def main() -> None:

@@ -36,6 +36,10 @@ class LLMStage(str, enum.Enum):
     CLASSIFY = "classify"
     REWRITE = "rewrite"
     REVISION = "revision"
+    EDITORIAL_JOURNALIST = "editorial_journalist"
+    EDITORIAL_CHIEF = "editorial_chief"
+    EDITORIAL_GATHER = "editorial_gather"
+    EDITORIAL_WRITE = "editorial_write"
 
 
 class LLMCallStatus(str, enum.Enum):

@@ -7,6 +7,16 @@
   <div class="sub">всего собрано: {{ head_count }}</div>
 </div>
 
+<div class="section-title">Последние заголовки</div>
+<div class="list">
+  {% for h in headlines %}
+  <div class="card"><span class="badge">{{ h.source_kind }}</span>
+    <span class="sub">{{ h.source_name or '—' }} · {{ h.fetched_at|dt }}</span>
+    <div class="label">{% if h.url %}<a href="{{ h.url }}" target="_blank" rel="noopener">{{ h.title }}</a>{% else %}{{ h.title }}{% endif %}</div>
+  </div>
+  {% else %}<div class="card">Заголовков пока нет — первый цикл журналиста наполнит ленту</div>{% endfor %}
+</div>
+
 <div class="section-title">Web-источники</div>
 <div class="list">
   {% for w in web_sources %}

@@ -20,6 +20,8 @@ async def editorial_page(request: Request):
             select(EditorialWebSource).order_by(EditorialWebSource.id))).scalars().all()
         head_count = (await session.execute(
             select(func.count()).select_from(Headline))).scalar() or 0
+        headlines = (await session.execute(
+            select(Headline).order_by(Headline.id.desc()).limit(100))).scalars().all()
     art_map = {a.topic_id: a for a in articles}
     return templates.TemplateResponse(request, "editorial.html", {
         "active": "editorial",
@@ -28,4 +30,5 @@ async def editorial_page(request: Request):
         "articles": art_map,
         "web_sources": web_sources,
         "head_count": head_count,
+        "headlines": headlines,
     })

@@ -102,3 +102,36 @@ class DedupConfirmResult:
         if not isinstance(data, dict):
             raise LLMParseError(f"ожидался JSON-объект: {str(data)[:300]!r}")
         return cls(same=bool(data.get("same", False)))
+
+
+@dataclass
+class HeadlineListResult:
+    items: list = field(default_factory=list)
+
+    @classmethod
+    def from_response(cls, content: str) -> "HeadlineListResult":
+        data = json.loads(_strip_code_fence(content))
+        raw = data.get("headlines") if isinstance(data, dict) else data
+        if not isinstance(raw, list):
+            raise LLMParseError("ожидался список заголовков")
+        items = []
+        for x in raw:
+            if isinstance(x, dict) and str(x.get("title") or "").strip():
+                items.append({"title": str(x["title"]).strip(),
+                              "url": str(x.get("url") or "").strip()})
+        if not items:
+            raise LLMParseError("пустой список заголовков")
+        return cls(items=items)
+
+
+@dataclass
+class HeadlineTitleResult:
+    title: str = ""
+
+    @classmethod
+    def from_response(cls, content: str) -> "HeadlineTitleResult":
+        data = json.loads(_strip_code_fence(content))
+        title = str((data or {}).get("title") or "").strip()
+        if not title:
+            raise LLMParseError("пустой заголовок")
+        return cls(title=title)
