@@ -89,7 +89,8 @@ async def _fetch_web() -> int:
                 continue
             html = r.text[:HTML_LIMIT]
         except Exception as exc:  # noqa: BLE001
-            log.warning("journalist: %s -> ошибка загрузки: %s", name, exc)
+            log.warning("journalist: %s -> ошибка загрузки: %s: %s",
+                        name, exc.__class__.__name__, exc)
             continue
         try:
             result = await _call_json(
@@ -97,7 +98,8 @@ async def _fetch_web() -> int:
                  {"role": "user", "content": JOURNALIST_WEB_USER.format(base_url=url, html=html)}],
                 model, providers, 1500, HeadlineListResult)
         except Exception as exc:  # noqa: BLE001
-            log.warning("journalist: %s -> ошибка извлечения: %s", name, exc)
+            log.warning("journalist: %s -> ошибка извлечения: %s: %s",
+                        name, exc.__class__.__name__, exc)
             continue
         async with session_scope() as session:
             for it in result.items[:MAX_PER_SOURCE]:

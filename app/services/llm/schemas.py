@@ -33,6 +33,21 @@ def extract_json(content: str) -> dict:
     raise LLMParseError(f"не удалось извлечь JSON из ответа: {content[:300]!r}")
 
 
+def _strip_code_fence(content: str) -> str:
+    """Убирает markdown-обёртку ```json ... ``` вокруг ответа модели."""
+    s = (content or "").strip()
+    if s.startswith("```"):
+        s = s[3:]
+        if s.startswith("json"):
+            s = s[4:]
+        elif s.startswith("JSON"):
+            s = s[4:]
+        s = s.strip()
+        if s.endswith("```"):
+            s = s[:-3]
+    return s.strip()
+
+
 @dataclass
 class ClassifyResult:
     suitable: bool
