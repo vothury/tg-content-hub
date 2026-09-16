@@ -126,6 +126,8 @@ class TargetChannel(Base):
     no_review: Mapped[bool] = mapped_column(default=False)
     # credit = оригинал + программная подпись источника; repost = пересылка; none = только БД
     aggregate_mode: Mapped[str] = mapped_column(String(16), default="credit")
+    # Предохранитель автопилота: подпись/ссылка t.me в последней строке -> ручное подтверждение
+    autopilot_sig_guard: Mapped[bool] = mapped_column(default=True)
     # Автопилот (Этап 7): публикация без ручного ревью при уверенности модели
     autopilot: Mapped[bool] = mapped_column(default=False)
     autopilot_min_score: Mapped[int | None] = mapped_column(Integer)

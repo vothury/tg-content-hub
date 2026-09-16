@@ -559,6 +559,18 @@ async def _technical_approve(post_id: int, channel, from_status) -> None:
         log.info("пост %s: технический канал -> сохранён в БД без публикации", post_id)
 
 
+_SIG_RE = re.compile(r"подписат|подписывай|subscribe|наш канал", re.I)
+
+
+def _sig_guard_hit(text: str) -> bool:
+    """Подпись/ссылка t.me в последней строке черновика = стоп-автопилот."""
+    lines = [l.strip() for l in (text or "").splitlines() if l.strip()]
+    if not lines:
+        return False
+    last = lines[-1]
+    return ("t.me/" in last) or ("telegram.me/" in last) or bool(_SIG_RE.search(last))
+
+
 async def _autopilot_step(post_id: int) -> None:
     try:
         async with session_scope() as session:
@@ -585,6 +597,27 @@ async def _autopilot_step(post_id: int) -> None:
             if not approve:
                 await _set_double_check_review(post_id, note or "нет вердикта — проверить вручную")
                 return
+        async with session_scope() as session:
+            post_g = await session.get(Post, post_id)
+            ch_g = (await session.get(TargetChannel, post_g.target_channel_id)
+                    if post_g is not None and post_g.target_channel_id is not None else None)
+        draft_g = (post_g.draft_text or post_g.original_text or "") if post_g is not None else ""
+        if ch_g is not None and ch_g.autopilot_sig_guard and _sig_guard_hit(draft_g):
+            async with session_scope() as session:
+                p = await session.get(Post, post_id)
+                if p is not None:
+                    p.double_check_note = ("автопилот остановлен предохранителем подписей: "
+                                           "в последней строке ссылка t.me/призыв подписки — "
+                                           "нужно ручное подтверждение")
+                    session.add(PostEvent(
+                        post_id=post_id, actor=EventActor.SYSTEM, action="autopilot_sig_guard",
+                        from_status=PostStatus.AWAITING_REVIEW.value,
+                        to_status=PostStatus.AWAITING_REVIEW.value,
+                        details={"last_line": draft_g.strip().splitlines()[-1]
+                                 if draft_g.strip() else ""}))
+                    await session.commit()
+            log.warning("пост %s: предохранитель подписей — автопилот остановлен, ждёт ручного подтверждения", post_id)
+            return
         await _autopilot_publish(post_id)
     except Exception:  # noqa: BLE001
         log.exception("сбой автопилота поста %s", post_id)

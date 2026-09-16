@@ -92,6 +92,8 @@ def parse_sources_text(text: str):
             "editorial": bool(t.get("editorial", False)),
             "no_review": bool(t.get("no_review", False)),
             "aggregate_mode": str(t.get("aggregate_mode") or "credit").strip(),
+            "autopilot_sig_guard": True if t.get("autopilot_sig_guard") is None
+                                     else bool(t.get("autopilot_sig_guard")),
             "style": str(t.get("style") or "").strip() or None,
             "autopilot": t.get("autopilot"),
             "autopilot_min_score": t.get("autopilot_min_score"),
@@ -232,6 +234,7 @@ async def apply_parsed(parsed) -> dict:
                                           editorial=bool(cfg["editorial"]),
                                           no_review=bool(cfg["no_review"]),
                                           aggregate_mode=cfg["aggregate_mode"],
+                                          autopilot_sig_guard=bool(cfg["autopilot_sig_guard"]),
                                           autopilot=bool(cfg["autopilot"]),
                                           autopilot_min_score=cfg["autopilot_min_score"],
                                           review_if_uncertain=True if cfg["review_if_uncertain"] is None else bool(cfg["review_if_uncertain"]),
@@ -264,6 +267,8 @@ async def apply_parsed(parsed) -> dict:
             if ch.no_review != nr: ch.no_review = nr; changed = True
             am = cfg["aggregate_mode"]
             if ch.aggregate_mode != am: ch.aggregate_mode = am; changed = True
+            sg = bool(cfg["autopilot_sig_guard"])
+            if ch.autopilot_sig_guard != sg: ch.autopilot_sig_guard = sg; changed = True
             if ch.style_profile_id != style_id: ch.style_profile_id = style_id; changed = True
             if changed: stats["targets"][1] += 1
             dco = bool(cfg["double_check_online"])

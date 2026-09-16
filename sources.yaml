@@ -63,6 +63,7 @@ targets:
     double_check: true
     double_check_online: false            # проверять спорные факты через веб-поиск (модель :online)
     double_check_fact_strictness: 5      # важность точности фактов 1-10
+    # autopilot_sig_guard не указан = true (безопасный дефолт для боевых каналов)
     daily_limit: 30
     min_interval_min: 5
     # стиль не указан -> профиль default
@@ -76,6 +77,7 @@ targets:
     double_check: false
     no_review: true          # технический канал: без карточек ревью, только префильтр (реклама)
     aggregate_mode: credit   # credit | repost | none
+    autopilot_sig_guard: false   # агрегатору предохранитель не нужен
     daily_limit: 100
     min_interval_min: 1
 
@@ -152,8 +154,11 @@ sources:
   - username: BSPhistorychannel
     kind: external
     target: testimfoto
-    relevance: 9
-    filters: *filters_default
+    relevance: 5
+    filters:
+      min_text_len: 1
+      max_text_len: 500        # громоздкие исторические простыни не форматы канала
+      blacklist_words: ["#реклама", "# реклама"]
     # poll_interval_sec: 300
 
   # ================= Сырьё для агрегатора =================
