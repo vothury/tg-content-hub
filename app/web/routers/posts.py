@@ -51,7 +51,7 @@ def _day_range(date_str: str):
 
 async def _query_rows(status: str, channel: int, q: str,
                       date_from: str = "", date_to: str = "",
-                      page: int = 1, per_page: int = 50):
+                      page: int = 1, per_page: int = 50, hide: str = ""):
     async with session_scope() as session:
         query = select(Post)
         if status:
@@ -61,6 +61,14 @@ async def _query_rows(status: str, channel: int, q: str,
                 pass
         if channel:
             query = query.where(Post.target_channel_id == channel)
+        if hide:
+            hid_names = {x.strip().lstrip("@") for x in hide.split(",") if x.strip()}
+            if hid_names:
+                hid_ids = [c for c in (await session.execute(
+                    select(TargetChannel.id).where(
+                        TargetChannel.username.in_(hid_names)))).scalars().all()]
+                if hid_ids:
+                    query = query.where(Post.target_channel_id.notin_(hid_ids))
         if q:
             query = query.where(Post.original_text.ilike(f"%{q}%"))
         if date_from:
@@ -133,11 +141,13 @@ async def _query_rows(status: str, channel: int, q: str,
 
 @router.get("/posts")
 async def posts_list(request: Request, status: str = "", channel: int = 0, q: str = "",
-                     date_from: str = "", date_to: str = "", page: int = 1):
+                     date_from: str = "", date_to: str = "", page: int = 1, hide: str = ""):
     rows, channels, total, page, pages = await _query_rows(
-        status, channel, q, date_from, date_to, page)
+        status, channel, q, date_from, date_to, page, hide=hide)
     base_qs = (f"status={quote(status)}&channel={channel}&q={quote(q)}"
-               f"&date_from={quote(date_from)}&date_to={quote(date_to)}")
+               f"&date_from={quote(date_from)}&date_to={quote(date_to)}"
+               f"&hide={quote(hide)}")
+    hidden = {x.strip().lstrip("@") for x in hide.split(",") if x.strip()}
     return templates.TemplateResponse(request, "posts.html", {
         "active": "posts",
         "csrf_token": get_csrf_token(request),
@@ -146,14 +156,17 @@ async def posts_list(request: Request, status: str = "", channel: int = 0, q: st
         "statuses": [s.value for s in PostStatus],
         "f_status": status, "f_channel": channel, "f_q": q,
         "f_date_from": date_from, "f_date_to": date_to,
+        "f_hide": hide, "hidden": hidden,
+        "ch_vis": len([c for c in channels if c.username not in hidden]),
+        "ch_hid": len([c for c in channels if c.username in hidden]),
         "page": page, "pages": pages, "total": total, "base_qs": base_qs,
     })
 
 
 @router.get("/api/posts")
 async def api_posts(status: str = "", channel: int = 0, q: str = "",
-                    date_from: str = "", date_to: str = "", page: int = 1):
-    rows, _, _, _, _ = await _query_rows(status, channel, q, date_from, date_to, page)
+                    date_from: str = "", date_to: str = "", page: int = 1, hide: str = ""):
+    rows, _, _, _, _ = await _query_rows(status, channel, q, date_from, date_to, page, hide=hide)
     return JSONResponse({"rows": rows})
 
 

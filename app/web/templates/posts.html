@@ -10,12 +10,17 @@
     <option value="{{ s }}" {{ 'selected' if s == f_status else '' }}>{{ s }}</option>
     {% endfor %}
   </select>
-  <select name="channel">
-    <option value="0">Все каналы</option>
-    {% for c in channels %}
-    <option value="{{ c.id }}" {{ 'selected' if c.id == f_channel else '' }}>@{{ c.username }}</option>
-    {% endfor %}
-  </select>
+  <div class="chdrop" style="position:relative;display:inline-block">
+    <button type="button" class="btn ghost" id="chBtn">Все каналы (+{{ ch_vis }} / -{{ ch_hid }})</button>
+    <div id="chPanel" style="display:none;position:absolute;z-index:40;background:#12151b;border:1px solid #2a2f3a;border-radius:8px;padding:8px;min-width:230px;max-height:320px;overflow:auto">
+      {% for c in channels %}
+      <label style="display:flex;gap:8px;align-items:center;padding:4px 6px;cursor:pointer">
+        <input type="checkbox" class="chbox" value="{{ c.username }}" {{ '' if c.username in hidden else 'checked' }}>
+        <span>@{{ c.username }}</span>
+      </label>
+      {% endfor %}
+    </div>
+  </div>
   <input type="text" name="q" value="{{ f_q }}" placeholder="Поиск по тексту">
   <input type="date" name="date_from" value="{{ f_date_from }}" title="с даты">
   <input type="date" name="date_to" value="{{ f_date_to }}" title="по дату">
@@ -62,6 +67,26 @@ function refresh(){
   }).catch(function(){});
 }
 setInterval(refresh,5000);
+var CHB=document.getElementById('chBtn'),CHP=document.getElementById('chPanel');
+if(CHB){
+  CHB.addEventListener('click',function(e){e.stopPropagation();CHP.style.display=CHP.style.display==='none'?'block':'none';});
+  document.addEventListener('click',function(e){if(CHP&&!CHP.contains(e.target)&&e.target!==CHB)CHP.style.display='none';});
+  CHP.addEventListener('change',function(){
+    var hid=[];CHP.querySelectorAll('.chbox').forEach(function(b){if(!b.checked)hid.push(b.value);});
+    localStorage.setItem('posts_hidden_channels',JSON.stringify(hid));
+    var u=new URL(location.href);
+    if(hid.length){u.searchParams.set('hide',hid.join(','));}else{u.searchParams.delete('hide');}
+    u.searchParams.delete('page');
+    location.href=u.toString();
+  });
+  (function(){
+    var u=new URL(location.href);
+    if(!u.searchParams.has('hide')){
+      var mem=JSON.parse(localStorage.getItem('posts_hidden_channels')||'[]');
+      if(mem.length){u.searchParams.set('hide',mem.join(','));location.replace(u.toString());}
+    }
+  })();
+}
 var FLOAT=document.getElementById('dateFloat');var FT;
 function onScroll(){if(!LIST)return;var rs=LIST.querySelectorAll('.row');var cur='';for(var i=0;i<rs.length;i++){if(rs[i].getBoundingClientRect().top<90){cur=rs[i].dataset.date||cur;}}if(cur){FLOAT.textContent=cur;FLOAT.classList.add('show');}clearTimeout(FT);FT=setTimeout(function(){FLOAT.classList.remove('show');},600);}
 addEventListener('scroll',onScroll,{passive:true});
