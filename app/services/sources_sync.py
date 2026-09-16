@@ -125,6 +125,7 @@ def parse_sources_text(text: str):
             "relevance": _parse_relevance(s.get("relevance"), i),
             "filters": {k: v for k, v in {
                 "min_text_len": f.get("min_text_len"),
+                "max_text_len": f.get("max_text_len"),
                 "blacklist_words": f.get("blacklist_words"),
             }.items() if v is not None},
         })

@@ -144,6 +144,23 @@ async def run_prefilter(post_id: int) -> None:
             min_text_len = int(source_filters["min_text_len"])
         if source_filters.get("blacklist_words") is not None:
             blacklist = [str(w) for w in source_filters["blacklist_words"]]
+        max_text_len = source_filters.get("max_text_len")
+        if max_text_len is not None:
+            norm_len = len((post.normalized_text or "").strip())
+            if norm_len > int(max_text_len):
+                post.status = PostStatus.UNSUITABLE
+                post.verdict_reason = (f"технический лимит источника: "
+                                       f"длина {norm_len} > {int(max_text_len)}")
+                session.add(PostEvent(
+                    post_id=post.id, actor=EventActor.SYSTEM, action="prefilter_rejected",
+                    from_status=PostStatus.NEW.value, to_status=PostStatus.UNSUITABLE.value,
+                    details={"reason": "max_text_len", "len": norm_len,
+                             "max": int(max_text_len)},
+                ))
+                await session.commit()
+                log.info("пост %s: отсечён по max_text_len (%d > %d)",
+                         post.id, norm_len, int(max_text_len))
+                return
 
         has_media = (
             await session.execute(
