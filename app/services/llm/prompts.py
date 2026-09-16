@@ -4,7 +4,7 @@
 # Классификация (версия 4 — режимы релевантности источника)
 # ---------------------------------------------------------------------------
 
-CLASSIFY_VERSION = "classify-v5"
+CLASSIFY_VERSION = "classify-v6"
 
 CRITERIA = """КАТЕГОРИИ — определи одну и верни в "category":
 - "ads" — цель поста ПРОДАТЬ/побудить купить: промокоды, скидки, «купите», «успей», ставки, партнёрки, «наш партнёр», ссылки на покупку/билеты с призывом, цены с призывом купить, самореклама сторонних каналов/ботов.
@@ -63,6 +63,8 @@ CLASSIFY_SYSTEM_TEMPLATE = """Ты — редактор Telegram-канала «
 
 {media_note}
 
+{source_note}
+
 КАНОН: верни "canonical" ОДНОЙ строкой в фиксированном формате через " | ": «СУБЪЕКТ | ДЕЙСТВИЕ | ОБЪЕКТ | ДАТА | ЛЮДИ» (пустые сегменты пропускай).
 Нормализуй: даты как DD.MM.YYYY; названия фильмов/студий в «…»; имена дословно; ДЕЙСТВИЕ — один глагол сути (выпустит / отменила / перенесла / подписала …).
 Для подборок: «ПОДБОРКА | тип | ~N | суть». Для тривиальных постов (эмодзи, одно слово) — пустая строка.
@@ -92,7 +94,8 @@ REQ_VERBOSE = """Требования: "reason" — до 20 слов на рус
 
 def build_classify_prompt(channel_title: str | None, channel_description: str | None,
                           relevance: int | None, verbose: bool = False,
-                          media_hint: str | None = None) -> str:
+                          media_hint: str | None = None,
+                          source_note: str | None = None) -> str:
     if relevance is None or 4 <= relevance <= 7:
         mode = RELEVANCE_MID
     elif relevance >= 8:
@@ -102,11 +105,15 @@ def build_classify_prompt(channel_title: str | None, channel_description: str | 
     description = (channel_description or "").strip() or "тематика не задана — используй здравый смысл"
     title = (channel_title or "").strip() or "Telegram-канал"
     media_note = MEDIA_NOTE.format(media_hint=media_hint) if media_hint else MEDIA_NOTE_NONE
+    note = (f"ПЕРСОНАЛЬНАЯ ИНСТРУКЦИЯ ДЛЯ ЭТОГО ИСТОЧНИКА (уточняет общие правила "
+            f"оценки score/category для его постов):\n{source_note}"
+            if source_note else "")
     return CLASSIFY_SYSTEM_TEMPLATE.format(
         channel_title=title, channel_description=description,
         criteria=CRITERIA, relevance_mode=mode,
         requirements=REQ_VERBOSE if verbose else REQ_MIN,
         media_note=media_note,
+        source_note=note,
     )
 
 

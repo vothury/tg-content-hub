@@ -77,6 +77,9 @@ class Source(Base):
     # Сырьё виртуальной редакции: посты не проходят copy-конвейер, их читает журналист
     editorial_only: Mapped[bool] = mapped_column(default=False)
 
+    # Персональные инструкции модели классификации для постов этого источника
+    llm_instructions: Mapped[str | None] = mapped_column(Text)
+
 class StyleProfile(Base):
     """Стилевой профиль целевого канала: промпты, примеры, режим сохранения тона."""
 

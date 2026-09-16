@@ -120,6 +120,7 @@ def parse_sources_text(text: str):
             "target": _norm_username(s["target"]) if s.get("target") else None,
             "enabled": bool(s.get("enabled", True)),
             "editorial_only": bool(s.get("editorial_only", False)),
+            "llm_instructions": str(s.get("llm_instructions") or "").strip() or None,
             "poll_interval_sec": s.get("poll_interval_sec"),
             "fresh_window_min": s.get("fresh_window_min"),
             "fallback_count": s.get("fallback_count"),
@@ -297,7 +298,8 @@ async def apply_parsed(parsed) -> dict:
                              fallback_count=e["fallback_count"] if e["fallback_count"] is not None else d_fb,
                              fallback_max_age_hours=e["fallback_max_age_hours"] if e["fallback_max_age_hours"] is not None else d_fb_h,
                              relevance=e["relevance"], filters=e["filters"],
-                             editorial_only=e["editorial_only"])
+                             editorial_only=e["editorial_only"],
+                             llm_instructions=e["llm_instructions"])
                 session.add(src); stats["sources"][0] += 1
                 await session.flush(); keep.add(src.id)
             else:
@@ -312,6 +314,8 @@ async def apply_parsed(parsed) -> dict:
                 if e["fallback_max_age_hours"] is not None and src.fallback_max_age_hours != e["fallback_max_age_hours"]: src.fallback_max_age_hours = e["fallback_max_age_hours"]; changed = True
                 if src.relevance != e["relevance"]: src.relevance = e["relevance"]; changed = True
                 if src.editorial_only != e["editorial_only"]: src.editorial_only = e["editorial_only"]; changed = True
+                if src.llm_instructions != e["llm_instructions"]:
+                    src.llm_instructions = e["llm_instructions"]; changed = True
                 if src.filters != e["filters"]: src.filters = e["filters"]; changed = True
                 if changed: stats["sources"][1] += 1
         for src in existing_s.values():

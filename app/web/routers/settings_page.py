@@ -230,6 +230,8 @@ async def settings_page(request: Request, msg: str = ""):
                 f"→ @{ch_map.get(s.target_channel_id, '—')}; опрос {interval} с")
         if s.relevance is not None:
             line += f"; релевантность {s.relevance}"
+        if s.llm_instructions:
+            line += "; инструкции модели: да"
         src_lines.append(line)
 
     ch_lines = [
