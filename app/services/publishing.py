@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -19,10 +20,12 @@ from app.db.enums import EventActor, MediaType, PostStatus, PublishJobState, Pub
 from app.db.models import MediaItem, Post, PostEvent, PublishJob, Source, TargetChannel
 from app.db.session import session_scope
 from app.services.times import owner_now, owner_tz
+from app.services.settings import Keys, get_setting
 
 log = logging.getLogger(__name__)
 
 CAPTION_LIMIT = 1024
+_MD_LINK_RE = re.compile(r"\[([^\]]+)\]\((https?://[^\s)]+)\)")
 
 
 def _media_root() -> Path:
@@ -269,6 +272,38 @@ async def _recap_rows(post_id: int) -> list:
     return [tuple(r) for r in rows]
 
 
+def _md_to_entities(text: str):
+    """Markdown [якорь](url) -> чистый текст + text_link-сущности Telegram."""
+    entities = []
+    out = []
+    pos = 0
+    for m in _MD_LINK_RE.finditer(text):
+        out.append(text[pos:m.start()])
+        anchor = m.group(1)
+        entities.append(MessageEntity(type="text_link", offset=len("".join(out)),
+                                      length=len(anchor), url=m.group(2)))
+        out.append(anchor)
+        pos = m.end()
+    out.append(text[pos:])
+    return "".join(out), entities
+
+
+async def _restore_lost_links(post, text: str, entities: list):
+    """Страховка: если модель всё же съела все ссылки одобренного поста — вернуть их строкой."""
+    async with session_scope() as session:
+        enabled = int(await get_setting(session, Keys.PUBLISH_RESTORE_LINKS))
+    if not enabled:
+        return text, entities
+    urls = [m.group(2) for m in _MD_LINK_RE.finditer(post.original_text or "")]
+    if not urls:
+        return text, entities
+    if entities or ("http" in text) or ("t.me/" in text):
+        return text, entities
+    return text + "\n\nПодробнее: " + ", ".join(dict.fromkeys(urls)), entities
+
+
+
+
 def _build_recap(text: str, rows: list) -> tuple[str, list]:
     rows = sorted(rows, key=lambda r: r[2] or datetime.min.replace(tzinfo=timezone.utc))
     base = text.rstrip()
@@ -296,9 +331,10 @@ def _shift_entities(entities: list, cut: int) -> list:
 
 async def _send_to_channel(bot: Bot, chat_id: int, post: Post) -> int:
     """Отправка поста (медиа + текст + блок «ранее писали») без parse-режима."""
-    text = post.draft_text or post.original_text or ""
+    raw = post.draft_text or post.original_text or ""
+    text, entities = _md_to_entities(raw)
+    text, entities = await _restore_lost_links(post, text, entities)
     rows = await _recap_rows(post.id)
-    entities: list = []
     if rows:
         text, entities = _build_recap(text, rows)
     credit = await _credit_line(post.id)

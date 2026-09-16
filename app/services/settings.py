@@ -32,6 +32,7 @@ class Keys:
     LLM_REASONING_SMALL = "llm.reasoning_small"
     LLM_DOUBLE_CHECK_MAX_TOKENS = "llm.double_check_max_tokens"
     PUBLISH_DUP_RECAP_WINDOW_HOURS = "publish.dup_recap_window_hours"
+    PUBLISH_RESTORE_LINKS = "publish.restore_links"
     EDITORIAL_ENABLED = "editorial.enabled"
     EDITORIAL_CYCLE_TIMES = "editorial.cycle_times"
     EDITORIAL_PUBLISH_WINDOWS = "editorial.publish_windows"
@@ -84,6 +85,7 @@ _ENV_DEFAULTS: dict[str, Any] = {
     Keys.LLM_REASONING_SMALL: settings.llm_reasoning_small,
     Keys.LLM_DOUBLE_CHECK_MAX_TOKENS: settings.llm_double_check_max_tokens,
     Keys.PUBLISH_DUP_RECAP_WINDOW_HOURS: settings.publish_dup_recap_window_hours,
+    Keys.PUBLISH_RESTORE_LINKS: settings.publish_restore_links,
     Keys.EDITORIAL_ENABLED: settings.editorial_enabled,
     Keys.EDITORIAL_CYCLE_TIMES: settings.editorial_cycle_times,
     Keys.EDITORIAL_PUBLISH_WINDOWS: settings.editorial_publish_windows,

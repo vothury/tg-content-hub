@@ -70,6 +70,7 @@ class Settings(BaseSettings):
     publish_dup_recap_window_hours: int = 24
     llm_double_check_max_tokens: int = 800 # токены финального ответа двойной проверки (поверх reasoning)
     publish_dup_recap_window_hours: int = 24  # окно «ранее писали» для дублей-агрегаторов
+    publish_restore_links: int = 1   # 1 = если модель съела все ссылки поста, вернуть их строкой «Подробнее:»
 
     # ---- Виртуальная редакция ----
     editorial_enabled: int = 1
