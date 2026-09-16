@@ -50,7 +50,7 @@ targets:
     double_check_online: false            # проверять спорные факты через веб-поиск (модель :online)
     double_check_fact_strictness: 5      # важность точности фактов 1-10
     daily_limit: 30
-    min_interval_min: 5
+    min_interval_min: 30
 
   - username: testimfoto
     title: "Фото тест"
@@ -65,7 +65,7 @@ targets:
     double_check_fact_strictness: 5      # важность точности фактов 1-10
     # autopilot_sig_guard не указан = true (безопасный дефолт для боевых каналов)
     daily_limit: 30
-    min_interval_min: 5
+    min_interval_min: 30
     # стиль не указан -> профиль default
 
   # Канал-агрегатор: склад сырья из релевантных TG-каналов
@@ -186,6 +186,10 @@ sources:
     kind: external
     target: moskva_novostroy
     relevance: 8
+  - username: realty_rbc
+    kind: external
+    target: moskva_novostroy
+    relevance: 8
 
   # Сам агрегатор как сырьё редакции: не публикуется и не классифицируется
   - username: moskva_novostroy
@@ -196,8 +200,8 @@ sources:
 # --- Web-источники редакции -------------------------------------------------
 # Web-источники редакции (новая секция; синхронизируется тем же sources-sync)
 editorial_web:
-  - name: "РБК Недвижимость"
-    url: "https://realty.rbc.ru/"
+  #- name: "РБК Недвижимость"
+  #  url: "https://realty.rbc.ru/"
   - name: "IRN"
     url: "https://www.irn.ru/news/"
   - name: "Дом.РФ (Инвестминт)"
@@ -206,8 +210,8 @@ editorial_web:
     url: "https://erzrf.ru/news"
   - name: "Интерфакс Недвижимость"
     url: "https://realty.interfax.ru/"
-  - name: "ЦИАН Новости"
-    url: "https://www.cian.ru/novosti/"
+  #- name: "ЦИАН Новости"
+  #  url: "https://www.cian.ru/novosti/"
   - name: "Коммерсантъ (аналитика)"
     url: "https://www.kommersant.ru/theme/117"
     rewrite_source: true

@@ -10,6 +10,7 @@
     <option value="{{ s }}" {{ 'selected' if s == f_status else '' }}>{{ s }}</option>
     {% endfor %}
   </select>
+  <input type="hidden" name="hide" id="hideInput" value="{{ f_hide }}">
   <div class="chdrop" style="position:relative;display:inline-block">
     <button type="button" class="btn ghost" id="chBtn">Все каналы (+{{ ch_vis }} / -{{ ch_hid }})</button>
     <div id="chPanel" style="display:none;position:absolute;z-index:40;background:#12151b;border:1px solid #2a2f3a;border-radius:8px;padding:8px;min-width:230px;max-height:320px;overflow:auto">
@@ -67,25 +68,32 @@ function refresh(){
   }).catch(function(){});
 }
 setInterval(refresh,5000);
-var CHB=document.getElementById('chBtn'),CHP=document.getElementById('chPanel');
-if(CHB){
+var CHB=document.getElementById('chBtn'),CHP=document.getElementById('chPanel'),HID=document.getElementById('hideInput');
+if(CHB&&CHP){
   CHB.addEventListener('click',function(e){e.stopPropagation();CHP.style.display=CHP.style.display==='none'?'block':'none';});
-  document.addEventListener('click',function(e){if(CHP&&!CHP.contains(e.target)&&e.target!==CHB)CHP.style.display='none';});
-  CHP.addEventListener('change',function(){
-    var hid=[];CHP.querySelectorAll('.chbox').forEach(function(b){if(!b.checked)hid.push(b.value);});
-    localStorage.setItem('posts_hidden_channels',JSON.stringify(hid));
-    var u=new URL(location.href);
-    if(hid.length){u.searchParams.set('hide',hid.join(','));}else{u.searchParams.delete('hide');}
-    u.searchParams.delete('page');
-    location.href=u.toString();
-  });
+  document.addEventListener('click',function(e){if(!CHP.contains(e.target)&&e.target!==CHB)CHP.style.display='none';});
+  // Восстановление из памяти: один переход при первом заходе без параметра hide
   (function(){
     var u=new URL(location.href);
     if(!u.searchParams.has('hide')){
       var mem=JSON.parse(localStorage.getItem('posts_hidden_channels')||'[]');
-      if(mem.length){u.searchParams.set('hide',mem.join(','));location.replace(u.toString());}
+      var cur=(HID&&HID.value)?HID.value.split(',').filter(Boolean):[];
+      if(mem.length&&mem.join(',')!==cur.join(',')){
+        u.searchParams.set('hide',mem.join(','));
+        location.replace(u.toString());
+      }
     }
   })();
+  // Применение исключений только по кнопке «Фильтр»
+  var FORM=CHB.closest('form');
+  if(FORM){
+    FORM.addEventListener('submit',function(){
+      var hid=[];
+      CHP.querySelectorAll('.chbox').forEach(function(b){if(!b.checked)hid.push(b.value);});
+      if(HID)HID.value=hid.join(',');
+      localStorage.setItem('posts_hidden_channels',JSON.stringify(hid));
+    });
+  }
 }
 var FLOAT=document.getElementById('dateFloat');var FT;
 function onScroll(){if(!LIST)return;var rs=LIST.querySelectorAll('.row');var cur='';for(var i=0;i<rs.length;i++){if(rs[i].getBoundingClientRect().top<90){cur=rs[i].dataset.date||cur;}}if(cur){FLOAT.textContent=cur;FLOAT.classList.add('show');}clearTimeout(FT);FT=setTimeout(function(){FLOAT.classList.remove('show');},600);}
