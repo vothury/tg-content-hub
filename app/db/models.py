@@ -122,6 +122,10 @@ class TargetChannel(Base):
     dup_recap_enabled: Mapped[bool] = mapped_column(default=False)
     # Канал виртуальной редакции: публикации редакции, дисциплина 1-3 поста/день
     editorial: Mapped[bool] = mapped_column(default=False)
+    # Технический канал (агрегатор): только первичный фильтр, без карточек ревью
+    no_review: Mapped[bool] = mapped_column(default=False)
+    # credit = оригинал + программная подпись источника; repost = пересылка; none = только БД
+    aggregate_mode: Mapped[str] = mapped_column(String(16), default="credit")
     # Автопилот (Этап 7): публикация без ручного ревью при уверенности модели
     autopilot: Mapped[bool] = mapped_column(default=False)
     autopilot_min_score: Mapped[int | None] = mapped_column(Integer)

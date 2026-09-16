@@ -423,6 +423,16 @@ async def advance_post(post_id: int) -> None:
             if status is None:
                 return
 
+        async with session_scope() as session:
+            post_t = await session.get(Post, post_id)
+            ch_t = (await session.get(TargetChannel, post_t.target_channel_id)
+                    if post_t is not None and post_t.target_channel_id is not None else None)
+        if (ch_t is not None and ch_t.no_review
+                and status not in (PostStatus.UNSUITABLE, PostStatus.DEDUPLICATED)):
+            # Технический канал: первичный фильтр прошёл — сразу в публикацию/БД, без ревью
+            await _technical_approve(post_id, ch_t, status)
+            return
+
         if status in (PostStatus.PREFILTERED, PostStatus.LLM_CLASSIFYING):
             if not settings.openrouter_api_key:
                 log.warning("OPENROUTER_API_KEY не задан — пост %s ждёт в %s", post_id, status.value)
@@ -524,6 +534,29 @@ async def revise_draft(post_id: int, comment: str) -> tuple[bool, str]:
 
     log.info("пост %s: правка ИИ -> черновик v%d", post_id, post.draft_version)
     return True, f"правка внесена — черновик v{post.draft_version}"
+
+
+async def _technical_approve(post_id: int, channel, from_status) -> None:
+    """Агрегатор: реклама отсечена префильтром — одобряем без классификации и карточек."""
+    async with session_scope() as session:
+        post = await session.get(Post, post_id)
+        if post is None or post.status in (PostStatus.UNSUITABLE, PostStatus.DEDUPLICATED):
+            return
+        prev = post.status.value
+        post.status = PostStatus.APPROVED
+        session.add(PostEvent(
+            post_id=post_id, actor=EventActor.SYSTEM, action="technical_approved",
+            from_status=prev, to_status=PostStatus.APPROVED.value,
+            details={"channel": channel.username, "mode": channel.aggregate_mode}))
+        await session.commit()
+    if channel.aggregate_mode == "credit":
+        ok, msg = await create_publish_job(post_id, PublishMode.NOW)
+        log.info("пост %s: технический канал -> публикация с подписью источника (%s)", post_id, msg)
+    elif channel.aggregate_mode == "repost":
+        log.warning("пост %s: режим repost будет реализован следующим шагом — пока публикация с подписью", post_id)
+        ok, msg = await create_publish_job(post_id, PublishMode.NOW)
+    else:  # none — только БД
+        log.info("пост %s: технический канал -> сохранён в БД без публикации", post_id)
 
 
 async def _autopilot_step(post_id: int) -> None:

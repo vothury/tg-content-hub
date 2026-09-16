@@ -72,12 +72,12 @@ targets:
     title: "Москва Новострой агрегатор"
     description: "Агрегатор новостей о новостройках Москвы и Подмосковья (сырьё для редакции)"
     rewrite: false
-    autopilot: true
-    autopilot_min_score: 7
-    review_if_uncertain: false
+    autopilot: false
     double_check: false
-    daily_limit: 40
-    min_interval_min: 5
+    no_review: true          # технический канал: без карточек ревью, только префильтр (реклама)
+    aggregate_mode: credit   # credit | repost | none
+    daily_limit: 100
+    min_interval_min: 1
 
   # Редакционный канал: сюда публикует виртуальная редакция
   - username: testim_novostroyki

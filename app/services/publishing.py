@@ -241,6 +241,20 @@ async def _claim_job(job_id: int) -> bool:
         return result.rowcount == 1
 
 
+async def _credit_line(post_id: int):
+    """Программная подпись источника для технических каналов (не LLM)."""
+    async with session_scope() as session:
+        post = await session.get(Post, post_id)
+        src = await session.get(Source, post.source_id) if post is not None and post.source_id else None
+        ch = await session.get(TargetChannel, post.target_channel_id) if post is not None and post.target_channel_id else None
+    if src is None or ch is None or not ch.no_review or ch.aggregate_mode != "credit":
+        return None
+    name = src.title or (f"@{src.username}" if src.username else "источник")
+    url = (f"https://t.me/{src.username}/{post.source_message_id}"
+           if src.username and post.source_message_id else None)
+    return name, url
+
+
 async def _recap_rows(post_id: int) -> list:
     async with session_scope() as session:
         post = await session.get(Post, post_id)
@@ -287,6 +301,15 @@ async def _send_to_channel(bot: Bot, chat_id: int, post: Post) -> int:
     entities: list = []
     if rows:
         text, entities = _build_recap(text, rows)
+    credit = await _credit_line(post.id)
+    if credit:
+        name, url = credit
+        prefix = "\n\nИсточник: "
+        offset = len(text) + len(prefix)
+        text = text + prefix + name
+        if url:
+            entities.append(MessageEntity(type="text_link", offset=offset,
+                                          length=len(name), url=url))
     root = _media_root()
     media = await _select_media(post.id)
     files: list = []

@@ -13,7 +13,8 @@ from bs4 import BeautifulSoup  # ДОБАВЛЕНО
 from sqlalchemy import select
 
 from app.config import settings
-from app.db.models import EditorialWebSource, Headline, Post, Source
+from app.db.enums import LLMCallStatus, LLMStage
+from app.db.models import EditorialWebSource, Headline, LLMCall, Post, Source
 from app.db.session import session_scope
 from app.redis_client import get_redis
 from app.services import guards
@@ -55,12 +56,34 @@ async def _account(resp) -> None:
         await get_redis().incrbyfloat(f"guard:editorial_cost:{day}", float(resp.cost_usd))
 
 
-async def _call_json(messages, model, providers, max_tokens, schema):
+async def _call_json(messages, model, providers, max_tokens, schema,
+                     stage=LLMStage.EDITORIAL_JOURNALIST):
     resp = await chat_completion(messages, model, max_tokens, temperature=0.0,
                                  provider=providers,
                                  reasoning_max_tokens=settings.llm_reasoning_small)
     await _account(resp)
-    return schema.from_response(resp.content)
+    try:
+        result = schema.from_response(resp.content)
+    except Exception as exc:  # noqa: BLE001
+        async with session_scope() as session:
+            session.add(LLMCall(
+                post_id=None, stage=stage, provider="openrouter", model=model,
+                prompt_version="editorial", request={"messages": messages},
+                response={"content": resp.content}, status=LLMCallStatus.PARSE_ERROR,
+                error=str(exc), input_tokens=resp.input_tokens,
+                output_tokens=resp.output_tokens, cost_usd=resp.cost_usd,
+                latency_ms=resp.latency_ms))
+            await session.commit()
+        raise
+    async with session_scope() as session:
+        session.add(LLMCall(
+            post_id=None, stage=stage, provider="openrouter", model=model,
+            prompt_version="editorial", request={"messages": messages},
+            response={"content": resp.content}, status=LLMCallStatus.OK,
+            input_tokens=resp.input_tokens, output_tokens=resp.output_tokens,
+            cost_usd=resp.cost_usd, latency_ms=resp.latency_ms))
+        await session.commit()
+    return result
 
 
 async def _existing() -> tuple[set, set, set]:
@@ -380,3 +403,4 @@ async def run_journalist_phase() -> None:
     web_n = await _fetch_web()
     tg_n = await _fetch_tg()
     log.info("journalist: добавлено заголовков web=%d tg=%d", web_n, tg_n)
+    return web_n, tg_n

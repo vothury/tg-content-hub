@@ -40,10 +40,12 @@ def _next_cycle_at(times: str):
         hour=0, minute=5, second=0, microsecond=0)
 
 
-async def run_cycle() -> None:
+async def run_cycle() -> bool:
+    """Возвращает True, если цикл оказался пустым (нужен повтор)."""
     from app.services.editorial_journalist import run_journalist_phase
     log.info("редакция: цикл начат")
-    await run_journalist_phase()
+    web_n, tg_n = await run_journalist_phase()
+    return web_n == 0 and tg_n == 0
     # Фаза 2 (Шаг 3): главред — решения hypothesis/rewrite, задания в topics
     # Фаза 3 (Шаг 4): сбор материалов, вердикт, текст статьи в articles
     log.info("редакция: цикл завершён (фаза журналиста отработала)")
@@ -63,9 +65,17 @@ async def main() -> None:
                  nxt.strftime("%d.%m %H:%M"), delay / 60)
         await asyncio.sleep(max(30, delay))
         try:
-            await run_cycle()
+            empty = await run_cycle()
         except Exception:  # noqa: BLE001
             log.exception("editorial: сбой цикла")
+            empty = True
+        if empty:
+            log.warning("editorial: цикл без результата — повтор через 10 минут (сеть/DNS?)")
+            await asyncio.sleep(600)
+            try:
+                await run_cycle()
+            except Exception:  # noqa: BLE001
+                log.exception("editorial: повтор цикла тоже упал")
         await monitor.heartbeat("editorial")
 
 

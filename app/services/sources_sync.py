@@ -90,6 +90,8 @@ def parse_sources_text(text: str):
             "rewrite": t.get("rewrite"),
             "dup_recap": bool(t.get("dup_recap", False)),
             "editorial": bool(t.get("editorial", False)),
+            "no_review": bool(t.get("no_review", False)),
+            "aggregate_mode": str(t.get("aggregate_mode") or "credit").strip(),
             "style": str(t.get("style") or "").strip() or None,
             "autopilot": t.get("autopilot"),
             "autopilot_min_score": t.get("autopilot_min_score"),
@@ -227,6 +229,8 @@ async def apply_parsed(parsed) -> dict:
                                           rewrite_enabled=True if cfg["rewrite"] is None else bool(cfg["rewrite"]),
                                           dup_recap_enabled=bool(cfg["dup_recap"]),
                                           editorial=bool(cfg["editorial"]),
+                                          no_review=bool(cfg["no_review"]),
+                                          aggregate_mode=cfg["aggregate_mode"],
                                           autopilot=bool(cfg["autopilot"]),
                                           autopilot_min_score=cfg["autopilot_min_score"],
                                           review_if_uncertain=True if cfg["review_if_uncertain"] is None else bool(cfg["review_if_uncertain"]),
@@ -255,6 +259,10 @@ async def apply_parsed(parsed) -> dict:
             if ch.dup_recap_enabled != dr: ch.dup_recap_enabled = dr; changed = True
             ed = bool(cfg["editorial"])
             if ch.editorial != ed: ch.editorial = ed; changed = True
+            nr = bool(cfg["no_review"])
+            if ch.no_review != nr: ch.no_review = nr; changed = True
+            am = cfg["aggregate_mode"]
+            if ch.aggregate_mode != am: ch.aggregate_mode = am; changed = True
             if ch.style_profile_id != style_id: ch.style_profile_id = style_id; changed = True
             if changed: stats["targets"][1] += 1
             dco = bool(cfg["double_check_online"])
