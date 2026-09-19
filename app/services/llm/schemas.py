@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 
 
@@ -46,6 +47,23 @@ def _strip_code_fence(content: str) -> str:
         if s.endswith("```"):
             s = s[:-3]
     return s.strip()
+
+
+def _loads_lenient(content: str):
+    """json.loads с починкой частых огрехов модели:
+    значения в «ёлочках», trailing commas, одинарные кавычки, текст вокруг JSON."""
+    s = _strip_code_fence(content)
+    try:
+        return json.loads(s)
+    except Exception:  # noqa: BLE001
+        pass
+    fixed = re.sub(r"(:\s*)«([^»\n]*)»", r'\1"\2"', s)
+    fixed = re.sub(r",(\s*[}\]])", r"\1", fixed)
+    fixed = fixed.replace("'", '"')
+    l, r = fixed.find("{"), fixed.rfind("}")
+    if l != -1 and r > l:
+        fixed = fixed[l : r + 1]
+    return json.loads(fixed)
 
 
 @dataclass
@@ -125,7 +143,7 @@ class HeadlineListResult:
 
     @classmethod
     def from_response(cls, content: str) -> "HeadlineListResult":
-        data = json.loads(_strip_code_fence(content))
+        data = _loads_lenient(content)
         raw = data.get("headlines") if isinstance(data, dict) else data
         if not isinstance(raw, list):
             raise LLMParseError("ожидался список заголовков")
@@ -145,7 +163,7 @@ class HeadlineTitleResult:
 
     @classmethod
     def from_response(cls, content: str) -> "HeadlineTitleResult":
-        data = json.loads(_strip_code_fence(content))
+        data = _loads_lenient(content)
         title = str((data or {}).get("title") or "").strip()
         if not title:
             raise LLMParseError("пустой заголовок")
@@ -158,7 +176,7 @@ class HeadlinePickResult:
 
     @classmethod
     def from_response(cls, content: str) -> "HeadlinePickResult":
-        data = json.loads(_strip_code_fence(content))
+        data = _loads_lenient(content)
         raw = data.get("items") if isinstance(data, dict) else data
         if not isinstance(raw, list):
             raise LLMParseError("ожидался список items")

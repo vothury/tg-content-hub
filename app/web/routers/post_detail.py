@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from sqlalchemy import select
 
 from app.db.models import (
-    MediaItem, Post, PostDraftVersion, PostEvent, Source, TargetChannel, PublishJob,
+    MediaItem, Post, PostDraftVersion, PostEvent, Source, TargetChannel, PublishJob, LLMCall,
 )
 from app.db.session import session_scope
 from app.services import review
@@ -75,6 +75,10 @@ async def post_detail(request: Request, post_id: int, msg: str = ""):
         }
         for j in jobs_rows
     ]
+    async with session_scope() as session:
+        calls = (await session.execute(
+            select(LLMCall).where(LLMCall.post_id == post_id)
+            .order_by(LLMCall.id.desc()).limit(10))).scalars().all()
     return templates.TemplateResponse(request, "post_detail.html", {
         "active": "posts",
         "csrf_token": get_csrf_token(request),
@@ -90,6 +94,7 @@ async def post_detail(request: Request, post_id: int, msg: str = ""):
         "jobs": jobs,
         "channel_obj": channel,
         "next_step": next_step_hint(post, channel),
+        "calls": calls,
     })
 
 

@@ -237,12 +237,28 @@ async def classify_post(post_id: int) -> None:
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": CLASSIFY_USER.format(text=original_text)},
     ]
-    resp, result, call_status, error_text = await _call_and_parse(
-        messages, model, settings.llm_classify_max_tokens, temperature=0.2, schema=ClassifyResult,
-        reasoning_max_tokens=settings.llm_reasoning_max_tokens,
-    )
-    if resp is not None and resp.cost_usd:
-        await guards.add_llm_cost(resp.cost_usd)
+    resp = result = None
+    call_status, error_text = LLMCallStatus.OK, None
+    for attempt in (1, 2):
+        resp, result, call_status, error_text = await _call_and_parse(
+            messages, model, settings.llm_classify_max_tokens, temperature=0.2, schema=ClassifyResult,
+            reasoning_max_tokens=settings.llm_reasoning_max_tokens,
+        )
+        if resp is not None and resp.cost_usd:
+            await guards.add_llm_cost(resp.cost_usd)
+        if result is not None and call_status is LLMCallStatus.OK:
+            break
+        if attempt == 1:
+            async with session_scope() as session:
+                session.add(PostEvent(
+                    post_id=post_id, actor=EventActor.SYSTEM, action="llm_retry",
+                    details={"stage": "classify", "attempt": attempt,
+                             "status": call_status.value if call_status else None,
+                             "error": error_text}))
+                await session.commit()
+            log.warning("пост %s: классификация не удалась (%s) — повтор через 60 сек",
+                        post_id, error_text)
+            await asyncio.sleep(60)
 
     # Языковой барьер: если причина пришла иероглифами — переводим тем же дешёвым вызовом
     translate_resp = None
@@ -352,13 +368,28 @@ async def rewrite_post(post_id: int) -> None:
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": REWRITE_USER.format(text=original_text)},
     ]
-    resp, result, call_status, error_text = await _call_and_parse(
-        messages, model, settings.llm_rewrite_max_tokens, temperature=0.4,
-        schema=RewriteResult, provider=providers,
-        reasoning_max_tokens=settings.llm_reasoning_rewrite,
-    )
-    if resp is not None and resp.cost_usd:
-        await guards.add_llm_cost(resp.cost_usd)
+    resp = result = None
+    call_status, error_text = LLMCallStatus.OK, None
+    for attempt in (1, 2):
+        resp, result, call_status, error_text = await _call_and_parse(
+            messages, model, settings.llm_rewrite_max_tokens, temperature=0.4,
+            schema=RewriteResult, provider=providers,
+            reasoning_max_tokens=settings.llm_reasoning_rewrite,
+        )
+        if resp is not None and resp.cost_usd:
+            await guards.add_llm_cost(resp.cost_usd)
+        if result is not None and call_status is LLMCallStatus.OK:
+            break
+        if attempt == 1:
+            async with session_scope() as session:
+                session.add(PostEvent(
+                    post_id=post_id, actor=EventActor.SYSTEM, action="llm_retry",
+                    details={"stage": "rewrite", "attempt": attempt,
+                             "status": call_status.value if call_status else None,
+                             "error": error_text}))
+                await session.commit()
+            log.warning("пост %s: рерайт не удался (%s) — повтор через 60 сек", post_id, error_text)
+            await asyncio.sleep(60)
 
     succeeded = call_status is LLMCallStatus.OK and result is not None
 

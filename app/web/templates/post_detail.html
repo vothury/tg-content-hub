@@ -35,6 +35,17 @@
 <div class="card pre">{{ p.canonical_text }}</div>
 {% endif %}
 
+{% if calls %}
+<div class="section-title">Вызовы LLM</div>
+<div class="card">
+  {% for c in calls %}
+  <div class="sub"><b>{{ c.stage.value if c.stage else '—' }}</b> · {{ c.status.value if c.status else '—' }} · {{ c.model or '—' }}{% if c.cost_usd %} · ${{ '%.4f'|format(c.cost_usd) }}{% endif %}{% if c.latency_ms %} · {{ c.latency_ms }} мс{% endif %}</div>
+  {% if c.error %}<div class="sub" style="opacity:.85">⚠ {{ c.error }}</div>{% endif %}
+  {% if c.response and c.response.content %}<div class="sub" style="opacity:.6;white-space:pre-wrap">{{ c.response.content[:400] }}</div>{% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+
 {% if p.dedup_info %}
 <div class="section-title">Дедупликация</div>
 <div class="card">
@@ -175,7 +186,7 @@
   {% for e in events %}
   <div class="card"><span class="badge">{{ e.action }}</span>
     <span class="sub">{{ e.from_status or '' }} → {{ e.to_status or '' }}</span></div>
-    {% if e.details and e.action in ('deduplicated', 'dedup_cleared', 'double_check_attempt', 'double_check_recovered', 'double_check_review') %}<div class="sub">{{ e.details }}</div>{% endif %}
+    {% if e.details and e.action in ('deduplicated', 'dedup_cleared', 'double_check_attempt', 'double_check_recovered', 'double_check_review', 'llm_failed', 'llm_retry', 'revision_failed', 'autopilot_sig_guard', 'technical_approved') %}<div class="sub">{{ e.details }}</div>{% endif %}
   {% else %}<div class="card">Событий нет</div>{% endfor %}
 </div>
 <script>
