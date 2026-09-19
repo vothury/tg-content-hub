@@ -206,18 +206,20 @@ sources:
 # --- Web-источники редакции -------------------------------------------------
 # Web-источники редакции (новая секция; синхронизируется тем же sources-sync)
 editorial_web:
-  #- name: "РБК Недвижимость"
-  #  url: "https://realty.rbc.ru/"
   - name: "IRN"
-    url: "https://www.irn.ru/news/"
+    url: "https://www.irn.ru/news"
   - name: "Дом.РФ (Инвестминт)"
-    url: "https://investmint.ru/domrf/news/"
+    url: "https://investmint.ru/domrf/news"
   - name: "ЕРЗ.РФ"
     url: "https://erzrf.ru/news"
   - name: "Интерфакс Недвижимость"
-    url: "https://realty.interfax.ru/"
+    url: "https://realty.interfax.ru"
+  - name: "Новострой-М"
+    url: "https://www.novostroy-m.ru/novosti"
+  - name: "СтройкиРу"
+    url: "https://stroiki.ru/live/"
   #- name: "ЦИАН Новости"
-  #  url: "https://www.cian.ru/novosti/"
+  #  url: "https://www.cian.ru/novosti"
   - name: "Коммерсантъ (аналитика)"
-    url: "https://www.kommersant.ru/theme/117"
+    url: "https://www.kommersant.ru/theme/3643"
     rewrite_source: true

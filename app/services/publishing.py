@@ -288,13 +288,32 @@ def _md_to_entities(text: str):
     return "".join(out), entities
 
 
+_SIG_LINE_RE = re.compile(r"подписат|подписывай|subscribe|наш канал|подробнее", re.I)
+
+
+def _info_links(original: str) -> list:
+    """Только информационные ссылки: внутри предложения; подписи/CTA игнорируем."""
+    out = []
+    for line in (original or "").splitlines():
+        stripped = line.strip()
+        if not stripped or _SIG_LINE_RE.search(stripped):
+            continue
+        for m in _MD_LINK_RE.finditer(line):
+            rest = _MD_LINK_RE.sub("", line).strip()
+            if len(rest) < 25:  # строка состоит почти только из ссылки — это подпись
+                continue
+            out.append(m.group(2))
+    return out
+
+
 async def _restore_lost_links(post, text: str, entities: list):
-    """Страховка: если модель всё же съела все ссылки одобренного поста — вернуть их строкой."""
+    """Страховка: если модель съела ВСЕ информационные ссылки — вернуть их строкой.
+    Подписи/CTA и строки-ссылки не восстанавливаем никогда."""
     async with session_scope() as session:
         enabled = int(await get_setting(session, Keys.PUBLISH_RESTORE_LINKS))
     if not enabled:
         return text, entities
-    urls = [m.group(2) for m in _MD_LINK_RE.finditer(post.original_text or "")]
+    urls = _info_links(post.original_text or "")
     if not urls:
         return text, entities
     if entities or ("http" in text) or ("t.me/" in text):
