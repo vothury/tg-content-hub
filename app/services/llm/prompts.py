@@ -4,11 +4,11 @@
 # Классификация (версия 4 — режимы релевантности источника)
 # ---------------------------------------------------------------------------
 
-CLASSIFY_VERSION = "classify-v6"
+CLASSIFY_VERSION = "classify-v7"
 
 CRITERIA = """КАТЕГОРИИ — определи одну и верни в "category":
 - "ads" — цель поста ПРОДАТЬ/побудить купить: промокоды, скидки, «купите», «успей», ставки, партнёрки, «наш партнёр», ссылки на покупку/билеты с призывом, цены с призывом купить, самореклама сторонних каналов/ботов.
-- "self_promo" — самопиар источника: «у нас», «наша фильмотека/подборка/канал», «мы добавили», «подписывайтесь на нас». Читатель целевого канала не знает, кто такие «мы».
+- "self_promo" — самопиар источника: «у нас», «наша фильмотека/подборка/канал», «мы добавили», «подписывайтесь на нас». Читатель целевого канала не знает, кто такие «мы». СОБСТВЕННАЯ подпись источника в конце поста (его название, эмодзи-логотип, ссылка на его канал) НЕ является self_promo и НЕ является ads: такие строки игнорируются при оценке и удаляются при публикации.
 - "water" — вода: анонсы «скоро выйдет» без факта, пересказы, дубли, сервисные/бессмысленные сообщения.
 - "off_topic" — вне тематики канала.
 - "ok" — подходит: конкретика (имя/дата/место/событие), по теме, нейтральный информативный тон.
@@ -50,6 +50,8 @@ MEDIA_NOTE_NONE = """МЕДИА НЕТ: оценивай текст как са�
 
 CLASSIFY_SYSTEM_TEMPLATE = """Ты — редактор Telegram-канала «{channel_title}».
 Тематика канала: {channel_description}
+
+{source_identity}
 
 Твоя задача — решить, подходит ли пост-кандидат из источника для публикации на этом канале после адаптации.
 
@@ -95,7 +97,9 @@ REQ_VERBOSE = """Требования: "reason" — до 20 слов на рус
 def build_classify_prompt(channel_title: str | None, channel_description: str | None,
                           relevance: int | None, verbose: bool = False,
                           media_hint: str | None = None,
-                          source_note: str | None = None) -> str:
+                          source_note: str | None = None,
+                          source_username: str | None = None,
+                          source_title: str | None = None) -> str:
     if relevance is None or 4 <= relevance <= 7:
         mode = RELEVANCE_MID
     elif relevance >= 8:
@@ -108,12 +112,24 @@ def build_classify_prompt(channel_title: str | None, channel_description: str | 
     note = (f"ПЕРСОНАЛЬНАЯ ИНСТРУКЦИЯ ДЛЯ ЭТОГО ИСТОЧНИКА (уточняет общие правила "
             f"оценки score/category для его постов):\n{source_note}"
             if source_note else "")
+    if source_username:
+        identity = (f"ИСТОЧНИК ПОСТА: канал @{source_username}"
+                    + (f" («{source_title}»)" if source_title else "")
+                    + ". Строки-подписи и ссылки, ведущие НА ЭТОТ ЖЕ источник "
+                      "(например «🎬 [Название](https://t.me/" + source_username + ")»), "
+                      "— его обычная подпись: игнорируй их при оценке, НЕ считай ads/self_promo "
+                      "и НЕ снижай за них score. self_promo ставь ТОЛЬКО когда сам контент "
+                      "(не подпись) рекламирует: «у нас залили», «наша подборка», «подписывайтесь», "
+                      "или когда пост ссылается на СТОРОННИЙ канал/бот как на основную цель.")
+    else:
+        identity = ""
     return CLASSIFY_SYSTEM_TEMPLATE.format(
         channel_title=title, channel_description=description,
         criteria=CRITERIA, relevance_mode=mode,
         requirements=REQ_VERBOSE if verbose else REQ_MIN,
         media_note=media_note,
         source_note=note,
+        source_identity=identity,
     )
 
 

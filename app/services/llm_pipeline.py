@@ -230,6 +230,8 @@ async def classify_post(post_id: int) -> None:
         verbose=verbose,
         media_hint=media_hint,
         source_note=source.llm_instructions if source is not None else None,
+        source_username=source.username if source is not None else None,
+        source_title=source.title if source is not None else None,
     )
     messages = [
         {"role": "system", "content": system_prompt},
