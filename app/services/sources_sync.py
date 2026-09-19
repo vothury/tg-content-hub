@@ -94,6 +94,9 @@ def parse_sources_text(text: str):
             "aggregate_mode": str(t.get("aggregate_mode") or "credit").strip(),
             "autopilot_sig_guard": True if t.get("autopilot_sig_guard") is None
                                      else bool(t.get("autopilot_sig_guard")),
+            "aggregate_min_score": int(t.get("aggregate_min_score") or 0) or None,
+            "aggregate_accept": str(t.get("aggregate_accept") or "").strip() or None,
+            "aggregate_reject": str(t.get("aggregate_reject") or "").strip() or None,
             "style": str(t.get("style") or "").strip() or None,
             "autopilot": t.get("autopilot"),
             "autopilot_min_score": t.get("autopilot_min_score"),
@@ -236,6 +239,9 @@ async def apply_parsed(parsed) -> dict:
                                           no_review=bool(cfg["no_review"]),
                                           aggregate_mode=cfg["aggregate_mode"],
                                           autopilot_sig_guard=bool(cfg["autopilot_sig_guard"]),
+                                          aggregate_min_score=cfg["aggregate_min_score"],
+                                          aggregate_accept=cfg["aggregate_accept"],
+                                          aggregate_reject=cfg["aggregate_reject"],
                                           autopilot=bool(cfg["autopilot"]),
                                           autopilot_min_score=cfg["autopilot_min_score"],
                                           review_if_uncertain=True if cfg["review_if_uncertain"] is None else bool(cfg["review_if_uncertain"]),
@@ -270,6 +276,12 @@ async def apply_parsed(parsed) -> dict:
             if ch.aggregate_mode != am: ch.aggregate_mode = am; changed = True
             sg = bool(cfg["autopilot_sig_guard"])
             if ch.autopilot_sig_guard != sg: ch.autopilot_sig_guard = sg; changed = True
+            ams = cfg["aggregate_min_score"]
+            if ch.aggregate_min_score != ams: ch.aggregate_min_score = ams; changed = True
+            aa = cfg["aggregate_accept"]
+            if ch.aggregate_accept != aa: ch.aggregate_accept = aa; changed = True
+            ar = cfg["aggregate_reject"]
+            if ch.aggregate_reject != ar: ch.aggregate_reject = ar; changed = True
             if ch.style_profile_id != style_id: ch.style_profile_id = style_id; changed = True
             if changed: stats["targets"][1] += 1
             dco = bool(cfg["double_check_online"])

@@ -25,13 +25,13 @@ from telethon.tl.types import Document, DocumentAttributeVideo, PeerChannel, Pho
 
 from app.common.logging import setup_logging
 from app.config import settings
-from app.db.enums import EventActor, MediaType, PostStatus
-from app.db.models import MediaItem, Post, PostEvent, Source
+from app.db.enums import EventActor, MediaType, PostStatus, PublishJobState, PublishMode
+from app.db.models import MediaItem, Post, PostEvent, PublishJob, Source, TargetChannel
 from app.db.session import session_scope
 from app.services.settings import Keys, get_setting
 from app.services.queue import enqueue_post
 from app.services.sources_sync import SourcesFileError, sync_sources
-from app.services.text import make_text_hash, normalize_text
+from app.services.text import html_to_text, make_text_hash, normalize_text
 from app.services import config_yaml, monitor
 
 
@@ -310,6 +310,7 @@ async def _persist_unit(client, snap: SourceSnapshot, entity, unit) -> int | Non
     raw = next((m.message for m in unit.messages if m.message), None)
     ent_msg = next((m for m in unit.messages if m.message), None)
     text = _annotate_links(raw, getattr(ent_msg, "entities", None)) if raw else None
+    text = html_to_text(text)
     normalized = normalize_text(text)
     media_rows = await _download_unit_media(client, snap, unit)
 
@@ -520,6 +521,67 @@ async def process_media_refresh(client: TelegramClient) -> None:
             log.exception("пост %s: не удалось перескачать медиа", post_id)
 
 
+async def _process_reposts(client: TelegramClient) -> None:
+    """aggregate_mode=repost: пересылаем оригинал — форматирование и ссылки сохраняются."""
+    async with session_scope() as session:
+        rows = (await session.execute(
+            select(Post).where(Post.repost_pending.is_(True))
+            .order_by(Post.id).limit(10))).scalars().all()
+        jobs = [(p.id, p.source_id, p.source_message_id, p.target_channel_id, p.repost_attempts)
+                for p in rows]
+    for post_id, source_id, msg_id, target_id, attempts in jobs:
+        try:
+            async with session_scope() as session:
+                src = await session.get(Source, source_id) if source_id else None
+                ch = await session.get(TargetChannel, target_id) if target_id else None
+            if src is None or ch is None or not ch.username:
+                raise ValueError("источник или целевой канал не найдены")
+            src_entity = await client.get_entity(src.username or src.telegram_id)
+            tgt_entity = await client.get_entity(ch.username)
+            sent = await client.forward_messages(tgt_entity, [msg_id], from_peer=src_entity)
+            mid = sent[0].id if sent else None
+            async with session_scope() as session:
+                post = await session.get(Post, post_id)
+                if post is None:
+                    continue
+                post.repost_pending = False
+                post.status = PostStatus.PUBLISHED
+                if mid:
+                    post.post_url = f"https://t.me/{ch.username}/{mid}"
+                session.add(PublishJob(
+                    post_id=post_id, target_channel_id=target_id,
+                    idempotency_key=f"post-{post_id}", mode=PublishMode.NOW,
+                    state=PublishJobState.DONE, published_message_id=mid,
+                    published_at=datetime.now(timezone.utc), max_attempts=3))
+                session.add(PostEvent(
+                    post_id=post_id, actor=EventActor.SYSTEM, action="published",
+                    from_status=PostStatus.APPROVED.value, to_status=PostStatus.PUBLISHED.value,
+                    details={"channel": ch.username, "message_id": mid, "mode": "repost"}))
+                await session.commit()
+            log.info("пост %s: переслан в @%s (сообщение %s)", post_id, ch.username, mid)
+        except errors.FloodWaitError as exc:
+            delay = min(int(getattr(exc, "seconds", 30)) + 5, 300)
+            log.warning("repost: FloodWait %s сек — пауза", delay)
+            await asyncio.sleep(delay)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("пост %s: пересылка не удалась (попытка %d): %s",
+                        post_id, attempts + 1, exc)
+            async with session_scope() as session:
+                p = await session.get(Post, post_id)
+                if p is not None:
+                    p.repost_attempts = attempts + 1
+                    if p.repost_attempts >= 3:
+                        p.repost_pending = False
+                        p.status = PostStatus.FAILED
+                        session.add(PostEvent(
+                            post_id=post_id, actor=EventActor.SYSTEM, action="publish_failed",
+                            to_status=PostStatus.FAILED.value,
+                            details={"error": str(exc)[:200], "mode": "repost"}))
+                    await session.commit()
+
+
+
+
 async def main() -> None:
     if not settings.telegram_api_id or not settings.telegram_api_hash:
         await _idle_forever("TELEGRAM_API_ID/API_HASH не заданы в .env")
@@ -576,6 +638,7 @@ async def main() -> None:
                     log.exception("ошибка обработки источника #%s", snap.id)
                 await asyncio.sleep(2)  # щадящая пауза между источниками
             await process_media_refresh(client)
+            await _process_reposts(client)
             await monitor.heartbeat("reader")
             await asyncio.sleep(settings.reader_poll_interval_sec)
     finally:

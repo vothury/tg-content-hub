@@ -20,6 +20,7 @@ from app.db.enums import EventActor, MediaType, PostStatus, PublishJobState, Pub
 from app.db.models import MediaItem, Post, PostEvent, PublishJob, Source, TargetChannel
 from app.db.session import session_scope
 from app.services.times import owner_now, owner_tz
+from app.services.text import html_to_text
 from app.services.settings import Keys, get_setting
 
 log = logging.getLogger(__name__)
@@ -348,9 +349,21 @@ def _shift_entities(entities: list, cut: int) -> list:
     return out
 
 
+def _split_caption(text: str) -> tuple[str, str]:
+    """Режем подпись по границе абзаца/предложения/слова, а не посреди слова."""
+    if len(text) <= CAPTION_LIMIT:
+        return text, ""
+    cut = text[:CAPTION_LIMIT]
+    for sep in ("\n\n", "\n", ". ", " "):
+        idx = cut.rfind(sep)
+        if idx > int(CAPTION_LIMIT * 0.6):
+            return text[:idx].rstrip(), text[idx:].lstrip()
+    return cut, text[CAPTION_LIMIT:]
+
+
 async def _send_to_channel(bot: Bot, chat_id: int, post: Post) -> int:
     """Отправка поста (медиа + текст + блок «ранее писали») без parse-режима."""
-    raw = post.draft_text or post.original_text or ""
+    raw = html_to_text(post.draft_text or post.original_text or "") or ""
     text, entities = _md_to_entities(raw)
     text, entities = await _restore_lost_links(post, text, entities)
     rows = await _recap_rows(post.id)
@@ -378,8 +391,8 @@ async def _send_to_channel(bot: Bot, chat_id: int, post: Post) -> int:
         if first and len(text) <= CAPTION_LIMIT:
             caption, cap_entities = text, (entities or None)
         elif first:
-            caption = text[:CAPTION_LIMIT]
-            cap_entities = [e for e in entities if e.offset + e.length <= CAPTION_LIMIT] or None
+            caption, _rest = _split_caption(text)
+            cap_entities = [e for e in entities if e.offset + e.length <= len(caption)] or None.length <= CAPTION_LIMIT] or None
         else:
             caption, cap_entities = None, None
         if m["media_type"] is MediaType.VIDEO:
@@ -393,9 +406,10 @@ async def _send_to_channel(bot: Bot, chat_id: int, post: Post) -> int:
     if files:
         sent = await bot.send_media_group(chat_id, media=files)
         published_id = sent[0].message_id
-        if len(text) > CAPTION_LIMIT:
-            await bot.send_message(chat_id, text[CAPTION_LIMIT:],
-                                   entities=_shift_entities(entities, CAPTION_LIMIT))
+        caption_part, rest_part = _split_caption(text)
+        if rest_part:
+            await bot.send_message(chat_id, rest_part,
+                                   entities=_shift_entities(entities, len(caption_part)))
         return published_id
     message = await bot.send_message(chat_id, text, entities=entities or None)
     return message.message_id

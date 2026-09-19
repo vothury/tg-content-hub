@@ -88,6 +88,8 @@ class Settings(BaseSettings):
     editorial_journalist_model: str = ""                       # пусто = prefilter-модель
     editorial_browse_model: str = ""                           # пусто = модель журналиста + ":online"
     editorial_browse_enabled: int = 0   # 0 = не вызывать browse-модель (фикс-плата за выход в интернет)
+    aggregate_accept_default: str = "новости и факты по теме канала: конкретика (кто, что, где, когда), цифры, решения и события"
+    aggregate_reject_default: str = "реклама и партнёрские интеграции, самореклама, развлечения и мемы, вторичный рынок и аренда, бытовые и тарифные новости, объекты и сюжеты вне тематики канала"
 
     # Как часто пайплайн пересматривает «застрявшие» посты при пустой очереди
     pipeline_rescan_interval_sec: int = 60

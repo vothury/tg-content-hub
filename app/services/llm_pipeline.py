@@ -42,6 +42,9 @@ from app.db.session import session_scope
 from app.services import guards
 from app.services.llm.openrouter import LLMResponse, OpenRouterError, chat_completion
 from app.services.llm.prompts import (
+    AGGREGATE_SYSTEM,
+    AGGREGATE_USER,
+    AGGREGATE_VERSION,
     CLASSIFY_USER,
     CLASSIFY_VERSION,
     REWRITE_SYSTEM_TEMPLATE,
@@ -463,8 +466,8 @@ async def advance_post(post_id: int) -> None:
                     if post_t is not None and post_t.target_channel_id is not None else None)
         if (ch_t is not None and ch_t.no_review
                 and status not in (PostStatus.UNSUITABLE, PostStatus.DEDUPLICATED)):
-            # Технический канал: первичный фильтр прошёл — сразу в публикацию/БД, без ревью
-            await _technical_approve(post_id, ch_t, status)
+            # Технический канал: тематический фильтр — и только потом пересылка/публикация
+            await _aggregate_gate(post_id, ch_t, status)
             return
 
         if status in (PostStatus.PREFILTERED, PostStatus.LLM_CLASSIFYING):
@@ -570,6 +573,64 @@ async def revise_draft(post_id: int, comment: str) -> tuple[bool, str]:
     return True, f"правка внесена — черновик v{post.draft_version}"
 
 
+async def _aggregate_filter(post_id: int, channel) -> tuple[bool, float, str]:
+    """Дешёвая тематическая фильтрация постов технического канала-агрегатора."""
+    async with session_scope() as session:
+        post = await session.get(Post, post_id)
+        if post is None:
+            return False, 0.0, "пост не найден"
+        text = (post.original_text or "")[:TEXT_LIMIT]
+        accept_default = str(await get_setting(session, Keys.AGGREGATE_ACCEPT_DEFAULT))
+        reject_default = str(await get_setting(session, Keys.AGGREGATE_REJECT_DEFAULT))
+    topic = (channel.description or "").strip() or "тематика канала"
+    accept = (channel.aggregate_accept or "").strip() or accept_default
+    reject = (channel.aggregate_reject or "").strip() or reject_default
+    model = await _model_for(Keys.CLASSIFY_MODEL)
+    providers = await _providers_for(Keys.CLASSIFY_PROVIDERS)
+    messages = [
+        {"role": "system", "content": AGGREGATE_SYSTEM.format(
+            channel_title=(channel.title or channel.username or "канал"),
+            topic=topic, accept=accept, reject=reject)},
+        {"role": "user", "content": AGGREGATE_USER.format(text=text)},
+    ]
+    resp, result, call_status, error_text = await _call_and_parse(
+        messages, model, 600, temperature=0.1, schema=ClassifyResult, provider=providers,
+        reasoning_max_tokens=settings.llm_reasoning_small)
+    if resp is not None and resp.cost_usd:
+        await guards.add_llm_cost(resp.cost_usd)
+    async with session_scope() as session:
+        session.add(_make_call_row(post_id, LLMStage.CLASSIFY, model, AGGREGATE_VERSION, messages,
+                                   resp, asdict(result) if result else None, call_status, error_text))
+        await session.commit()
+    if result is None:
+        return False, 0.0, f"фильтр агрегатора не дал ответа: {error_text}"
+    return bool(result.suitable), float(result.score or 0.0), (result.reason or result.category or "")
+
+
+async def _aggregate_gate(post_id: int, channel, from_status) -> None:
+    """Ворота технического канала: фильтр темы -> пересылка/публикация или отклонение."""
+    ok, score, reason = await _aggregate_filter(post_id, channel)
+    threshold = int(channel.aggregate_min_score or 6)
+    if not ok or score < threshold:
+        async with session_scope() as session:
+            post = await session.get(Post, post_id)
+            if post is None:
+                return
+            prev = post.status.value
+            post.status = PostStatus.UNSUITABLE
+            post.score = score
+            post.verdict_reason = f"фильтр агрегатора: {reason or 'вне темы'}"
+            session.add(PostEvent(
+                post_id=post_id, actor=EventActor.LLM, action="aggregate_rejected",
+                from_status=prev, to_status=PostStatus.UNSUITABLE.value,
+                details={"score": score, "reason": reason, "threshold": threshold}))
+            await session.commit()
+        log.info("пост %s: агрегатор отклонил (score %.1f < %d) — %s",
+                 post_id, score, threshold, reason[:80])
+        return
+    await _technical_approve(post_id, channel, from_status)
+
+
 async def _technical_approve(post_id: int, channel, from_status) -> None:
     """Агрегатор: реклама отсечена префильтром — одобряем без классификации и карточек."""
     async with session_scope() as session:
@@ -587,8 +648,17 @@ async def _technical_approve(post_id: int, channel, from_status) -> None:
         ok, msg = await create_publish_job(post_id, PublishMode.NOW)
         log.info("пост %s: технический канал -> публикация с подписью источника (%s)", post_id, msg)
     elif channel.aggregate_mode == "repost":
-        log.warning("пост %s: режим repost будет реализован следующим шагом — пока публикация с подписью", post_id)
-        ok, msg = await create_publish_job(post_id, PublishMode.NOW)
+        async with session_scope() as session:
+            p = await session.get(Post, post_id)
+            if p is not None:
+                p.repost_pending = True
+                p.repost_attempts = 0
+                session.add(PostEvent(
+                    post_id=post_id, actor=EventActor.SYSTEM, action="repost_queued",
+                    to_status=PostStatus.APPROVED.value,
+                    details={"channel": channel.username}))
+                await session.commit()
+        log.info("пост %s: поставлен в очередь пересылки в @%s", post_id, channel.username)
     else:  # none — только БД
         log.info("пост %s: технический канал -> сохранён в БД без публикации", post_id)
 

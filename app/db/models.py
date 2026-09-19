@@ -131,6 +131,11 @@ class TargetChannel(Base):
     aggregate_mode: Mapped[str] = mapped_column(String(16), default="credit")
     # Предохранитель автопилота: подпись/ссылка t.me в последней строке -> ручное подтверждение
     autopilot_sig_guard: Mapped[bool] = mapped_column(default=True)
+    # Порог тематического фильтра для технического канала (description = тема агрегатора)
+    aggregate_min_score: Mapped[int | None] = mapped_column(Integer)
+    # Пер-канальные формулировки фильтра агрегатора (пусто = глобальные дефолты из настроек)
+    aggregate_accept: Mapped[str | None] = mapped_column(Text)
+    aggregate_reject: Mapped[str | None] = mapped_column(Text)
     # Автопилот (Этап 7): публикация без ручного ревью при уверенности модели
     autopilot: Mapped[bool] = mapped_column(default=False)
     autopilot_min_score: Mapped[int | None] = mapped_column(Integer)
@@ -264,6 +269,9 @@ class Post(Base):
     dedup_info: Mapped[dict | None] = mapped_column(JSONB)
     needs_media_refresh: Mapped[bool] = mapped_column(default=False)
     recap_ids: Mapped[list | None] = mapped_column(JSONB)
+    # Очередь пересылки оригинала в технический канал (aggregate_mode=repost)
+    repost_pending: Mapped[bool] = mapped_column(default=False)
+    repost_attempts: Mapped[int] = mapped_column(default=0)
     risks: Mapped[dict | None] = mapped_column(JSONB)
 
     # Публикация автопилотом + причина/заметка двойной проверки
