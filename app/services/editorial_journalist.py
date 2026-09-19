@@ -251,6 +251,8 @@ async def _fetch_web() -> int:  # ИСПРАВЛЕНО: имя функции с
                    EditorialWebSource.title_selector, EditorialWebSource.link_selector)
             .where(EditorialWebSource.enabled.is_(True)))).all()
     model, providers = await _journalist_model()
+    async with session_scope() as session:
+        browse_enabled = int(await get_setting(session, Keys.EDITORIAL_BROWSE_ENABLED))
     urls_seen, hashes_seen, _ = await _existing()
 
     for sid, name, url, feed_url, s_list, s_title, s_link in rows:
@@ -320,9 +322,13 @@ async def _fetch_web() -> int:  # ИСПРАВЛЕНО: имя функции с
                             items.append((it["title"] or anchors[idx][0], anchors[idx][1]))
             
             if not items:
-                items = await _browse_headlines(target, name)
-                used = "browse"
-            
+                if browse_enabled:
+                    # JS-рендеринг / блок / пустой выбор: журналист сам открывает страницу
+                    items = await _browse_headlines(target, name)
+                    used = "browse"
+                else:
+                    log.info("journalist: %s -> browse отключён (editorial_browse_enabled=0), источник пропущен",
+                             name)
             if not items:
                 continue
 

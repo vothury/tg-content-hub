@@ -47,6 +47,7 @@ class Keys:
     EDITORIAL_CHIEF_MODEL = "editorial.chief_model"
     EDITORIAL_JOURNALIST_MODEL = "editorial.journalist_model"
     EDITORIAL_BROWSE_MODEL = "editorial.browse_model"
+    EDITORIAL_BROWSE_ENABLED = "editorial.browse_enabled"
     PREFILTER_MIN_TEXT_LEN = "prefilter.min_text_len"
     PREFILTER_BLACKLIST_WORDS = "prefilter.blacklist_words"
     MAX_MEDIA_DOWNLOAD_MB = "reader.max_media_download_mb"
@@ -100,6 +101,7 @@ _ENV_DEFAULTS: dict[str, Any] = {
     Keys.EDITORIAL_CHIEF_MODEL: settings.editorial_chief_model,
     Keys.EDITORIAL_JOURNALIST_MODEL: settings.editorial_journalist_model,
     Keys.EDITORIAL_BROWSE_MODEL: settings.editorial_browse_model,
+    Keys.EDITORIAL_BROWSE_ENABLED: settings.editorial_browse_enabled,
     Keys.PREFILTER_MIN_TEXT_LEN: settings.prefilter_min_text_len,
     Keys.PREFILTER_BLACKLIST_WORDS: settings.prefilter_blacklist_words,
     Keys.MAX_MEDIA_DOWNLOAD_MB: settings.max_media_download_mb,

@@ -87,6 +87,7 @@ class Settings(BaseSettings):
     editorial_chief_model: str = ""                            # пусто = effective_revision_model
     editorial_journalist_model: str = ""                       # пусто = prefilter-модель
     editorial_browse_model: str = ""                           # пусто = модель журналиста + ":online"
+    editorial_browse_enabled: int = 0   # 0 = не вызывать browse-модель (фикс-плата за выход в интернет)
 
     # Как часто пайплайн пересматривает «застрявшие» посты при пустой очереди
     pipeline_rescan_interval_sec: int = 60
