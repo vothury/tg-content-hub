@@ -626,7 +626,8 @@ async def _aggregate_gate(post_id: int, channel, from_status) -> None:
                 details={"score": score, "reason": reason, "threshold": threshold}))
             await session.commit()
         log.info("пост %s: агрегатор отклонил (score %.1f < %d) — %s",
-                 post_id, score, threshold, reason[:80])
+                 post_id, score, threshold,
+                 (reason or "причина не сообщена, см. «Вызовы LLM»")[:120])
         return
     await _technical_approve(post_id, channel, from_status)
 

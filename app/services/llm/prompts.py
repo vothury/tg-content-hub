@@ -286,7 +286,7 @@ DOUBLE_CHECK_USER = """Тематика канала: {channel_description}
 
 DEDUP_CONFIRM_VERSION = "dedup-confirm-v1"
 
-AGGREGATE_VERSION = "aggregate-v2"
+AGGREGATE_VERSION = "aggregate-v3"
 
 AGGREGATE_SYSTEM = """Ты — тематический фильтр новостного агрегатора канала «{channel_title}».
 Тема канала: {topic}
@@ -297,7 +297,7 @@ AGGREGATE_SYSTEM = """Ты — тематический фильтр новос�
 
 Общие правила: реклама, партнёрские интеграции и самореклама отклоняются всегда, независимо от темы.
 Если пост формально рядом с темой, но не несёт факта/новости — отклоняй (category "water").
-{{"canonical": "", "suitable": true | false, "score": <0-10>, "category": "ok|ads|self_promo|water|off_topic", "reason": "", "risks": []}} — ответь строго этим JSON без текста вне него."""
+{{"canonical": "", "suitable": true | false, "score": <0-10>, "category": "ok|ads|self_promo|water|off_topic", "reason": "<5-12 слов: почему одобрено или отклонено>", "risks": []}} — ответь строго этим JSON без текста вне него."""
 
 AGGREGATE_USER = """Пост:
 <source_post>

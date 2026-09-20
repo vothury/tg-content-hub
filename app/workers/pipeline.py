@@ -13,7 +13,7 @@ from sqlalchemy import select
 from app.common.logging import setup_logging
 from app.config import settings
 from app.db.enums import PostStatus
-from app.db.models import Post
+from app.db.models import Post, Source
 from app.db.session import session_scope
 from app.redis_client import get_redis
 from app.services.llm_pipeline import advance_post
@@ -34,7 +34,11 @@ RESCAN_STATUSES = (
 async def pending_post_ids(limit: int = 50) -> list[int]:
     async with session_scope() as session:
         rows = await session.execute(
-            select(Post.id).where(Post.status.in_(RESCAN_STATUSES)).order_by(Post.id).limit(limit)
+            select(Post.id)
+            .outerjoin(Source, Source.id == Post.source_id)
+            .where(Post.status.in_(RESCAN_STATUSES),
+                   (Source.editorial_only.is_(False)) | (Source.id.is_(None)))
+            .order_by(Post.id).limit(limit)
         )
         return list(rows.scalars().all())
 

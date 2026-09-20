@@ -1,8 +1,10 @@
 """Семантическая дедупликация: каноническая форма текста + pHash медиа."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
+
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 
@@ -82,13 +84,18 @@ async def _confirm_same(a: str, b: str) -> bool:
         {"role": "system", "content": DEDUP_CONFIRM_SYSTEM},
         {"role": "user", "content": DEDUP_CONFIRM_USER.format(a=a, b=b)},
     ]
-    try:
-        resp = await chat_completion(messages, model, max_tokens=100, temperature=0.0,
-                                     reasoning_max_tokens=settings.llm_reasoning_small)
-        return bool(DedupConfirmResult.from_response(resp.content).same)
-    except Exception:  # noqa: BLE001 — сбой подтверждения не ломает дедуп
-        log.warning("dedup-confirm не ответил — оставляем лексическое решение")
-        return True
+    for attempt in (1, 2):
+        try:
+            resp = await chat_completion(messages, model, max_tokens=100, temperature=0.0,
+                                         reasoning_max_tokens=settings.llm_reasoning_small)
+            return bool(DedupConfirmResult.from_response(resp.content).same)
+        except Exception as exc:  # noqa: BLE001 — сбой подтверждения не ломает дедуп
+            log.warning("dedup-confirm попытка %d не удалась (%s: %s)",
+                        attempt, exc.__class__.__name__, exc)
+            if attempt == 1:
+                await asyncio.sleep(20)
+    log.warning("dedup-confirm не ответил после 2 попыток — оставляем лексическое решение")
+    return True
 
 
 async def run_semantic_dedup(post_id: int) -> bool:

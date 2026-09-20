@@ -92,7 +92,7 @@ async def queue_page(request: Request, date_from: str = "", date_to: str = "", p
 
 @router.get("/api/queue")
 async def api_queue():
-    _, sig = await _queue_rows()
+    _rows, sig, _total, _page, _pages = await _queue_rows()
     return JSONResponse({"sig": sig})
 
 
