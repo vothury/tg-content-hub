@@ -392,7 +392,7 @@ async def _send_to_channel(bot: Bot, chat_id: int, post: Post) -> int:
             caption, cap_entities = text, (entities or None)
         elif first:
             caption, _rest = _split_caption(text)
-            cap_entities = [e for e in entities if e.offset + e.length <= len(caption)] or None.length <= CAPTION_LIMIT] or None
+            cap_entities = [e for e in entities if e.offset + e.length <= len(caption)] or None
         else:
             caption, cap_entities = None, None
         if m["media_type"] is MediaType.VIDEO:
