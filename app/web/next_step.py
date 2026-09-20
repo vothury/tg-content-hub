@@ -19,11 +19,11 @@ def next_step_hint(post, channel) -> str:
                     f"автопилота {min_score}")
         return "ход владельца: автопилот уже отработал, дальнейшей автоматики нет"
     if st is PostStatus.DOUBLE_CHECK_REVIEW:
-        return "ход владельца: двойная проверка не одобрила (см. примечание)"
+        return "ход владельца: одобрить/отклонить, правка ИИ или «Повторить обработку»"
     if st is PostStatus.NEEDS_MEDIA_REVIEW:
         return "ход владельца: проверить медиа (✅ подходит / отклонить)"
     if st is PostStatus.NEEDS_MANUAL_REVIEW:
-        return "ход владельца: повторить обработку или решить вручную"
+        return "ход владельца: «Повторить обработку» (сброс в NEW) или решить вручную"
     if st in (PostStatus.MANUAL_EDITING, PostStatus.REVISION):
         return "ожидает завершения правки черновика"
     if st is PostStatus.APPROVED:

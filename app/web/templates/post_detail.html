@@ -67,6 +67,14 @@
 {% endif %}
 
 <div class="section-title">Действия</div>
+<form method="post" action="/posts/{{ p.id }}/restart" class="actions"
+      onsubmit="return confirm('Запустить обработку поста заново?\nБудут сброшены: черновик, оценка, канон, дедупликация. Пост вернётся в статус NEW и пройдёт весь конвейер.');">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <button class="btn ghost" type="submit"
+          {% if status in ('PUBLISHED', 'PUBLISHING', 'SCHEDULED', 'APPROVED') %}disabled
+          title="сначала отмените публикацию"{% endif %}>🔁 Повторить обработку</button>
+  <span class="sub">сброс в NEW: префильтр → классификация → дедуп → рерайт/очистка → ревью</span>
+</form>
 {% if status in ('AWAITING_REVIEW', 'DOUBLE_CHECK_REVIEW') %}
 <div class="actions">
   <form method="post" action="/posts/{{ p.id }}/approve">

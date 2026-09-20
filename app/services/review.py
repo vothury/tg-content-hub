@@ -11,8 +11,10 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
-from app.db.enums import DraftOrigin, EventActor, PostStatus
-from app.db.models import MediaItem, Post, PostDraftVersion, PostEvent, TargetChannel
+from app.db.enums import DraftOrigin, EventActor, PostStatus, PublishJobState
+from app.db.models import (
+    MediaItem, Post, PostDraftVersion, PostEvent, PublishJob, TargetChannel,
+)
 from app.db.session import session_scope
 from app.services.queue import enqueue_post
 
@@ -121,6 +123,66 @@ async def media_approve(post_id: int) -> ActionResult:
     await enqueue_post(post_id)  # пайплайн заберёт сразу, не ожидая рескана
     log.info("пост %s подтверждён визуально -> рерайт", post_id)
     return ActionResult(True, "подтверждено — черновик готовится, придёт новой карточкой")
+
+
+async def restart_pipeline(post_id: int) -> ActionResult:
+    """Полный перезапуск: пост сбрасывается в NEW, как если бы его только что прочитали.
+
+    Очищаются результаты анализа (канон, оценка, вердикт, дедуп, recap, черновик),
+    отменяются незавершённые задачи публикации; если медиа были удалены после
+    публикации/дедупа — запрашивается их рескачка (reader.process_media_refresh).
+    """
+    blocked = (PostStatus.PUBLISHED, PostStatus.PUBLISHING,
+               PostStatus.SCHEDULED, PostStatus.APPROVED)
+    async with session_scope() as session:
+        post = await session.get(Post, post_id)
+        if post is None:
+            return ActionResult(False, "пост не найден")
+        if post.status in blocked:
+            return ActionResult(False,
+                                f"недоступно в статусе {post.status.value} — "
+                                "сначала отмените публикацию")
+        from_status = post.status.value
+        cleared = []
+        for field in ("canonical_text", "score", "verdict_reason", "dedup_info",
+                      "recap_ids", "draft_text", "reject_reason", "double_check_note"):
+            if hasattr(post, field) and getattr(post, field) is not None:
+                cleared.append(field)
+                setattr(post, field, None)
+        post.status = PostStatus.NEW
+        post.approved_at = None
+        post.needs_media_review = False
+
+        media = (await session.execute(
+            select(MediaItem).where(MediaItem.post_id == post_id))).scalars().all()
+        if media and any(m.local_path is None for m in media):
+            for m in media:
+                await session.delete(m)
+            post.needs_media_refresh = True
+            cleared.append("media_items")
+        else:
+            post.needs_media_refresh = False
+
+        cancelled = 0
+        jobs = (await session.execute(
+            select(PublishJob).where(
+                PublishJob.post_id == post_id,
+                PublishJob.state.in_([PublishJobState.QUEUED, PublishJobState.SCHEDULED,
+                                      PublishJobState.IN_PROGRESS])))).scalars().all()
+        for job in jobs:
+            job.state = PublishJobState.FAILED
+            job.last_error = "отменено: повтор обработки"
+            cancelled += 1
+
+        _event(session, post_id, EventActor.OWNER, "restart_pipeline",
+               from_status, PostStatus.NEW.value,
+               {"cleared": cleared, "cancelled_jobs": cancelled})
+        await session.commit()
+
+    await enqueue_post(post_id)
+    log.info("пост %s: перезапуск конвейера (был %s; сброшено: %s)",
+             post_id, from_status, ", ".join(cleared) or "—")
+    return ActionResult(True, f"перезапущен с нуля (был {from_status}) — статус NEW")
 
 
 async def retry_manual(post_id: int) -> ActionResult:
