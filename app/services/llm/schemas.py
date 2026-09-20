@@ -189,3 +189,27 @@ class HeadlinePickResult:
                     continue
                 items.append({"i": i, "title": str(x.get("title") or "").strip()})
         return cls(items=items)
+
+
+@dataclass
+class CleanPlanResult:
+    remove: list = field(default_factory=list)
+    warnings: list = field(default_factory=list)
+
+    @classmethod
+    def from_response(cls, content: str) -> "CleanPlanResult":
+        data = _loads_lenient(content)
+        raw = data.get("remove") if isinstance(data, dict) else data
+        items = []
+        for x in (raw or []):
+            if isinstance(x, dict):
+                txt = str(x.get("text") or "").strip()
+                try:
+                    i = int(x.get("i"))
+                except (TypeError, ValueError):
+                    i = None
+                items.append({"i": i, "text": txt})
+            elif isinstance(x, (int, float)):
+                items.append({"i": int(x), "text": ""})  # только номер -> не проверяемо
+        warns = [str(w) for w in (data.get("warnings") or [])] if isinstance(data, dict) else []
+        return cls(remove=items, warnings=warns)

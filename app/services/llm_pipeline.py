@@ -9,8 +9,10 @@
 from __future__ import annotations
 
 import asyncio
+import difflib
 import logging
 import re
+import unicodedata
 from dataclasses import asdict
 from datetime import timezone
 
@@ -742,8 +744,79 @@ async def _autopilot_reject(post_id: int, reason: str) -> None:
     log.info("пост %s: автопилот отклонил (%s)", post_id, reason)
 
 
+def _norm_line(s: str) -> str:
+    """Нормализация для сравнения: NFKC, единые кавычки, схлопнутые пробелы, lower."""
+    s = unicodedata.normalize("NFKC", s or "")
+    for a, b in (("«", '"'), ("»", '"'), ("“", '"'), ("”", '"'), ("’", "'")):
+        s = s.replace(a, b)
+    return " ".join(s.split()).strip().lower()
+
+
+_URL_TOKEN_RE = re.compile(r"(?:https?://|t\.me/|telegram\.me/|@)[\w./\-]+")
+
+
+def _urls_of(s: str) -> set:
+    return set(_URL_TOKEN_RE.findall((s or "").lower()))
+
+
+def _sim(a: str, b: str) -> float:
+    return difflib.SequenceMatcher(None, a, b).ratio()
+
+
+def _apply_clean_plan(lines: list, plan: list) -> tuple[list, list, str]:
+    """Сверяет план модели с текстом и удаляет подписи КОДОМ.
+
+    Первичный ключ — дословный текст подписи (устойчив к ошибкам нумерации и пустым строкам),
+    номер строки — подсказка для разрешения неоднозначности.
+    Статусы: ok | nothing | mismatch | ambiguous.
+    """
+    if not plan:
+        return lines, [], "nothing"
+    drop: set = set()
+    for item in plan:
+        raw_text = item.get("text") or ""
+        want = _norm_line(raw_text)
+        if not want:
+            return lines, sorted(drop), "mismatch"   # без текста сверка невозможна
+        want_urls = _urls_of(raw_text)
+        cands = []
+        for start in range(len(lines)):
+            for span in (1, 2, 3):
+                if start + span > len(lines):
+                    break
+                block = "\n".join(lines[start:start + span])
+                window = _norm_line(block)
+                if not window:
+                    continue
+                if want_urls and not (want_urls & _urls_of(block)):
+                    continue
+                score = _sim(want, window)
+                if want in window or window in want:
+                    score = max(score, 0.99)
+                if score >= 0.85:
+                    cands.append((score, start, span))
+        if not cands:
+            return lines, sorted(drop), "mismatch"
+        cands.sort(key=lambda c: c[0], reverse=True)
+        best = cands[0]
+        ties = [c for c in cands if c[0] >= best[0] - 0.02]
+        if len(ties) > 1:
+            hint = item.get("i")
+            picked = [c for c in ties if isinstance(hint, int) and c[1] == hint - 1]
+            if len(picked) != 1:
+                return lines, sorted(drop), "ambiguous"
+            best = picked[0]
+        for k in range(best[1], best[1] + best[2]):
+            drop.add(k + 1)
+    kept = [ln for i, ln in enumerate(lines, 1) if i not in drop]
+    return kept, sorted(drop), "ok"
+
+
 async def _ensure_clean_draft(post_id: int) -> None:
-    """Для каналов без рерайта: дешёвым вызовом убрать чужие подписи/маркеры ссылок."""
+    """Каналы без рерайта: модель возвращает НОМЕР + ТОЧНЫЙ ТЕКСТ подписи,
+    код сверяет план с текстом и удаляет сам. Тело поста не перепечатывается —
+    опечатки и подмена эмодзи исключены. При расхождении — ручное ревью.
+    """
     async with session_scope() as session:
         post = await session.get(Post, post_id)
         if post is None:
@@ -752,37 +825,62 @@ async def _ensure_clean_draft(post_id: int) -> None:
             if post.target_channel_id else None
         if channel is not None and channel.rewrite_enabled:
             return  # рерайт уже чистит подписи (правило 7)
+        if channel is not None and channel.no_review and channel.aggregate_mode == "repost":
+            return  # пересылается оригинал — черновик не используется
         text = post.draft_text or post.original_text or ""
     # Нет ссылок/подписей — чистить нечего, модель не дёргаем
     if "[" not in text and "t.me/" not in text and "telegram.me/" not in text and "@" not in text:
         return
+    lines = text.split("\n")
+    listing = "\n".join(f"{i}. {ln}" for i, ln in enumerate(lines, 1))
     model = await _model_for(Keys.PREFILTER_MODEL)
     providers = await _providers_for(Keys.PREFILTER_PROVIDERS)
     messages = [
         {"role": "system", "content": CLEAN_SYSTEM},
-        {"role": "user", "content": CLEAN_USER.format(text=text[:TEXT_LIMIT])},
+        {"role": "user", "content": CLEAN_USER.format(listing=listing[:TEXT_LIMIT])},
     ]
     resp, result, call_status, error_text = await _call_and_parse(
-        messages, model, settings.llm_rewrite_max_tokens, temperature=0.0,
-        schema=RewriteResult, provider=providers,
+        messages, model, 300, temperature=0.0,
+        schema=CleanPlanResult, provider=providers,
         reasoning_max_tokens=settings.llm_reasoning_small,
     )
     if resp is not None and resp.cost_usd:
         await guards.add_llm_cost(resp.cost_usd)
+
+    cleaned, dropped, verify = None, [], "ok"
+    if call_status is LLMCallStatus.OK and result is not None:
+        kept, dropped, verify = _apply_clean_plan(lines, result.remove)
+        if verify == "ok":
+            kept = [_BARE_URL_RE.sub("", ln).rstrip() for ln in kept]
+            out = re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
+            cleaned = out if (out and out != text.strip()) else None
+
     async with session_scope() as session:
         session.add(_make_call_row(post_id, LLMStage.REWRITE, model, CLEAN_VERSION, messages,
                                    resp, asdict(result) if result else None, call_status, error_text))
         post = await session.get(Post, post_id)
         if post is None:
-            await session.commit(); return
-        if call_status is LLMCallStatus.OK and result is not None and result.draft:
-            cleaned = result.draft.strip()
-            if cleaned and cleaned != (post.draft_text or "").strip():
-                post.draft_text = cleaned
-                post.draft_version += 1
-                session.add(PostDraftVersion(
-                    post_id=post_id, version=post.draft_version,
-                    text=cleaned, origin=DraftOrigin.ORIGINAL))
+            await session.commit()
+            return
+        if verify in ("mismatch", "ambiguous"):
+            prev = post.status.value
+            post.status = PostStatus.NEEDS_MANUAL_REVIEW
+            session.add(PostEvent(
+                post_id=post_id, actor=EventActor.SYSTEM, action="clean_verify_failed",
+                from_status=prev, to_status=PostStatus.NEEDS_MANUAL_REVIEW.value,
+                details={"verify": verify, "plan": (result.remove if result else [])[:5]}))
+            log.warning("пост %s: план очистки не прошёл сверку (%s) — ручное ревью",
+                        post_id, verify)
+        elif cleaned is not None:
+            post.draft_text = cleaned
+            post.draft_version += 1
+            session.add(PostDraftVersion(
+                post_id=post_id, version=post.draft_version,
+                text=cleaned, origin=DraftOrigin.ORIGINAL))
+            log.info("пост %s: очистка подписей — удалены строки %s", post_id, dropped)
+        elif call_status is not LLMCallStatus.OK:
+            log.warning("пост %s: очистка не выполнена (%s) — черновик оставлен без изменений",
+                        post_id, error_text)
         await session.commit()
 
 
