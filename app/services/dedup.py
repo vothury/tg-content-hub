@@ -72,6 +72,33 @@ def _neg_delta(a: str, b: str) -> int:
     return abs(a.count("не ") - b.count("не "))
 
 
+_MD_LINK_RE = re.compile(r"\[[^\]]*\]\([^)]*\)")
+_BARE_URL_RE = re.compile(r"(?<!\()(?:https?://|t\.me/|telegram\.me/)\S+")
+_SIG_LINE_RE = re.compile(
+    r"^\s*\W{0,3}\s*(подпис|subscribe|наш канал|источник|@[\w_]+)\b.*$", re.I)
+
+
+def _text_for_confirm(post) -> str:
+    """Полный текст поста для сверки: без подписей, ссылок и с ограничением длины.
+
+    Именно ПОЛНЫЙ текст (не канон) позволяет отличить «вышел трейлер» от
+    «ведро для попкорна» при одном и том же поводе.
+    """
+    t = (getattr(post, "original_text", None) or getattr(post, "normalized_text", None) or "").strip()
+    if not t:
+        return ""
+    lines = []
+    for ln in t.split("\n"):
+        s = ln.strip()
+        if not s or _SIG_LINE_RE.match(s):
+            continue
+        s = _MD_LINK_RE.sub("", s)
+        s = _BARE_URL_RE.sub("", s).strip()
+        if s:
+            lines.append(s)
+    return "\n".join(lines)[:1200]
+
+
 async def _confirm_same(a: str, b: str) -> bool:
     """Дешёвый вызов: та же новость с той же полярностью, или отрицание/отмена."""
     from app.config import settings
@@ -136,6 +163,7 @@ async def run_semantic_dedup(post_id: int) -> bool:
 
         new_ph = ph_map.get(post_id, [])
         new_canon = (post.canonical_text or "").strip()
+        new_full = _text_for_confirm(post)
         dup_of = None
         reason = None
         best_cos = 0.0
@@ -176,10 +204,12 @@ async def run_semantic_dedup(post_id: int) -> bool:
                 best_cont = max(best_cont, cont)
                 best_fact = max(best_fact, fact)
                 if cos >= cos_min or cont >= cont_min or fact >= fact_min:
-                    same = await _confirm_same(new_canon, c_canon)
+                    c_full = _text_for_confirm(c)
+                    same = await _confirm_same(new_full, c_full)
                     confirm_info = {"candidate": c.id, "same": same,
                                     "cos": round(cos, 3), "cont": round(cont, 3),
-                                    "fact": round(fact, 3)}
+                                    "fact": round(fact, 3),
+                                    "text_a": new_full[:120], "text_b": c_full[:120]}
                     if same:
                         dup_of, reason = c.id, "canonical"
             if dup_of is not None:
@@ -228,7 +258,7 @@ async def run_semantic_dedup(post_id: int) -> bool:
                         if (_cosine(new_canon, c_canon2) >= cos_min
                                 or _containment(new_canon, c_canon2) >= cont_min
                                 or _fact_sim(new_canon, c_canon2) >= fact_min):
-                            matched = await _confirm_same(new_canon, c_canon2)
+                            matched = await _confirm_same(new_full, _text_for_confirm(c))
                     if matched:
                         recap.append((c.source_published_at, c.id))
                 recap.sort(key=lambda x: x[0])
