@@ -58,6 +58,13 @@ class Settings(BaseSettings):
     # Предфильтр (Этап 2)
     prefilter_min_text_len: int = 0
     prefilter_blacklist_words: list[str] = Field(default_factory=list)
+    
+    # Технический стоп-фильтр самопиара источника (срабатывает до вызова модели)
+    prefilter_selfpromo_patterns: list = [
+        "нам на канал", "залил нам", "залили нам", "мы залили", "мы выложили",
+        "у нас на канале", "на нашем канале", "смотрите у нас", "читайте у нас",
+        "мы добавили", "наша фильмотека", "наша подборка", "подписывайтесь",
+    ]
 
     # LLM (Этап 3)
     openrouter_request_timeout_sec: int = 90

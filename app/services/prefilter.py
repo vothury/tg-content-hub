@@ -161,6 +161,24 @@ async def run_prefilter(post_id: int) -> None:
                 log.info("пост %s: отсечён по max_text_len (%d > %d)",
                          post.id, norm_len, int(max_text_len))
                 return
+                
+        # Технический стоп-фильтр самопиара источника: «залил нам на канал», «у нас на канале» и т.п.
+        promo_patterns = await get_setting(session, Keys.PREFILTER_SELFPROMO_PATTERNS)
+        if isinstance(promo_patterns, str):
+            promo_patterns = [p.strip() for p in promo_patterns.split(",") if p.strip()]
+        promo_text = (post.normalized_text or post.original_text or "").lower()
+        hit = next((p for p in (promo_patterns or []) if p and p.lower() in promo_text), None)
+        if hit:
+            post.status = PostStatus.UNSUITABLE
+            post.verdict_reason = f"самопиар источника: «{hit}»"
+            session.add(PostEvent(
+                post_id=post.id, actor=EventActor.SYSTEM, action="selfpromo_blocked",
+                from_status=PostStatus.NEW.value, to_status=PostStatus.UNSUITABLE.value,
+                details={"pattern": hit},
+            ))
+            await session.commit()
+            log.info("пост %s: отсечён технически — самопиар источника (%s)", post.id, hit)
+            return
 
         has_media = (
             await session.execute(
