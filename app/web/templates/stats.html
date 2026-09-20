@@ -51,4 +51,11 @@
   <div class="card"><span class="badge">@{{ c.channel }}</span><span class="sub">{{ c.count }}</span></div>
   {% else %}<div class="card">Нет публикаций за период</div>{% endfor %}
 </div>
+
+<div class="section-title">Очистка подписей (clean)</div>
+<div class="card">
+  <div class="sub">Вызовов за период: {{ clean_total }} · страховок сильной моделью: {{ clean_fallback }} ({{ clean_pct }}%) · сбоев сверки: {{ clean_failed_n }}</div>
+  {% for r in clean_rows %}<div class="sub">• {{ r.model }} — {{ r.count }}</div>{% else %}<div class="sub">Вызовов очистки не было</div>{% endfor %}
+  {% if clean_pct >= 20 %}<div class="warnline">Доля страховок {{ clean_pct }}% — дешёвая модель часто мажет: имеет смысл поставить сильную модель в «Модель очистки (clean)» и убрать второй вызов</div>{% endif %}
+</div>
 {% endblock %}

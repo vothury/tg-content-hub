@@ -160,3 +160,8 @@ textarea { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #2
   padding:10px 16px;border-radius:999px;font-size:13px;z-index:50;box-shadow:0 8px 24px rgba(0,0,0,.4);}
 
 .st-double_check_review{background:#5a2b2b;color:#ffb4b4;}
+
+/* Предупреждения в шапке карточки поста */
+.warnline{margin-top:6px;padding:6px 10px;border-radius:8px;font-size:13px;line-height:1.35;
+  background:rgba(255,159,64,.14);border:1px solid rgba(255,159,64,.45);color:#ffb266}
+.warnline.crit{background:rgba(255,99,99,.14);border-color:rgba(255,99,99,.5);color:#ff9d9d}

@@ -79,6 +79,20 @@ async def post_detail(request: Request, post_id: int, msg: str = ""):
         calls = (await session.execute(
             select(LLMCall).where(LLMCall.post_id == post_id)
             .order_by(LLMCall.id.desc()).limit(10))).scalars().all()
+        fb_events = (await session.execute(
+            select(PostEvent.action, PostEvent.details).where(
+                PostEvent.post_id == post_id,
+                PostEvent.action.in_(["clean_fallback_used", "clean_verify_failed"]))
+            .order_by(PostEvent.id.desc()))).all()
+    fallback_used = any(a == "clean_fallback_used" for a, _ in fb_events)
+    clean_failed = any(a == "clean_verify_failed" for a, _ in fb_events)
+    fallback_model = ""
+    fallback_first = ""
+    for a, d in fb_events:
+        if a == "clean_fallback_used" and isinstance(d, dict):
+            fallback_model = d.get("fallback_model") or ""
+            fallback_first = d.get("first_model") or ""
+            break
     return templates.TemplateResponse(request, "post_detail.html", {
         "active": "posts",
         "csrf_token": get_csrf_token(request),
@@ -95,6 +109,10 @@ async def post_detail(request: Request, post_id: int, msg: str = ""):
         "channel_obj": channel,
         "next_step": next_step_hint(post, channel),
         "calls": calls,
+        "fallback_used": fallback_used,
+        "fallback_model": fallback_model,
+        "fallback_first": fallback_first,
+        "clean_failed": clean_failed,
     })
 
 

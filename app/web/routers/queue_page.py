@@ -53,6 +53,18 @@ async def _queue_rows(page: int = 1, per_page: int = 50,
             base.order_by(PublishJob.id.desc())
             .limit(per_page).offset((page - 1) * per_page))).scalars().all()
         channels = (await session.execute(select(TargetChannel))).scalars().all()
+        clean_calls = (await session.execute(
+            select(LLMCall.model, func.count()).where(
+                LLMCall.prompt_version.like("clean%"),
+                LLMCall.created_at >= start_utc,
+                LLMCall.created_at <= end_utc)
+            .group_by(LLMCall.model))).all()
+        clean_events = (await session.execute(
+            select(PostEvent.action, func.count()).where(
+                PostEvent.action.in_(["clean_fallback_used", "clean_verify_failed"]),
+                PostEvent.created_at >= start_utc,
+                PostEvent.created_at <= end_utc)
+            .group_by(PostEvent.action))).all()
         post_ids = [j.post_id for j in jobs]
         texts = {}
         if post_ids:
@@ -191,8 +203,17 @@ async def stats_page(request: Request, period: int = 7, date_from: str = "", dat
     total_pub = sum(pub_day.values())
     unit = round(total_cost / total_pub, 4) if total_pub else None
 
+    clean_total = sum(int(n) for _m, n in clean_calls)
+    clean_map = dict(clean_events)
+    clean_fallback = int(clean_map.get("clean_fallback_used", 0))
+    clean_failed_n = int(clean_map.get("clean_verify_failed", 0))
+    clean_pct = round(100.0 * clean_fallback / clean_total) if clean_total else 0
+    clean_rows = [{"model": m or "—", "count": int(n)} for m, n in clean_calls]
     return templates.TemplateResponse(request, "stats.html", {
         "active": "stats", "csrf_token": get_csrf_token(request),
+        "clean_total": clean_total, "clean_fallback": clean_fallback,
+        "clean_failed_n": clean_failed_n, "clean_pct": clean_pct,
+        "clean_rows": clean_rows,
         "period": period, "date_from": date_from, "date_to": date_to,
         "pub_series": pub_series, "spend_series": spend_series,
         "req_series": req_series, "tok_series": tok_series,
