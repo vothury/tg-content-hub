@@ -85,6 +85,52 @@ TEXT_LIMIT = 6000  #Очень длинные исходники усекаем 
 # Голые url вне markdown-ссылок: удаляются кодом, а не моделью
 _BARE_URL_RE = re.compile(r"(?<!\]\()(?<!\()(?:https?://|t\.me/|telegram\.me/)[^\s)\]]+")
 
+_MD_LINK_FULL_RE = re.compile(r"\[[^\]]*\]\([^)]*\)")
+_TG_LINK_RE = re.compile(r"(?:https?://)?(?:t\.me|telegram\.me)/[\w]+", re.I)
+_CTA_RE = re.compile(r"подпис|subscribe|наш канал|наш телеграм|читайте нас|смотрите нас", re.I)
+_SOURCE_LINE_RE = re.compile(r"^\s*\W{0,3}\s*источник\s*[:—-]", re.I)
+
+
+def _plain_len(s: str) -> int:
+    """Длина строки без эмодзи/скобок/пунктуации — для оценки «строка состоит из ссылки»."""
+    return len(re.sub(r"[^\w\s]", "", s or "", flags=re.UNICODE).strip())
+
+
+def _signature_lines(lines: list, source_username: str | None = None) -> list:
+    """Детерминированный поиск строк-подписей источника (без вызова модели).
+
+    Правила (достаточно одного):
+      1) ссылка или упоминание канала САМОГО источника;
+      2) строка «Источник: …»;
+      3) CTA-слова вместе со ссылкой/упоминанием канала;
+      4) CTA-строка в хвосте поста длиной <= 60 символов;
+      5) строка-ссылка в хвосте поста, где после удаления ссылок почти ничего не остаётся
+         (типовой футер «🎬[Название канала](https://t.me/…)»).
+    Возвращает номера строк (1-based).
+    """
+    nonempty = [i for i, ln in enumerate(lines) if ln.strip()]
+    tail = set(nonempty[-3:]) if nonempty else set()
+    uname = (source_username or "").strip().lstrip("@").lower()
+    out = []
+    for i in nonempty:
+        s = lines[i].strip()
+        low = s.lower()
+        has_link = bool(_TG_LINK_RE.search(low)) or ("@" in s)
+        if uname and (f"t.me/{uname}" in low or f"@{uname}" in low):
+            out.append(i + 1)
+            continue
+        if _SOURCE_LINE_RE.match(s):
+            out.append(i + 1)
+            continue
+        if _CTA_RE.search(s) and (has_link or (i in tail and len(s) <= 60)):
+            out.append(i + 1)
+            continue
+        if i in tail and _TG_LINK_RE.search(low):
+            rest = _BARE_URL_RE.sub("", _MD_LINK_FULL_RE.sub("", s))
+            if _plain_len(rest) <= 3:
+                out.append(i + 1)
+    return out
+
 async def _get_status(post_id: int) -> PostStatus | None:
     async with session_scope() as session:
         post = await session.get(Post, post_id)
@@ -868,11 +914,12 @@ async def _clean_plan_call(post_id: int, listing: str, model: str, providers, la
 
 
 async def _ensure_clean_draft(post_id: int) -> None:
-    """Каналы без рерайта: модель возвращает НОМЕР + ТОЧНЫЙ ТЕКСТ подписи, код сверяет и удаляет.
+    """Удаление подписей источника для каналов без рерайта.
 
-    Попытка 1 — дешёвая модель очистки. Если план не прошёл сверку (mismatch/ambiguous)
-    или ответа нет — попытка 2 сильной моделью (clean_fallback_model / двойная проверка).
-    Только если и она не дала проверяемый план — NEEDS_MANUAL_REVIEW.
+    Порядок: 1) детерминированный поиск строк-подписей (без модели);
+    2) дешёвая модель (план «номер + дословный текст», удаляет код);
+    3) сильная модель-страховка; 4) непроверяемый план -> ручное ревью.
+    Ответ «удалять нечего» НЕ является ошибкой: текст остаётся без изменений.
     """
     async with session_scope() as session:
         post = await session.get(Post, post_id)
@@ -884,50 +931,57 @@ async def _ensure_clean_draft(post_id: int) -> None:
             return  # рерайт уже чистит подписи (правило 7)
         if channel is not None and channel.no_review and channel.aggregate_mode == "repost":
             return  # пересылается оригинал — черновик не используется
+        source = await session.get(Source, post.source_id) if post.source_id else None
         text = post.draft_text or post.original_text or ""
+    source_username = source.username if source is not None else None
     # Нет ссылок/подписей — чистить нечего, модель не дёргаем
     if "[" not in text and "t.me/" not in text and "telegram.me/" not in text and "@" not in text:
         return
 
     lines = text.split("\n")
-    listing = "\n".join(f"{i}. {ln}" for i, ln in enumerate(lines, 1))
-    plans = []
+    cleaned = None
+    dropped: list = []
+    mode = ""
+    fallback_used = False
+    saw_nothing = False
+    last_verify = "no_answer"
+    attempts: list = []
 
-    # Попытка 1: дешёвая модель
-    cheap_model = await _model_for(Keys.PREFILTER_MODEL)
-    cheap_providers = await _providers_for(Keys.PREFILTER_PROVIDERS)
-    result = await _clean_plan_call(post_id, listing, cheap_model, cheap_providers, "clean")
-    cleaned, dropped, verify = None, [], "no_answer"
-    if result is not None:
-        plans.append({"model": cheap_model, "plan": result.remove[:5]})
-        kept, dropped, verify = _apply_clean_plan(lines, result.remove)
-        if verify == "ok":
-            cleaned = _finalize_clean(kept, text)
+    # 1) детерминированный путь — покрывает типовые подписи без затрат на модель
+    sig = _signature_lines(lines, source_username)
+    if sig:
+        kept = [ln for i, ln in enumerate(lines, 1) if i not in set(sig)]
+        cleaned = _finalize_clean(kept, text)
+        dropped, mode = sig, "deterministic"
 
-    # Попытка 2: сильная модель (страховка от непредсказуемости free-моделей)
-    if cleaned is None:
+    # 2-3) модели — только если детерминированно ничего не нашли
+    if not mode:
+        listing = "\n".join(f"{i}. {ln}" for i, ln in enumerate(lines, 1))
+        cheap_model = await _model_for(Keys.PREFILTER_MODEL)
+        cheap_providers = await _providers_for(Keys.PREFILTER_PROVIDERS)
         async with session_scope() as session:
-            fb = str(await get_setting(session, Keys.CLEAN_FALLBACK_MODEL) or "")
-        strong_model = fb.strip() or await _model_for(Keys.DOUBLE_CHECK_MODEL)
+            fb = str(await get_setting(session, Keys.CLEAN_FALLBACK_MODEL) or "").strip()
+        strong_model = fb or await _model_for(Keys.DOUBLE_CHECK_MODEL)
         strong_providers = await _providers_for(Keys.DOUBLE_CHECK_PROVIDERS)
-        log.info("пост %s: очистка повторяется сильной моделью %s (причина: %s)",
-                 post_id, strong_model, verify)
-        result2 = await _clean_plan_call(post_id, listing, strong_model,
-                                        strong_providers, "clean-fallback")
-        if result2 is not None:
-            plans.append({"model": strong_model, "plan": result2.remove[:5]})
-            kept2, dropped2, verify2 = _apply_clean_plan(lines, result2.remove)
-            if verify2 == "ok":
-                cleaned = _finalize_clean(kept2, text)
-                dropped, verify = dropped2, "ok"
-                async with session_scope() as session:
-                    session.add(PostEvent(
-                        post_id=post_id, actor=EventActor.SYSTEM, action="clean_fallback_used",
-                        details={"first_model": cheap_model, "fallback_model": strong_model,
-                                 "first_verify": verify}))
-                    await session.commit()
-            else:
-                verify = verify2
+        for label, model, providers in (("clean", cheap_model, cheap_providers),
+                                        ("clean-fallback", strong_model, strong_providers)):
+            result = await _clean_plan_call(post_id, listing, model, providers, label)
+            if result is None:
+                last_verify = "no_answer"
+                attempts.append({"model": model, "plan": None, "verify": "no_answer"})
+                continue
+            kept, dropped, verify = _apply_clean_plan(lines, result.remove)
+            attempts.append({"model": model, "plan": result.remove[:5], "verify": verify})
+            last_verify = verify
+            if verify == "ok":
+                cleaned = _finalize_clean(kept, text)
+                mode = label
+                fallback_used = (label == "clean-fallback")
+                break
+            if verify == "nothing":
+                saw_nothing = True   # модель не нашла подписей — это нормальный ответ
+
+    resolved_nothing = saw_nothing or last_verify == "nothing"
 
     async with session_scope() as session:
         post = await session.get(Post, post_id)
@@ -940,16 +994,30 @@ async def _ensure_clean_draft(post_id: int) -> None:
             session.add(PostDraftVersion(
                 post_id=post_id, version=post.draft_version,
                 text=cleaned, origin=DraftOrigin.ORIGINAL))
-            log.info("пост %s: очистка подписей — удалены строки %s", post_id, dropped)
-        else:
-            prev = post.status.value
-            post.status = PostStatus.NEEDS_MANUAL_REVIEW
             session.add(PostEvent(
-                post_id=post_id, actor=EventActor.SYSTEM, action="clean_verify_failed",
-                from_status=prev, to_status=PostStatus.NEEDS_MANUAL_REVIEW.value,
-                details={"verify": verify, "attempts": plans}))
-            log.warning("пост %s: обе модели очистки не дали проверяемый план (%s) — ручное ревью",
-                        post_id, verify)
+                post_id=post_id, actor=EventActor.SYSTEM, action="clean_signatures",
+                details={"mode": mode, "lines": dropped, "fallback_used": fallback_used}))
+            if fallback_used:
+                session.add(PostEvent(
+                    post_id=post_id, actor=EventActor.SYSTEM, action="clean_fallback_used",
+                    details={"first_model": attempts[0].get("model") if attempts else None,
+                             "fallback_model": attempts[-1].get("model") if attempts else None,
+                             "first_verify": attempts[0].get("verify") if attempts else None}))
+            await session.commit()
+            log.info("пост %s: очистка подписей (%s) — удалены строки %s",
+                     post_id, mode, dropped)
+            return
+        if resolved_nothing:
+            await session.commit()
+            log.info("пост %s: подписей не найдено — текст оставлен без изменений", post_id)
+            return
+        prev = post.status.value
+        post.status = PostStatus.NEEDS_MANUAL_REVIEW
+        session.add(PostEvent(
+            post_id=post_id, actor=EventActor.SYSTEM, action="clean_verify_failed",
+            from_status=prev, to_status=PostStatus.NEEDS_MANUAL_REVIEW.value,
+            details={"verify": last_verify, "attempts": attempts}))
+        log.warning("пост %s: план очистки непроверяем (%s) — ручное ревью", post_id, last_verify)
         await session.commit()
 
 
