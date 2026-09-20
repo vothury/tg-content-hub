@@ -766,8 +766,8 @@ def _sim(a: str, b: str) -> float:
 def _apply_clean_plan(lines: list, plan: list) -> tuple[list, list, str]:
     """Сверяет план модели с текстом и удаляет подписи КОДОМ.
 
-    Первичный ключ — дословный текст подписи (устойчив к ошибкам нумерации и пустым строкам),
-    номер строки — подсказка для разрешения неоднозначности.
+    Первичный ключ — дословный текст подписи (устойчив к ошибкам нумерации и пустым строкам).
+    Номер строки — ТОЛЬКО подсказка: точное совпадение текста всегда важнее номера.
     Статусы: ok | nothing | mismatch | ambiguous.
     """
     if not plan:
@@ -792,20 +792,40 @@ def _apply_clean_plan(lines: list, plan: list) -> tuple[list, list, str]:
                     continue
                 score = _sim(want, window)
                 if want in window or window in want:
-                    score = max(score, 0.99)
+                    shorter, longer = min(len(want), len(window)), max(len(want), len(window))
+                    if longer and shorter / longer >= 0.6:
+                        score = max(score, 0.99)
                 if score >= 0.85:
                     cands.append((score, start, span))
         if not cands:
             return lines, sorted(drop), "mismatch"
-        cands.sort(key=lambda c: c[0], reverse=True)
-        best = cands[0]
-        ties = [c for c in cands if c[0] >= best[0] - 0.02]
-        if len(ties) > 1:
-            hint = item.get("i")
-            picked = [c for c in ties if isinstance(hint, int) and c[1] == hint - 1]
-            if len(picked) != 1:
-                return lines, sorted(drop), "ambiguous"
-            best = picked[0]
+        hint = item.get("i")
+        exact = [c for c in cands if c[0] >= 0.995]
+        if exact:
+            # Точное совпадение по тексту: наименьшее окно; номер — только при равенстве
+            min_span = min(c[2] for c in exact)
+            picks = [c for c in exact if c[2] == min_span]
+            if len(picks) > 1:
+                picked = [c for c in picks if isinstance(hint, int) and c[1] == hint - 1]
+                if len(picked) != 1:
+                    return lines, sorted(drop), "ambiguous"
+                best = picked[0]
+            else:
+                best = picks[0]
+        else:
+            cands.sort(key=lambda c: c[0], reverse=True)
+            top = cands[0][0]
+            ties = [c for c in cands if c[0] >= top - 0.02]
+            if len(ties) > 1:
+                picked = [c for c in ties if isinstance(hint, int) and c[1] == hint - 1]
+                if len(picked) != 1:
+                    return lines, sorted(drop), "ambiguous"
+                best = min(picked, key=lambda c: c[2])
+            else:
+                best = ties[0]
+        if isinstance(hint, int) and hint - 1 != best[1]:
+            log.info("clean-plan: модель указала строку %d, по тексту найдена %d — доверяем тексту",
+                     hint, best[1] + 1)
         for k in range(best[1], best[1] + best[2]):
             drop.add(k + 1)
     kept = [ln for i, ln in enumerate(lines, 1) if i not in drop]
