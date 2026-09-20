@@ -205,6 +205,26 @@ sources:
     kind: external
     target: moskva_novostroy
     relevance: 8
+  - username: NovostroyM
+    kind: external
+    target: moskva_novostroy
+    relevance: 8
+  - username: pulsprodajru
+    kind: external
+    target: moskva_novostroy
+    relevance: 8
+  - username: startnedvizh
+    kind: external
+    target: moskva_novostroy
+    relevance: 8
+  - username: chtonedvizh
+    kind: external
+    target: moskva_novostroy
+    relevance: 8
+  - username: nporaschetu
+    kind: external
+    target: moskva_novostroy
+    relevance: 8
 
   # Сам агрегатор как сырьё редакции: не публикуется и не классифицируется
   - username: moskva_novostroy

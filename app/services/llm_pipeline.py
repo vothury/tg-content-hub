@@ -80,8 +80,10 @@ from app.services.dedup import run_semantic_dedup
 
 log = logging.getLogger(__name__)
 
-TEXT_LIMIT = 6000  #Very длинные исходники усекаем до вызова модели
+TEXT_LIMIT = 6000  #Очень длинные исходники усекаем до вызова модели
 
+# Голые url вне markdown-ссылок: удаляются кодом, а не моделью
+_BARE_URL_RE = re.compile(r"(?<!\]\()(?<!\()(?:https?://|t\.me/|telegram\.me/)[^\s)\]]+")
 
 async def _get_status(post_id: int) -> PostStatus | None:
     async with session_scope() as session:
