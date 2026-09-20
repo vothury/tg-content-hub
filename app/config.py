@@ -130,6 +130,8 @@ class Settings(BaseSettings):
     dedup_window_days: int = 7
     dedup_phash_max_distance: int = 4      # Хэмминг 0..64 для «то же изображение»
     dedup_luma_max_diff: int = 48      # допуск разницы средней яркости для media-матча
+    dedup_confirm_model: str = ""        # пусто = модель очистки (prefilter)
+    dedup_confirm_providers: dict = {}   # пусто = авто-роутинг OpenRouter
     dedup_canonical_min_len: int = 30      # короче — канон игнорируем (защита от «🙂»)
     dedup_canonical_cosine_min: float = 0.60
     dedup_canonical_containment_min: float = 0.75  # доля n-грамм короткого канона в длинном

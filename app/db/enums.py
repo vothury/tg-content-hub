@@ -40,6 +40,7 @@ class LLMStage(str, enum.Enum):
     EDITORIAL_CHIEF = "editorial_chief"
     EDITORIAL_GATHER = "editorial_gather"
     EDITORIAL_WRITE = "editorial_write"
+    DEDUP_CONFIRM = "dedup_confirm"
 
 
 class LLMCallStatus(str, enum.Enum):

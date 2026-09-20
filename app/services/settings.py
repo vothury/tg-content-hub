@@ -64,6 +64,8 @@ class Keys:
     DEDUP_WINDOW_DAYS = "dedup.window_days"
     DEDUP_PHASH_MAX_DISTANCE = "dedup.phash_max_distance"
     DEDUP_LUMA_MAX_DIFF = "dedup.luma_max_diff"
+    DEDUP_CONFIRM_MODEL = "dedup.confirm_model"
+    DEDUP_CONFIRM_PROVIDERS = "dedup.confirm_providers"
     PUBLISH_DUP_RECAP_WINDOW_HOURS = "publish.dup_recap_window_hours"
     DEDUP_CANONICAL_MIN_LEN = "dedup.canonical_min_len"
     DEDUP_CANONICAL_COSINE_MIN = "dedup.canonical_cosine_min"
@@ -120,6 +122,8 @@ _ENV_DEFAULTS: dict[str, Any] = {
     Keys.DEDUP_WINDOW_DAYS: settings.dedup_window_days,
     Keys.DEDUP_PHASH_MAX_DISTANCE: settings.dedup_phash_max_distance,
     Keys.DEDUP_LUMA_MAX_DIFF: settings.dedup_luma_max_diff,
+    Keys.DEDUP_CONFIRM_MODEL: settings.dedup_confirm_model,
+    Keys.DEDUP_CONFIRM_PROVIDERS: settings.dedup_confirm_providers,
     Keys.PUBLISH_DUP_RECAP_WINDOW_HOURS: settings.publish_dup_recap_window_hours,
     Keys.DEDUP_CANONICAL_MIN_LEN: settings.dedup_canonical_min_len,
     Keys.DEDUP_CANONICAL_COSINE_MIN: settings.dedup_canonical_cosine_min,

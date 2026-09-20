@@ -11,9 +11,10 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 
 from app.db.enums import EventActor, PostStatus
-from app.db.models import MediaItem, Post, PostEvent, TargetChannel
+from app.db.models import LLMCall, MediaItem, Post, PostEvent, TargetChannel
 from app.db.session import session_scope
-from app.services.settings import Keys, get_setting
+from app.services import guards
+from app.services.settings import Keys, get_providers, get_setting
 
 
 log = logging.getLogger("dedup")
@@ -99,28 +100,60 @@ def _text_for_confirm(post) -> str:
     return "\n".join(lines)[:1200]
 
 
-async def _confirm_same(a: str, b: str) -> bool:
-    """Дешёвый вызов: та же новость с той же полярностью, или отрицание/отмена."""
+async def _log_confirm_call(post_id, model, messages, resp, ok, error, same) -> None:
+    from app.db.enums import LLMCallStatus, LLMStage
+    from app.services.llm.prompts import DEDUP_CONFIRM_VERSION
+    if post_id is None:
+        return
+    async with session_scope() as session:
+        session.add(LLMCall(
+            post_id=post_id, stage=LLMStage.DEDUP_CONFIRM, provider="openrouter", model=model,
+            prompt_version=DEDUP_CONFIRM_VERSION, request={"messages": messages},
+            response=({"content": resp.content, "same": same} if resp is not None else None),
+            status=LLMCallStatus.OK if ok else LLMCallStatus.PARSE_ERROR,
+            error=error,
+            input_tokens=resp.input_tokens if resp is not None else None,
+            output_tokens=resp.output_tokens if resp is not None else None,
+            cost_usd=resp.cost_usd if resp is not None else None,
+            latency_ms=resp.latency_ms if resp is not None else None))
+        await session.commit()
+
+
+async def _confirm_same(a: str, b: str, post_id: int | None = None) -> bool:
+    """Сверка ПОЛНЫХ текстов: та же новость или разные факты при общем поводе.
+
+    Модель и провайдеры настраиваются отдельно (по умолчанию — модель очистки).
+    Вызов пишется в llm_calls (стадия dedup_confirm) и учитывается в бюджете LLM.
+    """
     from app.config import settings
     from app.services.llm.openrouter import chat_completion
     from app.services.llm.prompts import DEDUP_CONFIRM_SYSTEM, DEDUP_CONFIRM_USER
     from app.services.llm.schemas import DedupConfirmResult
     async with session_scope() as session:
-        model = str(await get_setting(session, Keys.PREFILTER_MODEL))
+        model = str(await get_setting(session, Keys.DEDUP_CONFIRM_MODEL)) or \
+            str(await get_setting(session, Keys.PREFILTER_MODEL))
+        providers = await get_providers(session, Keys.DEDUP_CONFIRM_PROVIDERS)
     messages = [
         {"role": "system", "content": DEDUP_CONFIRM_SYSTEM},
         {"role": "user", "content": DEDUP_CONFIRM_USER.format(a=a, b=b)},
     ]
+    last_error = None
     for attempt in (1, 2):
         try:
-            resp = await chat_completion(messages, model, max_tokens=100, temperature=0.0,
+            resp = await chat_completion(messages, model, max_tokens=150, temperature=0.0,
+                                         provider=providers,
                                          reasoning_max_tokens=settings.llm_reasoning_small)
-            return bool(DedupConfirmResult.from_response(resp.content).same)
+            if resp is not None and resp.cost_usd:
+                await guards.add_llm_cost(resp.cost_usd)
+            same = bool(DedupConfirmResult.from_response(resp.content).same)
+            await _log_confirm_call(post_id, model, messages, resp, True, None, same)
+            return same
         except Exception as exc:  # noqa: BLE001 — сбой подтверждения не ломает дедуп
-            log.warning("dedup-confirm попытка %d не удалась (%s: %s)",
-                        attempt, exc.__class__.__name__, exc)
+            last_error = f"{exc.__class__.__name__}: {exc}"
+            log.warning("dedup-confirm попытка %d не удалась (%s)", attempt, last_error)
             if attempt == 1:
                 await asyncio.sleep(20)
+    await _log_confirm_call(post_id, model, messages, None, False, last_error, None)
     log.warning("dedup-confirm не ответил после 2 попыток — оставляем лексическое решение")
     return True
 
@@ -205,7 +238,7 @@ async def run_semantic_dedup(post_id: int) -> bool:
                 best_fact = max(best_fact, fact)
                 if cos >= cos_min or cont >= cont_min or fact >= fact_min:
                     c_full = _text_for_confirm(c)
-                    same = await _confirm_same(new_full, c_full)
+                    same = await _confirm_same(new_full, c_full, post_id)
                     confirm_info = {"candidate": c.id, "same": same,
                                     "cos": round(cos, 3), "cont": round(cont, 3),
                                     "fact": round(fact, 3),
@@ -258,7 +291,7 @@ async def run_semantic_dedup(post_id: int) -> bool:
                         if (_cosine(new_canon, c_canon2) >= cos_min
                                 or _containment(new_canon, c_canon2) >= cont_min
                                 or _fact_sim(new_canon, c_canon2) >= fact_min):
-                            matched = await _confirm_same(new_full, _text_for_confirm(c))
+                            matched = await _confirm_same(new_full, _text_for_confirm(c), post_id)
                     if matched:
                         recap.append((c.source_published_at, c.id))
                 recap.sort(key=lambda x: x[0])
