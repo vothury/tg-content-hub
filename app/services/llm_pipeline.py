@@ -833,10 +833,44 @@ def _apply_clean_plan(lines: list, plan: list) -> tuple[list, list, str]:
     return kept, sorted(drop), "ok"
 
 
+def _finalize_clean(kept: list, text: str):
+    """Дочищает голые url и лишние пустые строки; None, если текст не изменился."""
+    kept = [_BARE_URL_RE.sub("", ln).rstrip() for ln in kept]
+    out = re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
+    return out if (out and out != text.strip()) else None
+
+
+async def _clean_plan_call(post_id: int, listing: str, model: str, providers, label: str):
+    """Один вызов модели очистки: план (номера строк + дословный текст)."""
+    messages = [
+        {"role": "system", "content": CLEAN_SYSTEM},
+        {"role": "user", "content": CLEAN_USER.format(listing=listing[:TEXT_LIMIT])},
+    ]
+    resp, result, call_status, error_text = await _call_and_parse(
+        messages, model, 300, temperature=0.0,
+        schema=CleanPlanResult, provider=providers,
+        reasoning_max_tokens=settings.llm_reasoning_small,
+    )
+    if resp is not None and resp.cost_usd:
+        await guards.add_llm_cost(resp.cost_usd)
+    async with session_scope() as session:
+        session.add(_make_call_row(post_id, LLMStage.REWRITE, model, CLEAN_VERSION, messages,
+                                   resp, asdict(result) if result else None,
+                                   call_status, error_text))
+        await session.commit()
+    if call_status is not LLMCallStatus.OK or result is None:
+        log.warning("пост %s: очистка (%s, %s) не дала ответа: %s",
+                    post_id, label, model, error_text)
+        return None
+    return result
+
+
 async def _ensure_clean_draft(post_id: int) -> None:
-    """Каналы без рерайта: модель возвращает НОМЕР + ТОЧНЫЙ ТЕКСТ подписи,
-    код сверяет план с текстом и удаляет сам. Тело поста не перепечатывается —
-    опечатки и подмена эмодзи исключены. При расхождении — ручное ревью.
+    """Каналы без рерайта: модель возвращает НОМЕР + ТОЧНЫЙ ТЕКСТ подписи, код сверяет и удаляет.
+
+    Попытка 1 — дешёвая модель очистки. Если план не прошёл сверку (mismatch/ambiguous)
+    или ответа нет — попытка 2 сильной моделью (clean_fallback_model / двойная проверка).
+    Только если и она не дала проверяемый план — NEEDS_MANUAL_REVIEW.
     """
     async with session_scope() as session:
         post = await session.get(Post, post_id)
@@ -852,56 +886,68 @@ async def _ensure_clean_draft(post_id: int) -> None:
     # Нет ссылок/подписей — чистить нечего, модель не дёргаем
     if "[" not in text and "t.me/" not in text and "telegram.me/" not in text and "@" not in text:
         return
+
     lines = text.split("\n")
     listing = "\n".join(f"{i}. {ln}" for i, ln in enumerate(lines, 1))
-    model = await _model_for(Keys.PREFILTER_MODEL)
-    providers = await _providers_for(Keys.PREFILTER_PROVIDERS)
-    messages = [
-        {"role": "system", "content": CLEAN_SYSTEM},
-        {"role": "user", "content": CLEAN_USER.format(listing=listing[:TEXT_LIMIT])},
-    ]
-    resp, result, call_status, error_text = await _call_and_parse(
-        messages, model, 300, temperature=0.0,
-        schema=CleanPlanResult, provider=providers,
-        reasoning_max_tokens=settings.llm_reasoning_small,
-    )
-    if resp is not None and resp.cost_usd:
-        await guards.add_llm_cost(resp.cost_usd)
+    plans = []
 
-    cleaned, dropped, verify = None, [], "ok"
-    if call_status is LLMCallStatus.OK and result is not None:
+    # Попытка 1: дешёвая модель
+    cheap_model = await _model_for(Keys.PREFILTER_MODEL)
+    cheap_providers = await _providers_for(Keys.PREFILTER_PROVIDERS)
+    result = await _clean_plan_call(post_id, listing, cheap_model, cheap_providers, "clean")
+    cleaned, dropped, verify = None, [], "no_answer"
+    if result is not None:
+        plans.append({"model": cheap_model, "plan": result.remove[:5]})
         kept, dropped, verify = _apply_clean_plan(lines, result.remove)
         if verify == "ok":
-            kept = [_BARE_URL_RE.sub("", ln).rstrip() for ln in kept]
-            out = re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
-            cleaned = out if (out and out != text.strip()) else None
+            cleaned = _finalize_clean(kept, text)
+
+    # Попытка 2: сильная модель (страховка от непредсказуемости free-моделей)
+    if cleaned is None:
+        async with session_scope() as session:
+            fb = str(await get_setting(session, Keys.CLEAN_FALLBACK_MODEL) or "")
+        strong_model = fb.strip() or await _model_for(Keys.DOUBLE_CHECK_MODEL)
+        strong_providers = await _providers_for(Keys.DOUBLE_CHECK_PROVIDERS)
+        log.info("пост %s: очистка повторяется сильной моделью %s (причина: %s)",
+                 post_id, strong_model, verify)
+        result2 = await _clean_plan_call(post_id, listing, strong_model,
+                                        strong_providers, "clean-fallback")
+        if result2 is not None:
+            plans.append({"model": strong_model, "plan": result2.remove[:5]})
+            kept2, dropped2, verify2 = _apply_clean_plan(lines, result2.remove)
+            if verify2 == "ok":
+                cleaned = _finalize_clean(kept2, text)
+                dropped, verify = dropped2, "ok"
+                async with session_scope() as session:
+                    session.add(PostEvent(
+                        post_id=post_id, actor=EventActor.SYSTEM, action="clean_fallback_used",
+                        details={"first_model": cheap_model, "fallback_model": strong_model,
+                                 "first_verify": verify}))
+                    await session.commit()
+            else:
+                verify = verify2
 
     async with session_scope() as session:
-        session.add(_make_call_row(post_id, LLMStage.REWRITE, model, CLEAN_VERSION, messages,
-                                   resp, asdict(result) if result else None, call_status, error_text))
         post = await session.get(Post, post_id)
         if post is None:
             await session.commit()
             return
-        if verify in ("mismatch", "ambiguous"):
-            prev = post.status.value
-            post.status = PostStatus.NEEDS_MANUAL_REVIEW
-            session.add(PostEvent(
-                post_id=post_id, actor=EventActor.SYSTEM, action="clean_verify_failed",
-                from_status=prev, to_status=PostStatus.NEEDS_MANUAL_REVIEW.value,
-                details={"verify": verify, "plan": (result.remove if result else [])[:5]}))
-            log.warning("пост %s: план очистки не прошёл сверку (%s) — ручное ревью",
-                        post_id, verify)
-        elif cleaned is not None:
+        if cleaned is not None:
             post.draft_text = cleaned
             post.draft_version += 1
             session.add(PostDraftVersion(
                 post_id=post_id, version=post.draft_version,
                 text=cleaned, origin=DraftOrigin.ORIGINAL))
             log.info("пост %s: очистка подписей — удалены строки %s", post_id, dropped)
-        elif call_status is not LLMCallStatus.OK:
-            log.warning("пост %s: очистка не выполнена (%s) — черновик оставлен без изменений",
-                        post_id, error_text)
+        else:
+            prev = post.status.value
+            post.status = PostStatus.NEEDS_MANUAL_REVIEW
+            session.add(PostEvent(
+                post_id=post_id, actor=EventActor.SYSTEM, action="clean_verify_failed",
+                from_status=prev, to_status=PostStatus.NEEDS_MANUAL_REVIEW.value,
+                details={"verify": verify, "attempts": plans}))
+            log.warning("пост %s: обе модели очистки не дали проверяемый план (%s) — ручное ревью",
+                        post_id, verify)
         await session.commit()
 
 
