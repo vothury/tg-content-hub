@@ -43,6 +43,9 @@ if not MEDIA_ROOT.is_absolute():
 
 MAX_MESSAGES_PER_CYCLE = 200
 
+# Пересылка блокируется при отсутствии прав писать в целевой канал (кулдаун, чтобы не долбить)
+_REPOST_BLOCKED_UNTIL: datetime | None = None
+
 # Ошибки, после которых продолжать опрос бессмысленно
 FATAL_ERRORS = (
     errors.AuthKeyUnregisteredError,
@@ -523,6 +526,8 @@ async def process_media_refresh(client: TelegramClient) -> None:
 
 async def _process_reposts(client: TelegramClient) -> None:
     """aggregate_mode=repost: пересылаем оригинал — форматирование и ссылки сохраняются."""
+    if _REPOST_BLOCKED_UNTIL is not None and datetime.now(timezone.utc) < _REPOST_BLOCKED_UNTIL:
+        return
     async with session_scope() as session:
         rows = (await session.execute(
             select(Post).where(Post.repost_pending.is_(True))
@@ -563,6 +568,26 @@ async def _process_reposts(client: TelegramClient) -> None:
             delay = min(int(getattr(exc, "seconds", 30)) + 5, 300)
             log.warning("repost: FloodWait %s сек — пауза", delay)
             await asyncio.sleep(delay)
+        except (errors.ChatWriteForbiddenError, errors.UserBannedInChannelError) as exc:
+            global _REPOST_BLOCKED_UNTIL
+            _REPOST_BLOCKED_UNTIL = datetime.now(timezone.utc) + timedelta(minutes=60)
+            log.error("repost: аккаунт-читатель НЕ МОЖЕТ писать в целевой канал (%s). "
+                      "Выдайте ему права администратора «Публиковать сообщения» или "
+                      "переключите канал на aggregate_mode: credit (публикация через бота). "
+                      "Пересылки приостановлены на 60 минут.", exc.__class__.__name__)
+            async with session_scope() as session:
+                p = await session.get(Post, post_id)
+                if p is not None:
+                    p.repost_pending = False
+                    p.status = PostStatus.FAILED
+                    session.add(PostEvent(
+                        post_id=post_id, actor=EventActor.SYSTEM, action="publish_failed",
+                        to_status=PostStatus.FAILED.value,
+                        details={"error": f"{exc.__class__.__name__}: {exc}",
+                                 "mode": "repost",
+                                 "hint": "нет прав писать в канал: нужен админ «Публиковать сообщения»"}))
+                    await session.commit()
+            break
         except Exception as exc:  # noqa: BLE001
             log.warning("пост %s: пересылка не удалась (попытка %d): %s",
                         post_id, attempts + 1, exc)
