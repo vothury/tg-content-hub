@@ -38,6 +38,11 @@ class Keys:
     PRICE_WATCH_INTERVAL_HOURS = "price_watch.interval_hours"
     PUBLISH_DUP_RECAP_WINDOW_HOURS = "publish.dup_recap_window_hours"
     PUBLISH_RESTORE_LINKS = "publish.restore_links"
+    PUBLISH_MAX_MEDIA_MB = "publish.max_media_mb"
+    PUBLISH_MEDIA_COMPRESS = "publish.media_compress"
+    PUBLISH_COMPRESS_TARGET_MB = "publish.compress_target_mb"
+    PUBLISH_COMPRESS_MAX_SIDE = "publish.compress_max_side"
+    PUBLISH_SKIP_OVERSIZED = "publish.skip_oversized"
     EDITORIAL_ENABLED = "editorial.enabled"
     EDITORIAL_CYCLE_TIMES = "editorial.cycle_times"
     EDITORIAL_PUBLISH_WINDOWS = "editorial.publish_windows"
@@ -104,6 +109,11 @@ _ENV_DEFAULTS: dict[str, Any] = {
     Keys.PRICE_WATCH_INTERVAL_HOURS: settings.price_watch_interval_hours,
     Keys.PUBLISH_DUP_RECAP_WINDOW_HOURS: settings.publish_dup_recap_window_hours,
     Keys.PUBLISH_RESTORE_LINKS: settings.publish_restore_links,
+    Keys.PUBLISH_MAX_MEDIA_MB: settings.publish_max_media_mb,
+    Keys.PUBLISH_MEDIA_COMPRESS: settings.publish_media_compress,
+    Keys.PUBLISH_COMPRESS_TARGET_MB: settings.publish_compress_target_mb,
+    Keys.PUBLISH_COMPRESS_MAX_SIDE: settings.publish_compress_max_side,
+    Keys.PUBLISH_SKIP_OVERSIZED: settings.publish_skip_oversized,
     Keys.EDITORIAL_ENABLED: settings.editorial_enabled,
     Keys.EDITORIAL_CYCLE_TIMES: settings.editorial_cycle_times,
     Keys.EDITORIAL_PUBLISH_WINDOWS: settings.editorial_publish_windows,

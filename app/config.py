@@ -96,6 +96,12 @@ class Settings(BaseSettings):
     price_watch_interval_hours: int = 24
     publish_dup_recap_window_hours: int = 24  # окно «ранее писали» для дублей-агрегаторов
     publish_restore_links: int = 0   # 0 = выкл (ссылки и так публикуются кликабельными); 1 = страховка только для информационных ссылок
+    # Публикация медиа: лимиты размера и опциональное сжатие видео (ffmpeg)
+    publish_max_media_mb: int = 100       # лимит на файл и на суммарный размер альбома
+    publish_media_compress: int = 0      # 1 = сжимать видео под лимит (требует CPU)
+    publish_compress_target_mb: int = 45 # целевой размер после сжатия
+    publish_compress_max_side: int = 1280  # ограничение большей стороны кадра
+    publish_skip_oversized: int = 0      # 1 = публиковать без «тяжёлого» медиа, а не падать
 
     # ---- Виртуальная редакция ----
     editorial_enabled: int = 1

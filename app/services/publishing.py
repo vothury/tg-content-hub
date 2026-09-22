@@ -29,6 +29,86 @@ CAPTION_LIMIT = 1024
 _MD_LINK_RE = re.compile(r"\[([^\]]+)\]\((https?://[^\s)]+)\)")
 
 
+class OversizedMedia(Exception):
+    """Медиа больше лимита — публикация без сжатия/пропуска невозможна (не повторяем)."""
+
+
+def _file_size(p: Path) -> int:
+    try:
+        return p.stat().st_size
+    except OSError:
+        return 0
+
+
+def _safe_unlink(p: Path) -> None:
+    try:
+        if p.exists():
+            p.unlink()
+    except OSError:
+        log.warning("не удалось удалить временный файл %s", p)
+
+
+async def _media_settings():
+    async with session_scope() as session:
+        max_mb = int(await get_setting(session, Keys.PUBLISH_MAX_MEDIA_MB))
+        compress = int(await get_setting(session, Keys.PUBLISH_MEDIA_COMPRESS))
+        target_mb = int(await get_setting(session, Keys.PUBLISH_COMPRESS_TARGET_MB))
+        max_side = int(await get_setting(session, Keys.PUBLISH_COMPRESS_MAX_SIDE))
+        skip = int(await get_setting(session, Keys.PUBLISH_SKIP_OVERSIZED))
+    return max_mb, compress, target_mb, max_side, skip
+
+
+async def _compress_video(src: Path, target_mb: int, max_side: int):
+    """Пересборка видео ffmpeg под целевой размер. None, если сжать не удалось."""
+    import asyncio
+    import subprocess
+
+    loop = asyncio.get_running_loop()
+
+    def _probe() -> float:
+        try:
+            out = subprocess.run(
+                ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                 "-of", "default=nw=1:nk=1", str(src)],
+                capture_output=True, text=True, timeout=60)
+            return float((out.stdout or "0").strip() or 0)
+        except Exception:  # noqa: BLE001
+            return 0.0
+
+    duration = await loop.run_in_executor(None, _probe)
+    if duration <= 0:
+        log.warning("сжатие видео: не удалось определить длительность %s", src.name)
+        return None
+    target_bytes = max(1024 * 1024, int(target_mb * 1024 * 1024 * 0.95))
+    audio_kbps = 96
+    video_kbps = int(target_bytes * 8 / duration / 1000) - audio_kbps
+    if video_kbps < 120:
+        log.warning("сжатие видео %s: целевой битрейт слишком мал (%d kbps) — не сжимаем",
+                    src.name, video_kbps)
+        return None
+    dst = src.with_name(f"{src.stem}_{target_mb}mb.mp4")
+
+    def _run() -> None:
+        subprocess.run(
+            ["ffmpeg", "-y", "-loglevel", "error", "-i", str(src),
+             "-vf", f"scale='min({max_side},iw)':-2",
+             "-c:v", "libx264", "-preset", "veryfast", "-b:v", f"{video_kbps}k",
+             "-maxrate", f"{int(video_kbps * 1.3)}k", "-bufsize", f"{video_kbps * 2}k",
+             "-c:a", "aac", "-b:a", f"{audio_kbps}k", "-movflags", "+faststart",
+             str(dst)],
+            check=True, timeout=1800, capture_output=True)
+
+    try:
+        await loop.run_in_executor(None, _run)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("ffmpeg не смог сжать %s: %s: %s", src.name, exc.__class__.__name__, exc)
+        _safe_unlink(dst)
+        return None
+    if not dst.exists() or _file_size(dst) == 0:
+        return None
+    return dst
+
+
 def _media_root() -> Path:
     root = Path(settings.media_dir)
     if not root.is_absolute():
@@ -394,14 +474,45 @@ async def _send_to_channel(bot: Bot, chat_id: int, post: Post) -> tuple[int, str
             links.append({"anchor": (rtitle or runame or f"источник {rid}"), "url": rurl})
     root = _media_root()
     media = await _select_media(post.id)
+    max_mb, compress_on, target_mb, max_side, skip_on = await _media_settings()
+    max_bytes = max_mb * 1024 * 1024
     files: list = []
     first = True
+    total_bytes = 0
+    tmp_files: list = []
+    skipped: list = []
     for m in media:
         if not m["downloaded"] or not m["local_path"]:
             continue
         path = root / m["local_path"]
         if not path.exists():
             continue
+        send_path = path
+        size = _file_size(path)
+        if max_bytes and size > max_bytes:
+            compressed = None
+            if compress_on and m["media_type"] is MediaType.VIDEO:
+                compressed = await _compress_video(path, min(target_mb or max_mb, max_mb), max_side)
+            if compressed is not None and _file_size(compressed) <= max_bytes:
+                send_path = compressed
+                tmp_files.append(compressed)
+                log.info("пост %s: видео сжато %.1f -> %.1f МБ",
+                         post.id, size / 1048576, _file_size(compressed) / 1048576)
+            else:
+                if compressed is not None:
+                    _safe_unlink(compressed)
+                if skip_on:
+                    skipped.append(f"{path.name} ({size / 1048576:.1f} МБ)")
+                    continue
+                raise OversizedMedia(
+                    f"{path.name}: {size / 1048576:.1f} МБ больше лимита {max_mb} МБ"
+                    + ("" if compress_on else " (сжатие видео выключено)")
+                    + ("" if skip_on else " (пропуск oversized выключен)"))
+        size = _file_size(send_path)
+        if max_bytes and total_bytes + size > max_bytes and files:
+            skipped.append(f"{send_path.name} (превышен суммарный лимит альбома)")
+            continue
+        total_bytes += size
         if first and len(text) <= CAPTION_LIMIT:
             caption, cap_entities = text, (entities or None)
         elif first:
@@ -410,23 +521,29 @@ async def _send_to_channel(bot: Bot, chat_id: int, post: Post) -> tuple[int, str
         else:
             caption, cap_entities = None, None
         if m["media_type"] is MediaType.VIDEO:
-            files.append(InputMediaVideo(media=FSInputFile(path), caption=caption,
+            files.append(InputMediaVideo(media=FSInputFile(send_path), caption=caption,
                                          caption_entities=cap_entities))
         else:
-            files.append(InputMediaPhoto(media=FSInputFile(path), caption=caption,
+            files.append(InputMediaPhoto(media=FSInputFile(send_path), caption=caption,
                                          caption_entities=cap_entities))
         first = False
 
-    if files:
-        sent = await bot.send_media_group(chat_id, media=files)
-        published_id = sent[0].message_id
-        caption_part, rest_part = _split_caption(text)
-        if rest_part:
-            await bot.send_message(chat_id, rest_part,
-                                   entities=_shift_entities(entities, len(caption_part)))
-        return published_id, text, links
-    message = await bot.send_message(chat_id, text, entities=entities or None)
-    return message.message_id, text, links
+    if skipped:
+        log.warning("пост %s: медиа пропущены при публикации: %s", post.id, ", ".join(skipped))
+    try:
+        if files:
+            sent = await bot.send_media_group(chat_id, media=files)
+            published_id = sent[0].message_id
+            caption_part, rest_part = _split_caption(text)
+            if rest_part:
+                await bot.send_message(chat_id, rest_part,
+                                       entities=_shift_entities(entities, len(caption_part)))
+            return published_id, text, links
+        message = await bot.send_message(chat_id, text, entities=entities or None)
+        return message.message_id, text, links
+    finally:
+        for f in tmp_files:
+            _safe_unlink(f)
 
 
 async def _select_media(post_id: int) -> list[dict]:
@@ -437,17 +554,26 @@ async def _select_media(post_id: int) -> list[dict]:
             )
         ).scalars().all()
         return [
-            {"media_type": r.media_type, "local_path": r.local_path, "downloaded": r.downloaded}
+            {"media_type": r.media_type, "local_path": r.local_path,
+             "downloaded": r.downloaded, "size_bytes": r.size_bytes}
             for r in rows
         ]
 
 
+NON_RETRYABLE_ERRORS = (
+    "TelegramEntityTooLarge", "Request Entity Too Large", "MessageIsTooLong",
+    "OversizedMedia", "медиа больше лимита", "WrongFilePart", "FileIsTooBig",
+)
+
+
 async def _finish_failed(bot, job_id: int, error: str, attempts: int, final: bool) -> None:
+    """Непостоянные ошибки (размер файла/текста) не повторяем: сразу FAILED."""
+    non_retryable = any(mark in (error or "") for mark in NON_RETRYABLE_ERRORS)
     async with session_scope() as session:
         job = await session.get(PublishJob, job_id)
         if job is None:
             return
-        if final or job.attempts >= job.max_attempts:
+        if final or non_retryable or job.attempts >= job.max_attempts:
             job.state = PublishJobState.FAILED
             is_final = True
         else:
@@ -467,7 +593,10 @@ async def _finish_failed(bot, job_id: int, error: str, attempts: int, final: boo
                 ))
                 await session.commit()
         log.error("задача %s: публикация не удалась после %d попыток: %s", job_id, attempts, error)
-        await _notify_owner(bot, f"⚠️ Пост #{post_id}: не удалось опубликовать после {attempts} попыток — {error[:150]}")
+        hint = (" (повторы отключены: лимит размера — проверьте «Публикация: лимит размера медиа», "
+                "сжатие видео или пропуск oversized)" if non_retryable else
+                f" после {attempts} попыток")
+        await _notify_owner(bot, f"⚠️ Пост #{post_id}: не удалось опубликовать{hint} — {error[:150]}")
     else:
         log.warning("задача %s: ошибка публикации (попытка %d): %s", job_id, attempts, error)
 
@@ -497,6 +626,9 @@ async def _publish(bot: Bot, job_id: int) -> None:
 
     try:
         published_id, final_text, final_links = await _send_to_channel(bot, chat_id, post)
+    except OversizedMedia as exc:
+        await _finish_failed(bot, job_id, f"медиа больше лимита: {exc}", attempts, final=True)
+        return
     except Exception as exc:  # noqa: BLE001
         await _finish_failed(bot, job_id, f"{exc.__class__.__name__}: {exc}", attempts, final=False)
         return
