@@ -141,7 +141,8 @@ async def _query_rows(status: str, channel: int, q: str,
 
 @router.get("/posts")
 async def posts_list(request: Request, status: str = "", channel: int = 0, q: str = "",
-                     date_from: str = "", date_to: str = "", page: int = 1, hide: str = ""):
+                     date_from: str = "", date_to: str = "", page: int = 1, hide: str = "",
+                     msg: str = ""):
     rows, channels, total, page, pages = await _query_rows(
         status, channel, q, date_from, date_to, page, hide=hide)
     base_qs = (f"status={quote(status)}&channel={channel}&q={quote(q)}"
@@ -157,6 +158,7 @@ async def posts_list(request: Request, status: str = "", channel: int = 0, q: st
         "f_status": status, "f_channel": channel, "f_q": q,
         "f_date_from": date_from, "f_date_to": date_to,
         "f_hide": hide, "hidden": hidden,
+        "msg": msg,
         "ch_vis": len([c for c in channels if c.username not in hidden]),
         "ch_hid": len([c for c in channels if c.username in hidden]),
         "page": page, "pages": pages, "total": total, "base_qs": base_qs,

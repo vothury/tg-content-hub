@@ -361,11 +361,21 @@ def _split_caption(text: str) -> tuple[str, str]:
     return cut, text[CAPTION_LIMIT:]
 
 
-async def _send_to_channel(bot: Bot, chat_id: int, post: Post) -> int:
-    """Отправка поста (медиа + текст + блок «ранее писали») без parse-режима."""
+async def _send_to_channel(bot: Bot, chat_id: int, post: Post) -> tuple[int, str, list]:
+    """Отправка поста (медиа + текст + блок «ранее писали») без parse-режима.
+
+    Возвращает (message_id, итоговый текст, ссылки) — они сохраняются в пост,
+    чтобы в карточке было видно, что именно опубликовано в канале.
+    """
     raw = html_to_text(post.draft_text or post.original_text or "") or ""
     text, entities = _md_to_entities(raw)
     text, entities = await _restore_lost_links(post, text, entities)
+    # Ссылки публикации: из markdown исходника + добавленные строкой «Подробнее:»
+    links = [{"anchor": m.group(1), "url": m.group(2)} for m in _MD_LINK_RE.finditer(raw)]
+    for m in re.finditer(r"https?://[^\s)]+", text):
+        u = m.group(0).rstrip(".,")
+        if not any(l["url"] == u for l in links):
+            links.append({"anchor": u, "url": u})
     rows = await _recap_rows(post.id)
     if rows:
         text, entities = _build_recap(text, rows)
@@ -378,6 +388,10 @@ async def _send_to_channel(bot: Bot, chat_id: int, post: Post) -> int:
         if url:
             entities.append(MessageEntity(type="text_link", offset=offset,
                                           length=len(name), url=url))
+            links.append({"anchor": name, "url": url})
+    for rid, rurl, _rdate, rtitle, runame in rows:
+        if rurl:
+            links.append({"anchor": (rtitle or runame or f"источник {rid}"), "url": rurl})
     root = _media_root()
     media = await _select_media(post.id)
     files: list = []
@@ -410,9 +424,9 @@ async def _send_to_channel(bot: Bot, chat_id: int, post: Post) -> int:
         if rest_part:
             await bot.send_message(chat_id, rest_part,
                                    entities=_shift_entities(entities, len(caption_part)))
-        return published_id
+        return published_id, text, links
     message = await bot.send_message(chat_id, text, entities=entities or None)
-    return message.message_id
+    return message.message_id, text, links
 
 
 async def _select_media(post_id: int) -> list[dict]:
@@ -482,7 +496,7 @@ async def _publish(bot: Bot, job_id: int) -> None:
         return
 
     try:
-        published_id = await _send_to_channel(bot, chat_id, post)
+        published_id, final_text, final_links = await _send_to_channel(bot, chat_id, post)
     except Exception as exc:  # noqa: BLE001
         await _finish_failed(bot, job_id, f"{exc.__class__.__name__}: {exc}", attempts, final=False)
         return
@@ -497,6 +511,8 @@ async def _publish(bot: Bot, job_id: int) -> None:
         job.published_message_id = published_id
         job.published_at = datetime.now(timezone.utc)
         post.status = PostStatus.PUBLISHED
+        post.published_text = final_text
+        post.published_links = final_links
         session.add(PostEvent(
             post_id=post_id, actor=EventActor.SYSTEM, action="published",
             from_status=None, to_status=PostStatus.PUBLISHED.value,

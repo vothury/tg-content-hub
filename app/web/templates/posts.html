@@ -2,6 +2,7 @@
 {% block title %}Посты — TG Content Hub{% endblock %}
 {% block content %}
 <h2 class="section-title">Посты</h2>
+{% if msg %}<div class="warnline">{{ msg }}</div>{% endif %}
 <div id="dateFloat"></div>
 <form method="get" action="/posts" class="filters">
   <select name="status">

@@ -3,7 +3,7 @@ from pathlib import Path
 from datetime import timezone
 
 from fastapi import APIRouter, Depends, Form, Request, HTTPException
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy import select
 
 from app.db.models import (
@@ -34,7 +34,17 @@ async def post_detail(request: Request, post_id: int, msg: str = ""):
     async with session_scope() as session:
         post = await session.get(Post, post_id)
         if post is None:
-            return RedirectResponse("/posts", status_code=303)
+            return HTMLResponse(
+                "<!doctype html><html lang='ru'><meta charset='utf-8'>"
+                "<title>Пост не найден — TG Content Hub</title>"
+                "<body style='margin:0;padding:48px 20px;background:#12151b;color:#e6e6e6;"
+                "font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;text-align:center'>"
+                "<h2 style='margin:0 0 8px'>Пост не найден</h2>"
+                "<p style='opacity:.75;margin:0 0 20px'>Пост полностью удалён из базы "
+                "или никогда не существовал.</p>"
+                "<a href='/posts' style='color:#7aa2f7'>← К списку постов</a>"
+                "</body></html>",
+                status_code=404)
         source = await session.get(Source, post.source_id)
         channel = await session.get(TargetChannel, post.target_channel_id) \
             if post.target_channel_id else None
@@ -164,6 +174,18 @@ async def act_retry(request: Request, post_id: int):
 @router.post("/posts/{post_id}/restart", dependencies=[Depends(csrf_protect)])
 async def act_restart(request: Request, post_id: int):
     return _back(post_id, await review.restart_pipeline(post_id))
+
+
+@router.post("/posts/{post_id}/delete", dependencies=[Depends(csrf_protect)])
+async def act_delete(request: Request, post_id: int, confirm: str = Form("")):
+    if (confirm or "").strip().upper() != "DELETE":
+        return RedirectResponse(
+            f"/posts/{post_id}?msg={quote('удаление отменено: введите DELETE в поле подтверждения')}",
+            status_code=303)
+    res = await review.hard_delete(post_id)
+    if not res.ok:
+        return RedirectResponse(f"/posts/{post_id}?msg={quote(res.message)}", status_code=303)
+    return RedirectResponse(f"/posts?msg={quote(res.message)}", status_code=303)
 
 
 @router.post("/posts/{post_id}/media_ok", dependencies=[Depends(csrf_protect)])

@@ -9,7 +9,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 
 from app.db.enums import DraftOrigin, EventActor, PostStatus, PublishJobState
 from app.db.models import (
@@ -123,6 +123,53 @@ async def media_approve(post_id: int) -> ActionResult:
     await enqueue_post(post_id)  # пайплайн заберёт сразу, не ожидая рескана
     log.info("пост %s подтверждён визуально -> рерайт", post_id)
     return ActionResult(True, "подтверждено — черновик готовится, придёт новой карточкой")
+
+
+async def hard_delete(post_id: int) -> ActionResult:
+    """Полное удаление поста: медиафайлы, все связанные строки и сама запись.
+
+    Восстановление невозможно. Заголовки виртуальной редакции сохраняются
+    (у них обнуляется post_id), чтобы не ломать поток редакции.
+    """
+    from app.db.models import Headline, LLMCall, MediaItem, PostDraftVersion, PublishJob
+    from app.services.publishing import _media_root
+
+    async with session_scope() as session:
+        post = await session.get(Post, post_id)
+        if post is None:
+            return ActionResult(False, "пост не найден")
+        if post.status is PostStatus.PUBLISHING:
+            return ActionResult(False, "пост публикуется прямо сейчас — дождитесь завершения")
+        status_before = post.status.value
+        files = (await session.execute(
+            select(MediaItem.local_path, MediaItem.preview_path)
+            .where(MediaItem.post_id == post_id))).all()
+        for model in (LLMCall, PostEvent, PostDraftVersion, MediaItem, PublishJob):
+            await session.execute(delete(model).where(model.post_id == post_id))
+        await session.execute(update(Headline).where(Headline.post_id == post_id)
+                              .values(post_id=None))
+        await session.delete(post)
+        await session.commit()
+
+    root = _media_root()
+    removed = 0
+    for local_path, preview_path in files:
+        for rel in (local_path, preview_path):
+            if not rel:
+                continue
+            p = root / rel
+            try:
+                if p.exists():
+                    p.unlink()
+                    removed += 1
+                for d in (p.parent, p.parent.parent):
+                    if d.exists() and d != root and not any(d.iterdir()):
+                        d.rmdir()
+            except Exception:  # noqa: BLE001 — удаление файла не критично
+                log.warning("не удалось удалить медиафайл %s", p)
+    log.info("пост %s удалён полностью (был %s; медиафайлов удалено: %d)",
+             post_id, status_before, removed)
+    return ActionResult(True, f"пост #{post_id} удалён из базы полностью")
 
 
 async def restart_pipeline(post_id: int) -> ActionResult:

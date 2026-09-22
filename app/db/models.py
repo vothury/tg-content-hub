@@ -276,6 +276,10 @@ class Post(Base):
     repost_attempts: Mapped[int] = mapped_column(default=0)
     risks: Mapped[dict | None] = mapped_column(JSONB)
 
+    # Что фактически ушло в канал (итоговый текст + ссылки) — для карточки поста
+    published_text: Mapped[str | None] = mapped_column(Text)
+    published_links: Mapped[list | None] = mapped_column(JSONB)
+
     # Публикация автопилотом + причина/заметка двойной проверки
     autopilot: Mapped[bool] = mapped_column(default=False)
     double_check_note: Mapped[str | None] = mapped_column(Text)
