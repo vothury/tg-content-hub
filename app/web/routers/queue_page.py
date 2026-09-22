@@ -53,18 +53,6 @@ async def _queue_rows(page: int = 1, per_page: int = 50,
             base.order_by(PublishJob.id.desc())
             .limit(per_page).offset((page - 1) * per_page))).scalars().all()
         channels = (await session.execute(select(TargetChannel))).scalars().all()
-        clean_calls = (await session.execute(
-            select(LLMCall.model, func.count()).where(
-                LLMCall.prompt_version.like("clean%"),
-                LLMCall.created_at >= start_utc,
-                LLMCall.created_at <= end_utc)
-            .group_by(LLMCall.model))).all()
-        clean_events = (await session.execute(
-            select(PostEvent.action, func.count()).where(
-                PostEvent.action.in_(["clean_fallback_used", "clean_verify_failed"]),
-                PostEvent.created_at >= start_utc,
-                PostEvent.created_at <= end_utc)
-            .group_by(PostEvent.action))).all()
         post_ids = [j.post_id for j in jobs]
         texts = {}
         if post_ids:
@@ -141,6 +129,18 @@ async def stats_page(request: Request, period: int = 7, date_from: str = "", dat
             .where(PostEvent.action.in_(["deduplicated", "llm_rejected", "rejected"]),
                    PostEvent.created_at >= start_utc, PostEvent.created_at <= end_utc))).all()
         channels = (await session.execute(select(TargetChannel))).scalars().all()
+        clean_calls = (await session.execute(
+            select(LLMCall.model, func.count()).where(
+                LLMCall.prompt_version.like("clean%"),
+                LLMCall.created_at >= start_utc,
+                LLMCall.created_at <= end_utc)
+            .group_by(LLMCall.model))).all()
+        clean_events = (await session.execute(
+            select(PostEvent.action, func.count()).where(
+                PostEvent.action.in_(["clean_fallback_used", "clean_verify_failed"]),
+                PostEvent.created_at >= start_utc,
+                PostEvent.created_at <= end_utc)
+            .group_by(PostEvent.action))).all()
     ch_map = {c.id: c.username for c in channels}
 
     def lk(dt):
