@@ -4,7 +4,7 @@
 # Классификация (версия 4 — режимы релевантности источника)
 # ---------------------------------------------------------------------------
 
-CLASSIFY_VERSION = "classify-v8"
+CLASSIFY_VERSION = "classify-v9"
 
 CRITERIA = """КАТЕГОРИИ — определи одну и верни в "category":
 - "ads" — цель поста ПРОДАТЬ/побудить купить: промокоды, скидки, «купите», «успей», ставки, партнёрки, «наш партнёр», ссылки на покупку/билеты с призывом, цены с призывом купить, самореклама сторонних каналов/ботов.
@@ -69,6 +69,8 @@ CLASSIFY_SYSTEM_TEMPLATE = """Ты — редактор Telegram-канала «
 
 {source_identity}
 
+{channel_note}
+
 Твоя задача — решить, подходит ли пост-кандидат из источника для публикации на этом канале после адаптации.
 
 АУДИТОРИЯ: читатели канала — люди в теме. Не отклоняй пост за краткость или отсутствие пояснений, если он по теме.
@@ -115,7 +117,8 @@ def build_classify_prompt(channel_title: str | None, channel_description: str | 
                           media_hint: str | None = None,
                           source_note: str | None = None,
                           source_username: str | None = None,
-                          source_title: str | None = None) -> str:
+                          source_title: str | None = None,
+                          channel_note: str | None = None) -> str:
     if relevance is None or 4 <= relevance <= 7:
         mode = RELEVANCE_MID
     elif relevance >= 8:
@@ -139,6 +142,8 @@ def build_classify_prompt(channel_title: str | None, channel_description: str | 
                       "или когда пост ссылается на СТОРОННИЙ канал/бот как на основную цель.")
     else:
         identity = ""
+    cnote = (f"ИНСТРУКЦИЯ ВЛАДЕЛЬЦА КАНАЛА (приоритет выше общих критериев по тону и «серьёзности»):\n"
+             f"{channel_note}" if channel_note else "")
     return CLASSIFY_SYSTEM_TEMPLATE.format(
         channel_title=title, channel_description=description,
         criteria=CRITERIA, relevance_mode=mode,
@@ -146,6 +151,7 @@ def build_classify_prompt(channel_title: str | None, channel_description: str | 
         media_note=media_note,
         source_note=note,
         source_identity=identity,
+        channel_note=cnote,
     )
 
 
@@ -244,7 +250,7 @@ REVISE_USER = """Текущий черновик:
 # Двойная проверка автопилота
 # ---------------------------------------------------------------------------
 
-DOUBLE_CHECK_VERSION = "doublecheck-v4"
+DOUBLE_CHECK_VERSION = "doublecheck-v5"
 
 _DOUBLE_CHECK_BASE = """Ты — технический выпускающий редактор. Пост уже одобрен первой моделью с учётом релевантности источника {relevance}/10 и тематики канала «{channel_title}».
 НЕ перепроверяй «достаточно ли он по теме» и НЕ будь строже первой модели: если пост лежит в рамках тематики и тона канала (см. описание), он допустим — отклонять за «несерьёзность» или «лёгкость» НЕЛЬЗЯ.
@@ -259,6 +265,8 @@ _DOUBLE_CHECK_BASE = """Ты — технический выпускающий �
 Смесь раскладок (латинские буквы среди кириллицы и наоборот), homoglyphs и необычное написание имён/названий — НЕ грубая ошибка и НЕ битая структура, если смысл читается; не зацикливайся на них.
 
 {media_note}
+
+{channel_note}
 
 {facts}
 
@@ -279,14 +287,18 @@ DC_MEDIA_NOTE = """ПОСТ СОДЕРЖИТ МЕДИА: {media_hint}. Текс�
 DC_MEDIA_NOTE_NONE = """МЕДИА НЕТ: текст — самостоятельный пост; «обрывок/битая структура» оценивай по тексту."""
 
 def build_double_check_prompt(channel_title: str, relevance, online: bool, strictness: int,
-                              media_hint: str | None = None) -> str:
+                              media_hint: str | None = None,
+                              channel_note: str | None = None) -> str:
     facts = (_FACTS_ONLINE if online else _FACTS_OFFLINE).format(strictness=strictness)
     media_note = DC_MEDIA_NOTE.format(media_hint=media_hint) if media_hint else DC_MEDIA_NOTE_NONE
+    cnote = (f"ИНСТРУКЦИЯ ВЛАДЕЛЬЦА КАНАЛА (что в этом канале считается допустимым):\n{channel_note}"
+             if channel_note else "")
     return _DOUBLE_CHECK_BASE.format(
         channel_title=channel_title,
         relevance=relevance if relevance is not None else "—",
         facts=facts,
         media_note=media_note,
+        channel_note=cnote,
     )
 
 DOUBLE_CHECK_USER = """Тематика канала: {channel_description}

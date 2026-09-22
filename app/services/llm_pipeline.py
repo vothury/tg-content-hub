@@ -286,6 +286,7 @@ async def classify_post(post_id: int) -> None:
         source_note=source.llm_instructions if source is not None else None,
         source_username=source.username if source is not None else None,
         source_title=source.title if source is not None else None,
+        channel_note=channel.llm_instructions if channel is not None else None,
     )
     messages = [
         {"role": "system", "content": system_prompt},
@@ -1035,6 +1036,8 @@ async def _run_double_check(post_id: int) -> tuple[bool, str]:
         relevance = source.relevance if source is not None else None
         title = channel.title if channel else "канал"
         desc = channel.description if channel else ""
+        # Персональная инструкция владельца канала (что здесь считается допустимым)
+        channel_note = channel.llm_instructions if channel is not None else None
         online = bool(channel.double_check_online) if channel is not None else False
         strictness = (channel.double_check_fact_strictness
                       if channel is not None and channel.double_check_fact_strictness
@@ -1050,7 +1053,8 @@ async def _run_double_check(post_id: int) -> tuple[bool, str]:
     media_hint = await _media_hint(post_id)
     messages = [
         {"role": "system", "content": build_double_check_prompt(
-            title, relevance, online, strictness, media_hint=media_hint)},
+            title, relevance, online, strictness, media_hint=media_hint,
+            channel_note=channel_note)},
         {"role": "user", "content": DOUBLE_CHECK_USER.format(
             channel_description=desc,
             relevance=relevance if relevance is not None else "—",

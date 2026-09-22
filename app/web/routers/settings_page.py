@@ -258,6 +258,7 @@ async def settings_page(request: Request, msg: str = ""):
     ch_lines = [
         f"@{c.username} — лимит {c.daily_limit}/день; интервал {c.min_interval_min} мин; "
         f"рерайт {'вкл' if c.rewrite_enabled else 'выкл'}; стиль {style_names.get(c.style_profile_id, 'default')}"
+        + ("; инструкции модели: да" if c.llm_instructions else "")
         for c in channels
     ]
 

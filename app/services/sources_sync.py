@@ -97,6 +97,7 @@ def parse_sources_text(text: str):
             "aggregate_min_score": int(t.get("aggregate_min_score") or 0) or None,
             "aggregate_accept": str(t.get("aggregate_accept") or "").strip() or None,
             "aggregate_reject": str(t.get("aggregate_reject") or "").strip() or None,
+            "llm_instructions": str(t.get("llm_instructions") or "").strip() or None,
             "style": str(t.get("style") or "").strip() or None,
             "autopilot": t.get("autopilot"),
             "autopilot_min_score": t.get("autopilot_min_score"),
@@ -242,6 +243,7 @@ async def apply_parsed(parsed) -> dict:
                                           aggregate_min_score=cfg["aggregate_min_score"],
                                           aggregate_accept=cfg["aggregate_accept"],
                                           aggregate_reject=cfg["aggregate_reject"],
+                                          llm_instructions=cfg["llm_instructions"],
                                           autopilot=bool(cfg["autopilot"]),
                                           autopilot_min_score=cfg["autopilot_min_score"],
                                           review_if_uncertain=True if cfg["review_if_uncertain"] is None else bool(cfg["review_if_uncertain"]),
@@ -282,6 +284,8 @@ async def apply_parsed(parsed) -> dict:
             if ch.aggregate_accept != aa: ch.aggregate_accept = aa; changed = True
             ar = cfg["aggregate_reject"]
             if ch.aggregate_reject != ar: ch.aggregate_reject = ar; changed = True
+            li = cfg["llm_instructions"]
+            if ch.llm_instructions != li: ch.llm_instructions = li; changed = True
             if ch.style_profile_id != style_id: ch.style_profile_id = style_id; changed = True
             if changed: stats["targets"][1] += 1
             dco = bool(cfg["double_check_online"])

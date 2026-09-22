@@ -136,6 +136,8 @@ class TargetChannel(Base):
     # Пер-канальные формулировки фильтра агрегатора (пусто = глобальные дефолты из настроек)
     aggregate_accept: Mapped[str | None] = mapped_column(Text)
     aggregate_reject: Mapped[str | None] = mapped_column(Text)
+    # Персональные инструкции моделям (классификация и двойная проверка) для этого канала
+    llm_instructions: Mapped[str | None] = mapped_column(Text)
     # Автопилот (Этап 7): публикация без ручного ревью при уверенности модели
     autopilot: Mapped[bool] = mapped_column(default=False)
     autopilot_min_score: Mapped[int | None] = mapped_column(Integer)
