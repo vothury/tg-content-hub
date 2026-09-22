@@ -526,6 +526,7 @@ async def process_media_refresh(client: TelegramClient) -> None:
 
 async def _process_reposts(client: TelegramClient) -> None:
     """aggregate_mode=repost: пересылаем оригинал — форматирование и ссылки сохраняются."""
+    global _REPOST_BLOCKED_UNTIL
     if _REPOST_BLOCKED_UNTIL is not None and datetime.now(timezone.utc) < _REPOST_BLOCKED_UNTIL:
         return
     async with session_scope() as session:
@@ -568,8 +569,7 @@ async def _process_reposts(client: TelegramClient) -> None:
             delay = min(int(getattr(exc, "seconds", 30)) + 5, 300)
             log.warning("repost: FloodWait %s сек — пауза", delay)
             await asyncio.sleep(delay)
-        except (errors.ChatWriteForbiddenError, errors.UserBannedInChannelError) as exc:
-            global _REPOST_BLOCKED_UNTIL
+        except (errors.ChatWriteForbiddenError, errors.UserBannedInChannelError) as exc:            
             _REPOST_BLOCKED_UNTIL = datetime.now(timezone.utc) + timedelta(minutes=60)
             log.error("repost: аккаунт-читатель НЕ МОЖЕТ писать в целевой канал (%s). "
                       "Выдайте ему права администратора «Публиковать сообщения» или "
