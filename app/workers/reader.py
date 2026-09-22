@@ -524,18 +524,81 @@ async def process_media_refresh(client: TelegramClient) -> None:
             log.exception("пост %s: не удалось перескачать медиа", post_id)
 
 
-async def _process_reposts(client: TelegramClient) -> None:
-    """aggregate_mode=repost: пересылаем оригинал — форматирование и ссылки сохраняются."""
-    global _REPOST_BLOCKED_UNTIL
-    if _REPOST_BLOCKED_UNTIL is not None and datetime.now(timezone.utc) < _REPOST_BLOCKED_UNTIL:
+async def _release_job(job_id, error: str) -> None:
+    """Ошибка пересылки: задача в FAILED (бот-планировщик её не подхватит),
+    повтор делает reader, пока repost_pending и попытки не исчерпаны."""
+    if not job_id:
         return
+    async with session_scope() as session:
+        job = await session.get(PublishJob, job_id)
+        if job is None:
+            return
+        job.attempts = (job.attempts or 0) + 1
+        job.last_error = error[:200]
+        job.state = PublishJobState.FAILED
+        await session.commit()
+
+
+async def _process_reposts(client: TelegramClient) -> None:
+    """aggregate_mode=repost: пересылка оригинала (форматирование сохраняется).
+
+    Идемпотентность: ровно одна пересылка на пост. Задача публикации
+    резервируется ДО отправки в Telegram и переиспользуется при повторах.
+    """
     async with session_scope() as session:
         rows = (await session.execute(
             select(Post).where(Post.repost_pending.is_(True))
-            .order_by(Post.id).limit(10))).scalars().all()
+            .order_by(Post.id).limit(1))).scalars().all()
         jobs = [(p.id, p.source_id, p.source_message_id, p.target_channel_id, p.repost_attempts)
                 for p in rows]
+
     for post_id, source_id, msg_id, target_id, attempts in jobs:
+        # 1) Состояние поста: не пересылаем опубликованное и не-APPROVED
+        async with session_scope() as session:
+            post = await session.get(Post, post_id)
+            if post is None or not post.repost_pending:
+                continue
+            done = (await session.execute(
+                select(PublishJob.id).where(
+                    PublishJob.post_id == post_id,
+                    PublishJob.state == PublishJobState.DONE).limit(1))).scalar_one_or_none()
+            if done is not None or post.status is PostStatus.PUBLISHED:
+                post.repost_pending = False
+                await session.commit()
+                log.warning("пост %s: уже опубликован — пересылка отменена, флаг погашен", post_id)
+                continue
+            if post.status is not PostStatus.APPROVED:
+                post.repost_pending = False
+                await session.commit()
+                log.info("пост %s: пересылка отменена (статус %s)", post_id, post.status.value)
+                continue
+
+        # 2) Плавность наполнения канала
+        if target_id is not None:
+            allowed, why = await _repost_allows(target_id)
+            if not allowed:
+                log.info("пост %s: пересылка отложена (%s)", post_id, why)
+                continue
+
+        # 3) Резервируем задачу публикации ДО отправки (и переиспользуем существующую)
+        job_id = None
+        async with session_scope() as session:
+            job = (await session.execute(
+                select(PublishJob).where(PublishJob.post_id == post_id)
+                .limit(1))).scalar_one_or_none()
+            if job is None:
+                job = PublishJob(post_id=post_id, target_channel_id=target_id,
+                                 idempotency_key=f"post-{post_id}", mode=PublishMode.NOW,
+                                 state=PublishJobState.IN_PROGRESS, max_attempts=3)
+                session.add(job)
+            else:
+                job.state = PublishJobState.IN_PROGRESS
+                job.last_error = None
+            await session.flush()
+            job_id = job.id
+            await session.commit()
+
+        # 4) Пересылка
         try:
             async with session_scope() as session:
                 src = await session.get(Source, source_id) if source_id else None
@@ -554,43 +617,33 @@ async def _process_reposts(client: TelegramClient) -> None:
                 post.status = PostStatus.PUBLISHED
                 if mid:
                     post.post_url = f"https://t.me/{ch.username}/{mid}"
-                session.add(PublishJob(
-                    post_id=post_id, target_channel_id=target_id,
-                    idempotency_key=f"post-{post_id}", mode=PublishMode.NOW,
-                    state=PublishJobState.DONE, published_message_id=mid,
-                    published_at=datetime.now(timezone.utc), max_attempts=3))
+                job = await session.get(PublishJob, job_id) if job_id else None
+                if job is not None:
+                    job.state = PublishJobState.DONE
+                    job.published_message_id = mid
+                    job.published_at = datetime.now(timezone.utc)
+                    job.defer_reason = None
+                    job.last_error = None
                 session.add(PostEvent(
                     post_id=post_id, actor=EventActor.SYSTEM, action="published",
-                    from_status=PostStatus.APPROVED.value, to_status=PostStatus.PUBLISHED.value,
+                    from_status=PostStatus.APPROVED.value,
+                    to_status=PostStatus.PUBLISHED.value,
                     details={"channel": ch.username, "message_id": mid, "mode": "repost"}))
+                session.add(PostEvent(
+                    post_id=post_id, actor=EventActor.SYSTEM, action="repost_sent",
+                    details={"message_id": mid, "target": ch.username,
+                             "source_message_id": msg_id}))
                 await session.commit()
             log.info("пост %s: переслан в @%s (сообщение %s)", post_id, ch.username, mid)
         except errors.FloodWaitError as exc:
             delay = min(int(getattr(exc, "seconds", 30)) + 5, 300)
             log.warning("repost: FloodWait %s сек — пауза", delay)
+            await _release_job(job_id, "floodwait")
             await asyncio.sleep(delay)
-        except (errors.ChatWriteForbiddenError, errors.UserBannedInChannelError) as exc:            
-            _REPOST_BLOCKED_UNTIL = datetime.now(timezone.utc) + timedelta(minutes=60)
-            log.error("repost: аккаунт-читатель НЕ МОЖЕТ писать в целевой канал (%s). "
-                      "Выдайте ему права администратора «Публиковать сообщения» или "
-                      "переключите канал на aggregate_mode: credit (публикация через бота). "
-                      "Пересылки приостановлены на 60 минут.", exc.__class__.__name__)
-            async with session_scope() as session:
-                p = await session.get(Post, post_id)
-                if p is not None:
-                    p.repost_pending = False
-                    p.status = PostStatus.FAILED
-                    session.add(PostEvent(
-                        post_id=post_id, actor=EventActor.SYSTEM, action="publish_failed",
-                        to_status=PostStatus.FAILED.value,
-                        details={"error": f"{exc.__class__.__name__}: {exc}",
-                                 "mode": "repost",
-                                 "hint": "нет прав писать в канал: нужен админ «Публиковать сообщения»"}))
-                    await session.commit()
-            break
         except Exception as exc:  # noqa: BLE001
             log.warning("пост %s: пересылка не удалась (попытка %d): %s",
                         post_id, attempts + 1, exc)
+            await _release_job(job_id, f"{exc.__class__.__name__}: {exc}")
             async with session_scope() as session:
                 p = await session.get(Post, post_id)
                 if p is not None:
@@ -603,8 +656,6 @@ async def _process_reposts(client: TelegramClient) -> None:
                             to_status=PostStatus.FAILED.value,
                             details={"error": str(exc)[:200], "mode": "repost"}))
                     await session.commit()
-
-
 
 
 async def main() -> None:

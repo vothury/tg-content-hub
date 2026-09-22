@@ -518,7 +518,7 @@ async def advance_post(post_id: int) -> None:
             ch_t = (await session.get(TargetChannel, post_t.target_channel_id)
                     if post_t is not None and post_t.target_channel_id is not None else None)
         if (ch_t is not None and ch_t.no_review
-                and status not in (PostStatus.UNSUITABLE, PostStatus.DEDUPLICATED)):
+                and status in (PostStatus.PREFILTERED, PostStatus.NEEDS_MEDIA_REVIEW)):
             # Технический канал: тематический фильтр — и только потом пересылка/публикация
             await _aggregate_gate(post_id, ch_t, status)
             return
@@ -696,6 +696,14 @@ async def _aggregate_filter(post_id: int, channel) -> tuple[bool | None, float, 
 
 async def _aggregate_gate(post_id: int, channel, from_status) -> None:
     """Ворота технического канала: фильтр темы -> пересылка/публикация или отклонение."""
+    async with session_scope() as session:
+        p = await session.get(Post, post_id)
+        if (p is None or p.repost_pending
+                or p.status not in (PostStatus.PREFILTERED, PostStatus.NEEDS_MEDIA_REVIEW)):
+            log.info("пост %s: ворота агрегатора пропущены (статус %s, repost_pending=%s)",
+                     post_id, p.status.value if p is not None else "—",
+                     p.repost_pending if p is not None else None)
+            return
     ok, score, reason = await _aggregate_filter(post_id, channel)
     if ok is None:
         async with session_scope() as session:
@@ -749,29 +757,42 @@ async def _technical_approve(post_id: int, channel, from_status) -> None:
     """Агрегатор: реклама отсечена префильтром — одобряем без классификации и карточек."""
     async with session_scope() as session:
         post = await session.get(Post, post_id)
-        if post is None or post.status in (PostStatus.UNSUITABLE, PostStatus.DEDUPLICATED):
+        if post is None:
+            return
+        if post.status not in (PostStatus.PREFILTERED, PostStatus.NEEDS_MEDIA_REVIEW):
+            log.info("пост %s: техническое одобрение пропущено (статус %s)",
+                     post_id, post.status.value)
+            return
+        if post.repost_pending:
+            log.info("пост %s: уже в очереди пересылки — повторное одобрение пропущено", post_id)
+            return
+        done = (await session.execute(
+            select(PublishJob.id).where(
+                PublishJob.post_id == post_id,
+                PublishJob.state == PublishJobState.DONE).limit(1))).scalar_one_or_none()
+        if done is not None:
+            log.warning("пост %s: уже опубликован — техническое одобрение пропущено", post_id)
             return
         prev = post.status.value
         post.status = PostStatus.APPROVED
+        if channel.aggregate_mode == "repost":
+            post.repost_pending = True
+            post.repost_attempts = 0
         session.add(PostEvent(
             post_id=post_id, actor=EventActor.SYSTEM, action="technical_approved",
             from_status=prev, to_status=PostStatus.APPROVED.value,
             details={"channel": channel.username, "mode": channel.aggregate_mode}))
+        if channel.aggregate_mode == "repost":
+            session.add(PostEvent(
+                post_id=post_id, actor=EventActor.SYSTEM, action="repost_queued",
+                to_status=PostStatus.APPROVED.value,
+                details={"channel": channel.username}))
         await session.commit()
     if channel.aggregate_mode == "credit":
         ok, msg = await create_publish_job(post_id, PublishMode.NOW)
         log.info("пост %s: технический канал -> публикация с подписью источника (%s)", post_id, msg)
     elif channel.aggregate_mode == "repost":
-        async with session_scope() as session:
-            p = await session.get(Post, post_id)
-            if p is not None:
-                p.repost_pending = True
-                p.repost_attempts = 0
-                session.add(PostEvent(
-                    post_id=post_id, actor=EventActor.SYSTEM, action="repost_queued",
-                    to_status=PostStatus.APPROVED.value,
-                    details={"channel": channel.username}))
-                await session.commit()
+        # флаг и событие выставлены атомарно выше (вместе со сменой статуса)
         log.info("пост %s: поставлен в очередь пересылки в @%s", post_id, channel.username)
     else:  # none — только БД
         log.info("пост %s: технический канал -> сохранён в БД без публикации", post_id)
