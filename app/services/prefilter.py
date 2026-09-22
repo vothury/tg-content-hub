@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 
 from sqlalchemy import select
@@ -77,6 +78,46 @@ def _human_reason(d: PrefilterDecision) -> str:
     if d.reason == "too_short_or_empty":
         return f"предфильтр: слишком короткий текст ({d.details.get('text_len', 0)} симв.)"
     return d.reason
+
+
+_MD_LINK_PREF_RE = re.compile(r"\[[^\]]*\]\([^)]*\)")
+_LINK_PREF_RE = re.compile(
+    r"https?://\S+|(?:t\.me|telegram\.me)/[\w+/\-]+|@[A-Za-z0-9_]{4,}", re.I)
+
+
+def _is_signature_line(line: str) -> bool:
+    """Похожа ли строка на подпись/футер источника: «Источник: …», ссылки на площадки, CTA."""
+    s = line.strip()
+    if not s:
+        return False
+    if re.match(r"^\W{0,3}\s*источник\s*[:—-]", s, re.I):
+        return True
+    if _LINK_PREF_RE.search(s):
+        return True
+    return len(s) <= 60 and bool(re.search(r"подпис|subscribe|наш канал", s, re.I))
+
+
+def _selfpromo_hit(text: str, patterns) -> str | None:
+    """Маркер самопиара в КОНТЕНТЕ поста.
+
+    Совпадение в одной из двух последних строк, если эта строка — подпись источника,
+    НЕ считается самопиаром: такие строки снимает очистка подписей, пост публикуется.
+    """
+    if not text or not patterns:
+        return None
+    lines = text.split("\n")
+    nonempty = [i for i, ln in enumerate(lines) if ln.strip()]
+    tail = set(nonempty[-2:]) if nonempty else set()
+    for i in nonempty:
+        low = lines[i].lower()
+        for p in patterns:
+            if not p:
+                continue
+            if p.lower() in low:
+                if i in tail and _is_signature_line(lines[i]):
+                    continue
+                return p
+    return None
 
 
 async def run_prefilter(post_id: int) -> None:
@@ -166,15 +207,15 @@ async def run_prefilter(post_id: int) -> None:
         promo_patterns = await get_setting(session, Keys.PREFILTER_SELFPROMO_PATTERNS)
         if isinstance(promo_patterns, str):
             promo_patterns = [p.strip() for p in promo_patterns.split(",") if p.strip()]
-        promo_text = (post.normalized_text or post.original_text or "").lower()
-        hit = next((p for p in (promo_patterns or []) if p and p.lower() in promo_text), None)
+        hit = _selfpromo_hit(post.original_text or post.normalized_text or "",
+                             promo_patterns or [])
         if hit:
             post.status = PostStatus.UNSUITABLE
             post.verdict_reason = f"самопиар источника: «{hit}»"
             session.add(PostEvent(
                 post_id=post.id, actor=EventActor.SYSTEM, action="selfpromo_blocked",
                 from_status=PostStatus.NEW.value, to_status=PostStatus.UNSUITABLE.value,
-                details={"pattern": hit},
+                details={"pattern": hit, "note": "маркер в контенте, не в подписи"},
             ))
             await session.commit()
             log.info("пост %s: отсечён технически — самопиар источника (%s)", post.id, hit)

@@ -87,7 +87,9 @@ TEXT_LIMIT = 6000  #Очень длинные исходники усекаем 
 _BARE_URL_RE = re.compile(r"(?<!\]\()(?<!\()(?:https?://|t\.me/|telegram\.me/)[^\s)\]]+")
 
 _MD_LINK_FULL_RE = re.compile(r"\[[^\]]*\]\([^)]*\)")
-_TG_LINK_RE = re.compile(r"(?:https?://)?(?:t\.me|telegram\.me)/[\w]+", re.I)
+_TG_LINK_RE = re.compile(r"(?:https?://)?(?:t\.me|telegram\.me)/[\w+/\-]+", re.I)
+_ANY_LINK_RE = re.compile(
+    r"https?://\S+|(?:t\.me|telegram\.me)/[\w+/\-]+|@[A-Za-z0-9_]{4,}", re.I)
 _CTA_RE = re.compile(r"подпис|subscribe|наш канал|наш телеграм|читайте нас|смотрите нас", re.I)
 _SOURCE_LINE_RE = re.compile(r"^\s*\W{0,3}\s*источник\s*[:—-]", re.I)
 
@@ -116,7 +118,7 @@ def _signature_lines(lines: list, source_username: str | None = None) -> list:
     for i in nonempty:
         s = lines[i].strip()
         low = s.lower()
-        has_link = bool(_TG_LINK_RE.search(low)) or ("@" in s)
+        has_link = bool(_ANY_LINK_RE.search(s))
         if uname and (f"t.me/{uname}" in low or f"@{uname}" in low):
             out.append(i + 1)
             continue
@@ -126,7 +128,7 @@ def _signature_lines(lines: list, source_username: str | None = None) -> list:
         if _CTA_RE.search(s) and (has_link or (i in tail and len(s) <= 60)):
             out.append(i + 1)
             continue
-        if i in tail and _TG_LINK_RE.search(low):
+        if i in tail and _ANY_LINK_RE.search(s):
             rest = _BARE_URL_RE.sub("", _MD_LINK_FULL_RE.sub("", s))
             if _plain_len(rest) <= 3:
                 out.append(i + 1)
