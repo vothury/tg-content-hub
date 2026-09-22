@@ -91,9 +91,14 @@
 <form method="post" action="/posts/{{ p.id }}/delete" class="actions"
       onsubmit="return confirm('ПОЛНОСТЬЮ удалить пост #{{ p.id }}?\nБудут стёрты: текст, медиафайлы, события, версии черновика, вызовы LLM и задачи публикации.\nДействие необратимо.');">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  {% if delete_armed %}
   <input type="text" name="confirm" placeholder="введите DELETE" required style="max-width:180px">
   <button class="btn danger" type="submit">🗑 Удалить навсегда</button>
   <span class="sub">полная очистка из БД и удаление медиафайлов</span>
+  {% else %}
+  <input type="text" name="confirm" placeholder="введите DELETE" disabled style="max-width:180px">
+  <button class="btn danger" type="submit" disabled>🗑 Удалить навсегда</button>
+  {% endif %}
 </form>
 {% if status in ('AWAITING_REVIEW', 'DOUBLE_CHECK_REVIEW') %}
 <div class="actions">

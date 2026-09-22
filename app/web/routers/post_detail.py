@@ -10,7 +10,7 @@ from app.db.models import (
     MediaItem, Post, PostDraftVersion, PostEvent, Source, TargetChannel, PublishJob, LLMCall,
 )
 from app.db.session import session_scope
-from app.services import review
+from app.services import review, security
 from app.web.next_step import next_step_hint
 from app.web.auth import csrf_protect, get_csrf_token, require_auth
 from app.web.templating import templates
@@ -94,6 +94,7 @@ async def post_detail(request: Request, post_id: int, msg: str = ""):
                 PostEvent.post_id == post_id,
                 PostEvent.action.in_(["clean_fallback_used", "clean_verify_failed"]))
             .order_by(PostEvent.id.desc()))).all()
+    delete_armed = await security.is_hard_delete_armed()
     fallback_used = any(a == "clean_fallback_used" for a, _ in fb_events)
     clean_failed = any(a == "clean_verify_failed" for a, _ in fb_events)
     fallback_model = ""
@@ -123,6 +124,7 @@ async def post_detail(request: Request, post_id: int, msg: str = ""):
         "fallback_model": fallback_model,
         "fallback_first": fallback_first,
         "clean_failed": clean_failed,
+        "delete_armed": delete_armed,
     })
 
 
@@ -178,6 +180,9 @@ async def act_restart(request: Request, post_id: int):
 
 @router.post("/posts/{post_id}/delete", dependencies=[Depends(csrf_protect)])
 async def act_delete(request: Request, post_id: int, confirm: str = Form("")):
+    if not await security.is_hard_delete_armed():
+        return RedirectResponse(
+            f"/posts/{post_id}?msg={quote('полное удаление отключено')}", status_code=303)
     if (confirm or "").strip().upper() != "DELETE":
         return RedirectResponse(
             f"/posts/{post_id}?msg={quote('удаление отменено: введите DELETE в поле подтверждения')}",

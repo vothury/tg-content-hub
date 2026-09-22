@@ -133,6 +133,11 @@ async def hard_delete(post_id: int) -> ActionResult:
     """
     from app.db.models import Headline, LLMCall, MediaItem, PostDraftVersion, PublishJob
     from app.services.publishing import _media_root
+    from app.services.security import is_hard_delete_armed
+
+    if not await is_hard_delete_armed():
+        log.warning("запрошено полное удаление поста %s при выключенном предохранителе", post_id)
+        return ActionResult(False, "полное удаление отключено (предохранитель)")
 
     async with session_scope() as session:
         post = await session.get(Post, post_id)

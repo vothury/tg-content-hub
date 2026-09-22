@@ -1,4 +1,4 @@
-.PHONY: up down restart logs ps migrate revision psql health test login source-add source-list source-disable
+.PHONY: up down restart logs ps migrate revision psql health test login source-add source-list source-disable rm_post_true rm_post_false rm_post_status
 
 up:            ## собрать и запустить всё
 	docker compose up -d --build
@@ -80,3 +80,16 @@ fix-media: ## опубликованные посты: превью вместо
 
 clean-media: ## чистка тома медиа: удалить ненужные оригиналы (превью и нужные для публикации не трогает)
 	docker compose run --rm --entrypoint "python -m app.tools.clean_media_volume" api
+
+
+.PHONY: rm_post_true rm_post_false rm_post_status
+
+rm_post_true: ## включить возможность полного удаления постов в админке (30 мин)
+	docker compose exec -T api python -c "import asyncio;from app.services.security import set_hard_delete_armed;asyncio.run(set_hard_delete_armed(True));print('предохранитель ВКЛЮЧЁН на 30 минут')"
+
+rm_post_false: ## выключить возможность полного удаления постов в админке
+	docker compose exec -T api python -c "import asyncio;from app.services.security import set_hard_delete_armed;asyncio.run(set_hard_delete_armed(False));print('предохранитель выключен')"
+
+rm_post_status: ## показать состояние предохранителя
+	docker compose exec -T api python -c "import asyncio;from app.services.security import is_hard_delete_armed;print('armed =', asyncio.run(is_hard_delete_armed()))"
+	docker compose exec -T redis redis-cli ttl admin:hard_delete_armed

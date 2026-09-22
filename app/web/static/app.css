@@ -171,3 +171,7 @@ textarea { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #2
   background:rgba(255,159,64,.14);border:1px solid rgba(255,159,64,.45);color:#ffb266}
 .pricebanner a{color:#ffd0a0}
 .pricebanner .btn{margin-left:8px}
+
+/* Неактивные опасные действия (предохранитель выключен) */
+.btn[disabled]{opacity:.38;cursor:not-allowed;filter:grayscale(.6)}
+input[disabled]{opacity:.4;cursor:not-allowed}
