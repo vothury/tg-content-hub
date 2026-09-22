@@ -32,6 +32,7 @@ class Keys:
     LLM_REASONING_SMALL = "llm.reasoning_small"
     LLM_DOUBLE_CHECK_MAX_TOKENS = "llm.double_check_max_tokens"
     CLEAN_FALLBACK_MODEL = "llm.clean_fallback_model"
+    LLM_FALLBACK_MODELS = "llm.fallback_models"
     PUBLISH_DUP_RECAP_WINDOW_HOURS = "publish.dup_recap_window_hours"
     PUBLISH_RESTORE_LINKS = "publish.restore_links"
     EDITORIAL_ENABLED = "editorial.enabled"
@@ -92,6 +93,7 @@ _ENV_DEFAULTS: dict[str, Any] = {
     Keys.LLM_REASONING_SMALL: settings.llm_reasoning_small,
     Keys.LLM_DOUBLE_CHECK_MAX_TOKENS: settings.llm_double_check_max_tokens,
     Keys.CLEAN_FALLBACK_MODEL: settings.clean_fallback_model,
+    Keys.LLM_FALLBACK_MODELS: settings.llm_fallback_models,
     Keys.PUBLISH_DUP_RECAP_WINDOW_HOURS: settings.publish_dup_recap_window_hours,
     Keys.PUBLISH_RESTORE_LINKS: settings.publish_restore_links,
     Keys.EDITORIAL_ENABLED: settings.editorial_enabled,

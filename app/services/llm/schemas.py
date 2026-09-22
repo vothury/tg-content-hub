@@ -49,6 +49,22 @@ def _strip_code_fence(content: str) -> str:
     return s.strip()
 
 
+_SAFETY_REPLY_RE = re.compile(r"^\s*(user\s*)?safety\s*[:\-]", re.I)
+
+
+def is_provider_safety_reply(content: str) -> bool:
+    """OpenRouter на free-пуле иногда роутит запрос на модель модерации
+    (Nemotron Content Safety), которая отвечает 'User Safety: safe' вместо JSON.
+    Это технический сбой маршрутизации, а не ответ по существу."""
+    s = (content or "").strip()
+    if not s:
+        return False
+    if _SAFETY_REPLY_RE.match(s):
+        return True
+    return len(s) <= 40 and s.lower().strip(".!") in (
+        "safe", "unsafe", "user safety", "content safe")
+
+
 def _loads_lenient(content: str):
     """json.loads с починкой частых огрехов модели:
     значения в «ёлочках», trailing commas, одинарные кавычки, текст вокруг JSON."""

@@ -26,6 +26,7 @@ from app.services.llm.prompts import (
 )
 from app.services.llm.schemas import (
     HeadlineListResult, HeadlinePickResult, HeadlineTitleResult,
+    LLMParseError, is_provider_safety_reply,
 )
 from app.services.settings import Keys, get_providers, get_setting
 from app.services.times import owner_now
@@ -56,34 +57,51 @@ async def _account(resp) -> None:
         await get_redis().incrbyfloat(f"guard:editorial_cost:{day}", float(resp.cost_usd))
 
 
-async def _call_json(messages, model, providers, max_tokens, schema,
-                     stage=LLMStage.EDITORIAL_JOURNALIST):
-    resp = await chat_completion(messages, model, max_tokens, temperature=0.0,
-                                 provider=providers,
-                                 reasoning_max_tokens=settings.llm_reasoning_small)
-    await _account(resp)
-    try:
-        result = schema.from_response(resp.content)
-    except Exception as exc:  # noqa: BLE001
-        async with session_scope() as session:
-            session.add(LLMCall(
-                post_id=None, stage=stage, provider="openrouter", model=model,
-                prompt_version="editorial", request={"messages": messages},
-                response={"content": resp.content}, status=LLMCallStatus.PARSE_ERROR,
-                error=str(exc), input_tokens=resp.input_tokens,
-                output_tokens=resp.output_tokens, cost_usd=resp.cost_usd,
-                latency_ms=resp.latency_ms))
-            await session.commit()
-        raise
+async def _log_call(stage, model, messages, resp, status, error) -> None:
     async with session_scope() as session:
         session.add(LLMCall(
             post_id=None, stage=stage, provider="openrouter", model=model,
             prompt_version="editorial", request={"messages": messages},
-            response={"content": resp.content}, status=LLMCallStatus.OK,
-            input_tokens=resp.input_tokens, output_tokens=resp.output_tokens,
-            cost_usd=resp.cost_usd, latency_ms=resp.latency_ms))
+            response={"content": resp.content} if resp is not None else None,
+            status=status, error=error,
+            input_tokens=resp.input_tokens if resp is not None else None,
+            output_tokens=resp.output_tokens if resp is not None else None,
+            cost_usd=resp.cost_usd if resp is not None else None,
+            latency_ms=resp.latency_ms if resp is not None else None))
         await session.commit()
-    return result
+
+
+async def _fallback_models() -> list:
+    async with session_scope() as session:
+        raw = await get_setting(session, Keys.LLM_FALLBACK_MODELS)
+    if isinstance(raw, str):
+        raw = [x.strip() for x in raw.split(",") if x.strip()]
+    return [str(x).strip() for x in (raw or []) if str(x).strip()]
+
+
+async def _call_json(messages, model, providers, max_tokens, schema,
+                     stage=LLMStage.EDITORIAL_JOURNALIST):
+    """Вызов с ротацией моделей: ответ модерации и битый JSON -> следующая модель."""
+    chain = [model] + [m for m in await _fallback_models() if m != model]
+    last_error = None
+    for m in chain:
+        resp = await chat_completion(messages, m, max_tokens, temperature=0.0,
+                                     provider=providers,
+                                     reasoning_max_tokens=settings.llm_reasoning_small)
+        await _account(resp)
+        if is_provider_safety_reply(resp.content):
+            last_error = LLMParseError(f"{m}: ответ модели модерации вместо JSON")
+            log.warning("journalist: %s вернула ответ модерации — пробуем следующую модель", m)
+            continue
+        try:
+            result = schema.from_response(resp.content)
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+            await _log_call(stage, m, messages, resp, LLMCallStatus.PARSE_ERROR, str(exc))
+            continue
+        await _log_call(stage, m, messages, resp, LLMCallStatus.OK, None)
+        return result
+    raise last_error or LLMParseError("нет ответа ни от одной модели цепочки")
 
 
 async def _existing() -> tuple[set, set, set]:

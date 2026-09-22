@@ -70,6 +70,7 @@ from app.services.llm.schemas import (
     DoubleCheckResult,
     LLMParseError,
     RewriteResult,
+    is_provider_safety_reply,
 )
 from app.services.prefilter import run_prefilter
 from app.services.publishing import create_publish_job
@@ -295,12 +296,10 @@ async def classify_post(post_id: int) -> None:
     resp = result = None
     call_status, error_text = LLMCallStatus.OK, None
     for attempt in (1, 2):
-        resp, result, call_status, error_text = await _call_and_parse(
-            messages, model, settings.llm_classify_max_tokens, temperature=0.2, schema=ClassifyResult,
-            reasoning_max_tokens=settings.llm_reasoning_max_tokens,
+        model, resp, result, call_status, error_text = await _call_with_fallback(
+            messages, model, settings.llm_classify_max_tokens, 0.2, ClassifyResult,
+            None, settings.llm_reasoning_max_tokens,
         )
-        if resp is not None and resp.cost_usd:
-            await guards.add_llm_cost(resp.cost_usd)
         if result is not None and call_status is LLMCallStatus.OK:
             break
         if attempt == 1:
@@ -625,7 +624,43 @@ async def revise_draft(post_id: int, comment: str) -> tuple[bool, str]:
     return True, f"правка внесена — черновик v{post.draft_version}"
 
 
-async def _aggregate_filter(post_id: int, channel) -> tuple[bool, float, str]:
+async def _fallback_models() -> list:
+    async with session_scope() as session:
+        raw = await get_setting(session, Keys.LLM_FALLBACK_MODELS)
+    if isinstance(raw, str):
+        raw = [x.strip() for x in raw.split(",") if x.strip()]
+    return [str(x).strip() for x in (raw or []) if str(x).strip()]
+
+
+async def _call_with_fallback(messages, model, max_tokens, temperature, schema,
+                              providers, reasoning_max_tokens):
+    """Вызов с ротацией: основная модель + llm_fallback_models.
+
+    Ответ модели модерации и непроходимый JSON считаются сбоем маршрутизации —
+    пробуем следующую модель. Возвращает (использованная модель, resp, result, status, error).
+    """
+    chain = [model] + [m for m in await _fallback_models() if m != model]
+    used, resp, result = model, None, None
+    call_status, error_text = LLMCallStatus.ERROR, "нет ответа"
+    for m in chain:
+        used = m
+        resp, result, call_status, error_text = await _call_and_parse(
+            messages, m, max_tokens, temperature=temperature, schema=schema,
+            provider=providers, reasoning_max_tokens=reasoning_max_tokens)
+        if resp is not None and resp.cost_usd:
+            await guards.add_llm_cost(resp.cost_usd)
+        if resp is not None and is_provider_safety_reply(resp.content):
+            result = None
+            call_status = LLMCallStatus.PARSE_ERROR
+            error_text = f"модель {m} вернула ответ модерации: {resp.content[:60]!r}"
+            log.warning("llm: %s — ответ модели модерации вместо JSON, пробуем следующую", m)
+            continue
+        if result is not None and call_status is LLMCallStatus.OK:
+            break
+    return used, resp, result, call_status, error_text
+
+
+async def _aggregate_filter(post_id: int, channel) -> tuple[bool | None, float, str]:
     """Дешёвая тематическая фильтрация постов технического канала-агрегатора."""
     async with session_scope() as session:
         post = await session.get(Post, post_id)
@@ -645,23 +680,47 @@ async def _aggregate_filter(post_id: int, channel) -> tuple[bool, float, str]:
             topic=topic, accept=accept, reject=reject)},
         {"role": "user", "content": AGGREGATE_USER.format(text=text)},
     ]
-    resp, result, call_status, error_text = await _call_and_parse(
-        messages, model, 600, temperature=0.1, schema=ClassifyResult, provider=providers,
-        reasoning_max_tokens=settings.llm_reasoning_small)
-    if resp is not None and resp.cost_usd:
-        await guards.add_llm_cost(resp.cost_usd)
+    model, resp, result, call_status, error_text = await _call_with_fallback(
+        messages, model, 600, 0.1, ClassifyResult, providers, settings.llm_reasoning_small)
     async with session_scope() as session:
         session.add(_make_call_row(post_id, LLMStage.CLASSIFY, model, AGGREGATE_VERSION, messages,
                                    resp, asdict(result) if result else None, call_status, error_text))
         await session.commit()
     if result is None:
-        return False, 0.0, f"фильтр агрегатора не дал ответа: {error_text}"
+        # None = вердикта нет (технический сбой). Это НЕ «не подходит».
+        return None, 0.0, f"фильтр агрегатора не дал ответа: {error_text}"
     return bool(result.suitable), float(result.score or 0.0), (result.reason or result.category or "")
 
 
 async def _aggregate_gate(post_id: int, channel, from_status) -> None:
     """Ворота технического канала: фильтр темы -> пересылка/публикация или отклонение."""
     ok, score, reason = await _aggregate_filter(post_id, channel)
+    if ok is None:
+        async with session_scope() as session:
+            post = await session.get(Post, post_id)
+            if post is None:
+                return
+            tries = len((await session.execute(
+                select(PostEvent.id).where(
+                    PostEvent.post_id == post_id,
+                    PostEvent.action == "aggregate_no_verdict"))).all())
+            session.add(PostEvent(
+                post_id=post_id, actor=EventActor.SYSTEM, action="aggregate_no_verdict",
+                from_status=post.status.value, to_status=post.status.value,
+                details={"reason": reason, "try": tries + 1}))
+            if tries + 1 >= 3:
+                post.status = PostStatus.NEEDS_MANUAL_REVIEW
+                session.add(PostEvent(
+                    post_id=post_id, actor=EventActor.SYSTEM, action="aggregate_giveup",
+                    to_status=PostStatus.NEEDS_MANUAL_REVIEW.value,
+                    details={"reason": reason}))
+            await session.commit()
+        if tries + 1 >= 3:
+            log.warning("пост %s: фильтр агрегатора 3 раза без вердикта — ручное ревью", post_id)
+        else:
+            log.warning("пост %s: фильтр агрегатора без вердикта (%s) — повтор на рескане",
+                        post_id, reason)
+        return
     threshold = int(channel.aggregate_min_score or 6)
     if not ok or score < threshold:
         async with session_scope() as session:
