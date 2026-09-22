@@ -202,12 +202,20 @@
 <script>
 function tgSched(s){var f=s.closest('form'),d=f.querySelector('input[name=scheduled_at]'),x=f.querySelector('button[onclick]'),on=s.value=='schedule';d.style.display=on?'':'none';if(x)x.style.display=on?'':'none';}
 function hideSched(b){var f=b.closest('form'),d=f.querySelector('input[name=scheduled_at]');d.value='';d.style.display='none';b.style.display='none';}
-var BADGE=document.querySelector('h2 .badge');var SIG='';
-setInterval(function(){fetch('/api/posts/{{ p.id }}').then(function(r){return r.json();}).then(function(d){
-  if(!d.sig||d.sig===SIG)return;var first=SIG==='';SIG=d.sig;
-  if(BADGE){var st=d.status;BADGE.textContent=st;BADGE.className='badge st-'+st.toLowerCase();}
-  var t=document.activeElement&&/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
-  if(!first&&!t)location.reload();
-}).catch(function(){});},5000);
+var BADGE=document.querySelector('h2 .badge');var SIG=null;
+function pollPost(){
+  fetch('/api/posts/{{ p.id }}').then(function(r){return r.json();}).then(function(d){
+    if(!d.sig)return;
+    if(SIG===null){SIG=d.sig;return;}          /* базовая линия — без перезагрузки */
+    if(d.sig===SIG)return;
+    SIG=d.sig;
+    var t=document.activeElement&&/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
+    if(t)return;                                /* не мешаем вводу текста */
+    if(BADGE&&d.status){BADGE.textContent=d.status;BADGE.className='badge st-'+d.status.toLowerCase();}
+    location.reload();
+  }).catch(function(){});
+}
+pollPost();
+setInterval(pollPost,5000);
 </script>
 {% endblock %}
