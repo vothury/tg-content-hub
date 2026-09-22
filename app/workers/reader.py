@@ -44,7 +44,7 @@ if not MEDIA_ROOT.is_absolute():
 MAX_MESSAGES_PER_CYCLE = 200
 
 # Пересылка блокируется при отсутствии прав писать в целевой канал (кулдаун, чтобы не долбить)
-_REPOST_BLOCKED_UNTIL: datetime | None = None
+_REPOST_BLOCKED_UNTIL = None  # datetime | None; кулдаун пересылок при отсутствии прав
 
 # Ошибки, после которых продолжать опрос бессмысленно
 FATAL_ERRORS = (
