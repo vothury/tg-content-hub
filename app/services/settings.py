@@ -58,6 +58,8 @@ class Keys:
     PREFILTER_MIN_TEXT_LEN = "prefilter.min_text_len"
     PREFILTER_BLACKLIST_WORDS = "prefilter.blacklist_words"
     PREFILTER_SELFPROMO_PATTERNS = "prefilter.selfpromo_patterns"
+    PREFILTER_EVENT_MARKERS = "prefilter.event_markers"
+    PREFILTER_EVENT_DOMAINS = "prefilter.event_domains"
     MAX_MEDIA_DOWNLOAD_MB = "reader.max_media_download_mb"
     READER_DEFAULT_SOURCE_INTERVAL_SEC = "reader.default_source_interval_sec"
     AUTOPILOT_MIN_SCORE = "autopilot.min_score"
@@ -122,6 +124,8 @@ _ENV_DEFAULTS: dict[str, Any] = {
     Keys.PREFILTER_MIN_TEXT_LEN: settings.prefilter_min_text_len,
     Keys.PREFILTER_BLACKLIST_WORDS: settings.prefilter_blacklist_words,
     Keys.PREFILTER_SELFPROMO_PATTERNS: settings.prefilter_selfpromo_patterns,
+    Keys.PREFILTER_EVENT_MARKERS: settings.prefilter_event_markers,
+    Keys.PREFILTER_EVENT_DOMAINS: settings.prefilter_event_domains,
     Keys.MAX_MEDIA_DOWNLOAD_MB: settings.max_media_download_mb,
     Keys.READER_DEFAULT_SOURCE_INTERVAL_SEC: settings.reader_default_source_interval_sec,
     Keys.AUTOPILOT_MIN_SCORE: settings.autopilot_min_score,

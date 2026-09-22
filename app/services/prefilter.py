@@ -97,6 +97,28 @@ def _is_signature_line(line: str) -> bool:
     return len(s) <= 60 and bool(re.search(r"подпис|subscribe|наш канал", s, re.I))
 
 
+_EVENT_DATE_RE = re.compile(
+    r"\d{1,2}\s+(?:января|февраля|марта|апреля|мая|июня|июля|августа|сентября|"
+    r"октября|ноября|декабря)", re.I)
+_EVENT_TIME_RE = re.compile(r"\b\d{1,2}:\d{2}\b")
+
+
+def _event_promo_hit(text: str, markers, domains) -> str | None:
+    """Анонс мероприятия: маркер + площадка регистрации ИЛИ дата и время проведения."""
+    if not text:
+        return None
+    low = text.lower()
+    marker = next((m for m in (markers or []) if m and m.lower() in low), None)
+    if marker is None:
+        return None
+    domain = next((d for d in (domains or []) if d and d.lower() in low), None)
+    if domain:
+        return f"{marker} + площадка регистрации {domain}"
+    if _EVENT_DATE_RE.search(text) and _EVENT_TIME_RE.search(text):
+        return f"{marker} + дата и время проведения"
+    return None
+
+
 def _selfpromo_hit(text: str, patterns) -> str | None:
     """Маркер самопиара в КОНТЕНТЕ поста.
 
@@ -219,6 +241,26 @@ async def run_prefilter(post_id: int) -> None:
             ))
             await session.commit()
             log.info("пост %s: отсечён технически — самопиар источника (%s)", post.id, hit)
+            return
+
+        event_markers = await get_setting(session, Keys.PREFILTER_EVENT_MARKERS)
+        event_domains = await get_setting(session, Keys.PREFILTER_EVENT_DOMAINS)
+        if isinstance(event_markers, str):
+            event_markers = [x.strip() for x in event_markers.split(",") if x.strip()]
+        if isinstance(event_domains, str):
+            event_domains = [x.strip() for x in event_domains.split(",") if x.strip()]
+        ev = _event_promo_hit(post.original_text or post.normalized_text or "",
+                              event_markers, event_domains)
+        if ev:
+            post.status = PostStatus.UNSUITABLE
+            post.verdict_reason = f"анонс мероприятия: {ev}"
+            session.add(PostEvent(
+                post_id=post.id, actor=EventActor.SYSTEM, action="event_promo_blocked",
+                from_status=PostStatus.NEW.value, to_status=PostStatus.UNSUITABLE.value,
+                details={"hit": ev},
+            ))
+            await session.commit()
+            log.info("пост %s: отсечён технически — анонс мероприятия (%s)", post.id, ev)
             return
 
         has_media = (

@@ -59,6 +59,18 @@ class Settings(BaseSettings):
     prefilter_min_text_len: int = 0
     prefilter_blacklist_words: list[str] = Field(default_factory=list)
     
+    # Анонсы мероприятий: маркер + (площадка регистрации ИЛИ дата+время) = отклонить технически
+    prefilter_event_markers: list = [
+        "регистрация по ссылке", "прямой эфир",
+        "вебинар", "мастер-класс", "онлайн-встреча", "онлайн-эфир", "офлайн-встреча",
+        "участие бесплатное", "места ограничены", "подключайтесь", "ждём вас",
+        "приглашаем на", "эфир состоится", "начало в",
+    ]
+    prefilter_event_domains: list = [
+        "timepad.ru", "webinar.ru", "meetup.com", "eventbrite", "zoom.us",
+        "mts-link", "vk.com/app", "youtube.com/live",
+    ]
+    
     # Технический стоп-фильтр самопиара источника (срабатывает до вызова модели)
     prefilter_selfpromo_patterns: list = [
         "нам на канал", "залил нам", "залили нам", "мы залили", "мы выложили",
