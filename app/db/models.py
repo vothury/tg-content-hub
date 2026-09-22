@@ -423,3 +423,33 @@ class AppSetting(Base):
     key: Mapped[str] = mapped_column(String(128), primary_key=True)
     value: Mapped[dict | list | str | int | float | bool | None] = mapped_column(JSONB)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class ModelPrice(Base):
+    """История цен модели OpenRouter (снимки при изменении цены)."""
+
+    __tablename__ = "model_prices"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    model: Mapped[str] = mapped_column(String(255), index=True)
+    prompt_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    completion_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    request_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ModelPriceAlert(Base):
+    """Предупреждение о заметном изменении цены модели."""
+
+    __tablename__ = "model_price_alerts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    model: Mapped[str] = mapped_column(String(255), index=True)
+    old_prompt: Mapped[float | None] = mapped_column(Float)
+    new_prompt: Mapped[float | None] = mapped_column(Float)
+    old_completion: Mapped[float | None] = mapped_column(Float)
+    new_completion: Mapped[float | None] = mapped_column(Float)
+    change_pct: Mapped[float | None] = mapped_column(Float)
+    direction: Mapped[str | None] = mapped_column(String(8))
+    acknowledged: Mapped[bool] = mapped_column(default=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

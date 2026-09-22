@@ -33,6 +33,9 @@ class Keys:
     LLM_DOUBLE_CHECK_MAX_TOKENS = "llm.double_check_max_tokens"
     CLEAN_FALLBACK_MODEL = "llm.clean_fallback_model"
     LLM_FALLBACK_MODELS = "llm.fallback_models"
+    PRICE_WATCH_ENABLED = "price_watch.enabled"
+    PRICE_ALERT_PCT = "price_watch.alert_pct"
+    PRICE_WATCH_INTERVAL_HOURS = "price_watch.interval_hours"
     PUBLISH_DUP_RECAP_WINDOW_HOURS = "publish.dup_recap_window_hours"
     PUBLISH_RESTORE_LINKS = "publish.restore_links"
     EDITORIAL_ENABLED = "editorial.enabled"
@@ -94,6 +97,9 @@ _ENV_DEFAULTS: dict[str, Any] = {
     Keys.LLM_DOUBLE_CHECK_MAX_TOKENS: settings.llm_double_check_max_tokens,
     Keys.CLEAN_FALLBACK_MODEL: settings.clean_fallback_model,
     Keys.LLM_FALLBACK_MODELS: settings.llm_fallback_models,
+    Keys.PRICE_WATCH_ENABLED: settings.price_watch_enabled,
+    Keys.PRICE_ALERT_PCT: settings.price_alert_pct,
+    Keys.PRICE_WATCH_INTERVAL_HOURS: settings.price_watch_interval_hours,
     Keys.PUBLISH_DUP_RECAP_WINDOW_HOURS: settings.publish_dup_recap_window_hours,
     Keys.PUBLISH_RESTORE_LINKS: settings.publish_restore_links,
     Keys.EDITORIAL_ENABLED: settings.editorial_enabled,

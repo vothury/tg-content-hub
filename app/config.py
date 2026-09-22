@@ -78,6 +78,10 @@ class Settings(BaseSettings):
     llm_double_check_max_tokens: int = 800 # токены финального ответа двойной проверки (поверх reasoning)
     clean_fallback_model: str = ""   # очистка подписей, 2-я попытка; пусто = модель двойной проверки
     llm_fallback_models: list = []   # запасные модели при сбое основной (модель модерации, мусорный JSON)
+    # Контроль цен моделей OpenRouter
+    price_watch_enabled: int = 1
+    price_alert_pct: float = 25.0        # на сколько % должна вырасти цена, чтобы предупредить
+    price_watch_interval_hours: int = 24
     publish_dup_recap_window_hours: int = 24  # окно «ранее писали» для дублей-агрегаторов
     publish_restore_links: int = 0   # 0 = выкл (ссылки и так публикуются кликабельными); 1 = страховка только для информационных ссылок
 

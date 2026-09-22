@@ -2,7 +2,7 @@ import logging
 import secrets
 import asyncio
 
-from fastapi import FastAPI, Request, Depends
+from fastapi import Depends, FastAPI, Form, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
@@ -12,10 +12,10 @@ from contextlib import asynccontextmanager
 from app.config import settings
 from app.db.session import session_scope
 from app.redis_client import get_redis
-from app.web.auth import AuthRequired, require_auth
+from app.web.auth import AuthRequired, csrf_protect, require_auth
 from app.web.routers import auth_routes, content_page, dashboard, editorial_page, post_detail, posts, queue_page, settings_page
 from app.web.templating import WEB_DIR
-from app.services import monitor
+from app.services import monitor, price_watch
 
 
 log = logging.getLogger("web")
@@ -24,8 +24,10 @@ log = logging.getLogger("web")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     task = asyncio.create_task(monitor.monitor_loop())
+    price_task = asyncio.create_task(price_watch.loop())
     yield
     task.cancel()
+    price_task.cancel()
 
 
 app = FastAPI(title="TG Content Hub", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
@@ -98,6 +100,19 @@ async def sw():
 @app.get("/api/status", dependencies=[Depends(require_auth)])
 async def api_status():
     return JSONResponse(await monitor.get_status())
+
+
+@app.get("/api/price_alerts", dependencies=[Depends(require_auth)])
+async def api_price_alerts():
+    return JSONResponse({"alerts": await price_watch.active_alerts()})
+
+
+@app.post("/api/price_alerts/ack",
+          dependencies=[Depends(require_auth), Depends(csrf_protect)])
+async def api_price_alerts_ack(ids: str = Form("")):
+    parsed = [int(x) for x in ids.split(",") if x.strip().isdigit()]
+    n = await price_watch.acknowledge(parsed)
+    return JSONResponse({"ok": True, "acked": n})
 
 
 @app.get("/api/webpush/key", dependencies=[Depends(require_auth)])

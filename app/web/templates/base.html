@@ -22,6 +22,7 @@
   </div>
 
   <div id="monPanel" class="monpanel"></div>
+  <div id="priceBanner" class="pricebanner" style="display:none"></div>
   <div class="backdrop" onclick="document.body.classList.remove('menu-open')"></div>
 
   <nav class="menu">
@@ -112,6 +113,33 @@ setInterval(function(){
     else if(last===0){localStorage.setItem('notify_last',String(d.last));}
   }).catch(function(){});
 },30000);
+</script>
+<script>
+function pricePoll(){
+  fetch('/api/price_alerts').then(function(r){return r.ok?r.json():null;}).then(function(d){
+    var el=document.getElementById('priceBanner');if(!el)return;
+    if(!d||!d.alerts||!d.alerts.length){el.style.display='none';el.innerHTML='';return;}
+    var a=d.alerts[0],m=function(v){return (v*1000000).toFixed(2);};
+    var word=a.direction==='down'?'снизилась':'выросла';
+    el.style.display='block';
+    el.innerHTML='💰 Цена модели <b>'+a.model+'</b> '+word+' на '+a.change_pct+'%: '
+      +'input $'+m(a.old_prompt)+' → $'+m(a.new_prompt)+' за 1M, '
+      +'output $'+m(a.old_completion)+' → $'+m(a.new_completion)
+      +'. <a href="/settings">Проверить модели в настройках</a>'
+      +(d.alerts.length>1?' <span class="sub">(и ещё '+(d.alerts.length-1)+')</span>':'')
+      +' <button class="btn ghost" type="button" id="priceAck">Понятно</button>';
+    var b=document.getElementById('priceAck');
+    if(b)b.addEventListener('click',function(){
+      var f=new FormData();
+      f.append('csrf_token','{{ csrf_token }}');
+      f.append('ids',d.alerts.map(function(x){return x.id;}).join(','));
+      fetch('/api/price_alerts/ack',{method:'POST',body:f}).then(function(){
+        el.style.display='none';el.innerHTML='';
+      });
+    });
+  }).catch(function(){});
+}
+pricePoll();setInterval(pricePoll,300000);
 </script>
 </body>
 </html>
