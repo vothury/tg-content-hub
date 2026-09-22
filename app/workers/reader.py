@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from telethon import TelegramClient, errors
 from telethon.tl.types import Document, DocumentAttributeVideo, PeerChannel, Photo
 
@@ -29,6 +29,7 @@ from app.db.enums import EventActor, MediaType, PostStatus, PublishJobState, Pub
 from app.db.models import MediaItem, Post, PostEvent, PublishJob, Source, TargetChannel
 from app.db.session import session_scope
 from app.services.settings import Keys, get_setting
+from app.services.times import owner_now
 from app.services.queue import enqueue_post
 from app.services.sources_sync import SourcesFileError, sync_sources
 from app.services.text import html_to_text, make_text_hash, normalize_text
@@ -524,6 +525,32 @@ async def process_media_refresh(client: TelegramClient) -> None:
             log.exception("пост %s: не удалось перескачать медиа", post_id)
 
 
+async def _repost_allows(ch_id: int) -> tuple[bool, str]:
+    """Плавное наполнение агрегатора: лимит дня и минимальный интервал канала."""
+    async with session_scope() as session:
+        ch = await session.get(TargetChannel, ch_id)
+        if ch is None:
+            return False, "канал не найден"
+        now_local = owner_now()
+        day_start = now_local.replace(hour=0, minute=0, second=0,
+                                      microsecond=0).astimezone(timezone.utc)
+        done_today = await session.scalar(
+            select(func.count()).select_from(PublishJob).where(
+                PublishJob.target_channel_id == ch_id,
+                PublishJob.state == PublishJobState.DONE,
+                PublishJob.published_at >= day_start))
+        if done_today is not None and done_today >= ch.daily_limit:
+            return False, f"лимит {ch.daily_limit}/день"
+        last = await session.scalar(
+            select(func.max(PublishJob.published_at)).where(
+                PublishJob.target_channel_id == ch_id,
+                PublishJob.state == PublishJobState.DONE))
+        if last is not None and (datetime.now(timezone.utc) - last) < timedelta(
+                minutes=ch.min_interval_min):
+            return False, f"интервал {ch.min_interval_min} мин"
+    return True, ""
+
+
 async def _release_job(job_id, error: str) -> None:
     """Ошибка пересылки: задача в FAILED (бот-планировщик её не подхватит),
     повтор делает reader, пока repost_pending и попытки не исчерпаны."""
@@ -714,7 +741,10 @@ async def main() -> None:
                     log.exception("ошибка обработки источника #%s", snap.id)
                 await asyncio.sleep(2)  # щадящая пауза между источниками
             await process_media_refresh(client)
-            await _process_reposts(client)
+            try:
+                await _process_reposts(client)
+            except Exception:  # noqa: BLE001 — сбой пересылок не останавливает чтение
+                log.exception("сбой очереди пересылок — продолжаю читать источники")
             await monitor.heartbeat("reader")
             await asyncio.sleep(settings.reader_poll_interval_sec)
     finally:
