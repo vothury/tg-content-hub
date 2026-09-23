@@ -20,7 +20,7 @@ from app.services.settings import Keys, get_setting
 
 log = logging.getLogger("price_watch")
 
-MODELS_URL = "https://api/v1/models"
+MODELS_URL = "https://openrouter.ai/api/v1/models"   # публичный каталог моделей с ценами, без ключа
 POOLED = {"openrouter/free", "openrouter/auto"}
 MODEL_KEYS = (
     "CLASSIFY_MODEL", "REWRITE_MODEL", "REVISION_MODEL", "PREFILTER_MODEL",
@@ -67,25 +67,38 @@ async def _watched_models() -> set[str]:
 
 
 async def _fetch_pricing() -> dict[str, dict]:
-    async with httpx.AsyncClient(timeout=45, headers={"User-Agent": "TGContentHub/1.0"}) as client:
-        r = await client.get(MODELS_URL)
-        r.raise_for_status()
-        data = r.json().get("data") or []
-    out: dict[str, dict] = {}
-    for m in data:
-        mid = str(m.get("id") or "").strip()
-        pr = m.get("pricing") or {}
-        if not mid:
-            continue
+    """Один бесплатный запрос каталога OpenRouter (с одной повторной попыткой)."""
+    last_error = None
+    for attempt in (1, 2):
         try:
-            out[mid] = {
-                "prompt": float(pr.get("prompt") or 0),
-                "completion": float(pr.get("completion") or 0),
-                "request": float(pr.get("request") or 0),
-            }
-        except (TypeError, ValueError):
-            continue
-    return out
+            async with httpx.AsyncClient(
+                    timeout=45, follow_redirects=True,
+                    headers={"User-Agent": "TGContentHub/1.0"}) as client:
+                r = await client.get(MODELS_URL)
+            r.raise_for_status()
+            data = r.json().get("data") or []
+            out: dict[str, dict] = {}
+            for m in data:
+                mid = str(m.get("id") or "").strip()
+                pr = m.get("pricing") or {}
+                if not mid:
+                    continue
+                try:
+                    out[mid] = {
+                        "prompt": float(pr.get("prompt") or 0),
+                        "completion": float(pr.get("completion") or 0),
+                        "request": float(pr.get("request") or 0),
+                    }
+                except (TypeError, ValueError):
+                    continue
+            log.info("price_watch: каталог получен — %d моделей", len(out))
+            return out
+        except Exception as exc:  # noqa: BLE001
+            last_error = f"{exc.__class__.__name__}: {exc}"
+            log.warning("price_watch: попытка %d, %s -> %s", attempt, MODELS_URL, last_error)
+            if attempt == 1:
+                await asyncio.sleep(10)
+    raise RuntimeError(f"каталог OpenRouter недоступен: {last_error}")
 
 
 async def watch_models() -> int:
@@ -101,8 +114,8 @@ async def watch_models() -> int:
     try:
         pricing = await _fetch_pricing()
     except Exception as exc:  # noqa: BLE001
-        log.warning("price_watch: каталог OpenRouter недоступен (%s: %s)",
-                    exc.__class__.__name__, exc)
+        log.warning("price_watch: каталог OpenRouter недоступен (%s: %s) — url: %s",
+                    exc.__class__.__name__, exc, MODELS_URL)
         return 0
     now = datetime.now(timezone.utc)
     created = 0
