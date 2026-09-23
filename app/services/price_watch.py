@@ -179,11 +179,11 @@ async def watch_models() -> int:
                 old_completion=prev.completion_usd, new_completion=cur["completion"],
                 change_pct=abs(worst), direction="up" if worst > 0 else "down"))
             created += 1
-            log.warning("price_watch: %s цена %s: input $%.4f -> $%.4f (%.1f%%), "
-                        "output $%.4f -> $%.4f (%.1f%%)",
+            log.warning("price_watch: %s цена %s: input $%.3f -> $%.3f за 1M (%.1f%%), "
+                        "output $%.3f -> $%.3f за 1M (%.1f%%)",
                         model, "выросла" if worst > 0 else "снизилась",
-                        prev.prompt_usd or 0, cur["prompt"], pct_p,
-                        prev.completion_usd or 0, cur["completion"], pct_c)
+                        (prev.prompt_usd or 0) * 1e6, cur["prompt"] * 1e6, pct_p,
+                        (prev.completion_usd or 0) * 1e6, cur["completion"] * 1e6, pct_c)
         await session.commit()
     log.info("price_watch: проверено моделей %d, новых предупреждений %d", len(watched), created)
     return created
