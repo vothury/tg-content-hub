@@ -644,9 +644,11 @@ async def _process_reposts(client: TelegramClient) -> None:
                 post.status = PostStatus.PUBLISHED
                 if mid:
                     post.post_url = f"https://t.me/{ch.username}/{mid}"
-                fwd_text = getattr(sent[0], "message", None) if sent else None
-                post.published_text = fwd_text or post.original_text
-                post.published_links = ([{"anchor": "пересылка оригинала",
+                # Текст не дублируем: в канале пересылка оригинала,
+                # содержимое видно в блоке «Оригинал» карточки поста.
+                post.published_text = None
+                post.published_links = ([{"kind": "repost",
+                                          "anchor": "пересылка оригинала",
                                           "url": f"https://t.me/{ch.username}/{mid}"}]
                                         if mid else None)
                 job = await session.get(PublishJob, job_id) if job_id else None

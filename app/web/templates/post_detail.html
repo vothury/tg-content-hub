@@ -23,7 +23,14 @@
 </div>
 {% endif %}
 
-{% if p.published_text %}
+{% set repost_links = (p.published_links or []) | selectattr('kind', 'equalto', 'repost') | list %}
+{% if repost_links %}
+<div class="section-title">Опубликованный текст</div>
+<div class="card sub">Репост оригинала — в канале опубликована пересылка исходного сообщения: форматирование, цитаты, ссылки и «Forwarded from …» сохранены как у источника. Содержимое полностью совпадает с блоком «Оригинал».</div>
+<div class="sub" style="margin:4px 0 10px">
+  <a href="{{ repost_links[0].url }}" target="_blank" rel="noopener">Открыть пересылку в канале ↗</a>
+</div>
+{% elif p.published_text %}
 <div class="section-title">Опубликованный текст</div>
 <div class="card pre">{{ p.published_text }}</div>
 {% if p.published_links %}
