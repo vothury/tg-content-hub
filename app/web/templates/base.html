@@ -122,7 +122,7 @@ function pricePoll(){
     var a=d.alerts[0],m=function(v){return (v*1000000).toFixed(2);};
     var word=a.direction==='down'?'снизилась':'выросла';
     el.style.display='block';
-    el.innerHTML='💰 Цена модели <b>'+a.model+'</b> '+word+' на '+a.change_pct+'%: '
+    el.innerHTML='💰 Цена <b>'+a.model+(a.provider?' ['+a.provider+']':'')+'</b> '+word+' на '+a.change_pct+'%: '
       +'input $'+m(a.old_prompt)+' → $'+m(a.new_prompt)+' за 1M, '
       +'output $'+m(a.old_completion)+' → $'+m(a.new_completion)
       +'. <a href="/settings">Проверить модели в настройках</a>'

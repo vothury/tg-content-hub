@@ -1,8 +1,11 @@
-"""Контроль цен моделей OpenRouter.
+"""Контроль цен моделей OpenRouter: по модели И по провайдерам.
 
-Раз в interval_hours снимает цены из открытого каталога моделей, хранит историю
-изменений и создаёт предупреждение, если цена используемой модели изменилась
-сильнее порога. Расхода токенов нет: только один HTTP-запрос каталога.
+Цена в общем каталоге (/api/v1/models) — это цена ТОПОВОГО провайдера модели,
+а фактическая стоимость зависит от выбранного при роутинге эндпоинта. Поэтому
+дополнительно опрашиваем /api/v1/models/{author}/{slug}/endpoints и ведём историю
+цен по каждому интересующему провайдеру (режим price_watch_scope).
+
+Расхода токенов нет: только HTTP-запросы каталога (раз в interval_hours).
 """
 from __future__ import annotations
 
@@ -14,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 from sqlalchemy import select
 
+from app.config import settings
 from app.db.models import LLMCall, ModelPrice, ModelPriceAlert
 from app.db.session import session_scope
 from app.redis_client import get_redis
@@ -21,24 +25,41 @@ from app.services.settings import Keys, get_setting
 
 log = logging.getLogger("price_watch")
 
-MODELS_URL = "https://openrouter.ai/api/v1/models"   # публичный каталог моделей с ценами, без ключа
+MODELS_URL = "https://openrouter.ai/api/v1/models"
+ENDPOINTS_URL = "https://openrouter.ai/api/v1/models/{author}/{slug}/endpoints"
 POOLED = {"openrouter/free", "openrouter/auto"}
-MODEL_KEYS = (
-    "CLASSIFY_MODEL", "REWRITE_MODEL", "REVISION_MODEL", "PREFILTER_MODEL",
-    "DOUBLE_CHECK_MODEL", "DOUBLE_CHECK_ONLINE_MODEL", "EDITORIAL_CHIEF_MODEL",
-    "EDITORIAL_JOURNALIST_MODEL", "EDITORIAL_BROWSE_MODEL",
-    "CLEAN_FALLBACK_MODEL", "LLM_FALLBACK_MODELS",
+
+# пары «модель стадии -> закреплённые провайдеры стадии»
+STAGE_PAIRS = (
+    ("CLASSIFY_MODEL", "CLASSIFY_PROVIDERS"),
+    ("REWRITE_MODEL", "REWRITE_PROVIDERS"),
+    ("REVISION_MODEL", "REVISION_PROVIDERS"),
+    ("PREFILTER_MODEL", "PREFILTER_PROVIDERS"),
+    ("DOUBLE_CHECK_MODEL", "DOUBLE_CHECK_PROVIDERS"),
+    ("DOUBLE_CHECK_ONLINE_MODEL", "DOUBLE_CHECK_ONLINE_PROVIDERS"),
+    ("EDITORIAL_CHIEF_MODEL", "EDITORIAL_CHIEF_PROVIDERS"),
+    ("EDITORIAL_JOURNALIST_MODEL", "EDITORIAL_JOURNALIST_PROVIDERS"),
 )
+EXTRA_MODEL_KEYS = ("CLEAN_FALLBACK_MODEL", "LLM_FALLBACK_MODELS", "DEDUP_CONFIRM_MODEL")
 
 
 def _norm(model: str) -> str:
-    """~slug:online -> slug (суффикс плагина и маркер роутинга не влияют на цену)."""
-    m = (model or "").strip().lstrip("~")
-    return re.sub(r":online$", "", m)
+    """~slug:online -> slug (маркер роутинга и суффикс плагина на цену не влияют)."""
+    return re.sub(r":online$", "", (model or "").strip().lstrip("~"))
+
+
+def _valid(model: str) -> bool:
+    return bool(model) and "/" in model and model not in POOLED
+
+
+def _pct(old: float, new: float) -> float:
+    if not old:
+        return 0.0 if not new else 100.0   # платная опция появилась там, где было 0
+    return round((new - old) / old * 100.0, 1)
 
 
 def _variants(model: str) -> list[str]:
-    """Варианты slug'а для поиска в каталоге: точный, без :варианта, без -latest, :free."""
+    """Варианты slug'а: точный, без :варианта, без -latest, :free."""
     base = model.split(":")[0]
     out = [model, base]
     if base.endswith("-latest"):
@@ -53,38 +74,74 @@ def _variants(model: str) -> list[str]:
     return res
 
 
-def _pct(old: float, new: float) -> float:
-    if not old:
-        return 0.0
-    return round((new - old) / old * 100.0, 1)
+def _price_dict(pr: dict) -> dict | None:
+    try:
+        return {
+            "prompt": float(pr.get("prompt") or 0),
+            "completion": float(pr.get("completion") or 0),
+            "request": float(pr.get("request") or 0),
+            "web_search": float(pr.get("web_search") or 0),
+            "overrides": bool(pr.get("overrides")),
+        }
+    except (TypeError, ValueError):
+        return None
 
 
-async def _watched_models() -> set[str]:
-    """Модели из настроек + те, что реально вызывались за последние 7 дней."""
-    models: set[str] = set()
+async def _watched_targets() -> dict:
+    """{модель: {закреплённые провайдеры}} — из настроек стадий и из llm_calls за 7 дней."""
+    targets: dict = {}
     async with session_scope() as session:
-        for name in MODEL_KEYS:
-            key = getattr(Keys, name, None)
-            if key is None:
+        for mname, pname in STAGE_PAIRS:
+            mk, pk = getattr(Keys, mname, None), getattr(Keys, pname, None)
+            if mk is None:
                 continue
             try:
-                v = await get_setting(session, key)
-            except Exception:  # noqa: BLE001 — ключ мог ещё не появиться
+                mv = await get_setting(session, mk)
+            except Exception:  # noqa: BLE001
                 continue
-            if isinstance(v, list):
-                models.update(_norm(str(x)) for x in v if str(x).strip())
-            elif v:
-                models.add(_norm(str(v)))
+            models = [_norm(str(x)) for x in mv] if isinstance(mv, list) \
+                else ([_norm(str(mv))] if mv else [])
+            provs: set = set()
+            if pk is not None:
+                try:
+                    pv = await get_setting(session, pk)
+                    if isinstance(pv, str):
+                        pv = [x.strip() for x in pv.split(",") if x.strip()]
+                    provs = {str(x).strip() for x in (pv or []) if str(x).strip()}
+                except Exception:  # noqa: BLE001
+                    provs = set()
+            for m in models:
+                if _valid(m):
+                    targets.setdefault(m, set()).update(provs)
+        for name in EXTRA_MODEL_KEYS:
+            k = getattr(Keys, name, None)
+            if k is None:
+                continue
+            try:
+                v = await get_setting(session, k)
+            except Exception:  # noqa: BLE001
+                continue
+            for x in (v if isinstance(v, list) else ([v] if v else [])):
+                m = _norm(str(x))
+                if _valid(m):
+                    targets.setdefault(m, set())
         since = datetime.now(timezone.utc) - timedelta(days=7)
         rows = (await session.execute(
             select(LLMCall.model).where(LLMCall.created_at >= since,
                                         LLMCall.model.isnot(None)).distinct())).scalars().all()
-        models.update(_norm(r) for r in rows if r)
-    return {m for m in models if m and "/" in m and m not in POOLED}
+        for r in rows:
+            m = _norm(str(r))
+            if _valid(m):
+                targets.setdefault(m, set())
+    return targets
 
 
-async def _fetch_pricing() -> dict[str, dict]:
-    """Один бесплатный запрос каталога OpenRouter (с одной повторной попыткой)."""
+async def _watched_models() -> list[str]:
+    return sorted(await _watched_targets())
+
+
+async def _fetch_pricing() -> dict:
+    """Общий каталог: агрегированная цена модели (по факту — цена топ-провайдера)."""
     last_error = None
     for attempt in (1, 2):
         try:
@@ -93,23 +150,14 @@ async def _fetch_pricing() -> dict[str, dict]:
                     headers={"User-Agent": "TGContentHub/1.0"}) as client:
                 r = await client.get(MODELS_URL)
             r.raise_for_status()
-            data = r.json().get("data") or []
-            out: dict[str, dict] = {}
-            for m in data:
+            out: dict = {}
+            for m in (r.json().get("data") or []):
                 mid = str(m.get("id") or "").strip()
-                pr = m.get("pricing") or {}
                 if not mid:
                     continue
-                try:
-                    out[mid] = {
-                        "prompt": float(pr.get("prompt") or 0),
-                        "completion": float(pr.get("completion") or 0),
-                        "request": float(pr.get("request") or 0),
-                        "web_search": float(pr.get("web_search") or 0),
-                        "overrides": bool(pr.get("overrides")),
-                    }
-                except (TypeError, ValueError):
-                    continue
+                p = _price_dict(m.get("pricing") or {})
+                if p is not None:
+                    out[mid] = p
             log.info("price_watch: каталог получен — %d моделей", len(out))
             return out
         except Exception as exc:  # noqa: BLE001
@@ -120,16 +168,119 @@ async def _fetch_pricing() -> dict[str, dict]:
     raise RuntimeError(f"каталог OpenRouter недоступен: {last_error}")
 
 
+async def _fetch_endpoints(model: str, key: str) -> list:
+    """Цены по провайдерам модели. Пустой список — если недоступно (403/404/сеть)."""
+    author, _, slug = model.partition("/")
+    if not author or not slug:
+        return []
+    headers = {"User-Agent": "TGContentHub/1.0"}
+    if key:
+        headers["Authorization"] = f"Bearer {key}"
+    variants = [slug] + ([slug.split(":")[0]] if ":" in slug else [])
+    status = None
+    try:
+        async with httpx.AsyncClient(timeout=45, follow_redirects=True, headers=headers) as client:
+            for s in variants:
+                r = await client.get(ENDPOINTS_URL.format(author=author, slug=s))
+                status = r.status_code
+                if r.status_code != 200:
+                    continue
+                eps = ((r.json() or {}).get("data") or {}).get("endpoints") or []
+                out = []
+                for e in eps:
+                    p = _price_dict(e.get("pricing") or {})
+                    if p is None:
+                        continue
+                    p["provider"] = str(e.get("provider_name") or e.get("tag") or "?")
+                    p["quantization"] = str(e.get("quantization") or "")
+                    p["uptime"] = e.get("uptime_last_30m")
+                    out.append(p)
+                return out
+    except Exception as exc:  # noqa: BLE001
+        log.warning("price_watch: endpoints %s -> %s: %s", model, exc.__class__.__name__, exc)
+        return []
+    hint = " — нужен management-ключ (OPENROUTER_MANAGEMENT_KEY)" if status == 403 else ""
+    log.warning("price_watch: endpoints для %s недоступны (HTTP %s)%s", model, status, hint)
+    return []
+
+
+def _cheapest(eps: list) -> list:
+    return [min(eps, key=lambda e: e["prompt"] + e["completion"])] if eps else []
+
+
+def _choose_endpoints(eps: list, scope: str, pinned: set) -> list:
+    if scope == "all":
+        return eps
+    if scope == "pinned" and pinned:
+        chosen = [e for e in eps if e["provider"] in pinned]
+        if chosen:
+            return chosen
+    return _cheapest(eps)
+
+
+def _label(e: dict) -> str:
+    q = e.get("quantization") or ""
+    return f"{e['provider']} ({q})" if q else str(e["provider"])
+
+
+async def _last_price(session, model: str, provider: str):
+    return (await session.execute(
+        select(ModelPrice).where(ModelPrice.model == model, ModelPrice.provider == provider)
+        .order_by(ModelPrice.id.desc()).limit(1))).scalar_one_or_none()
+
+
+async def _track(session, model: str, provider: str, cur: dict, prev, now,
+                 threshold: float, history_min_pct: float) -> int:
+    """Сверяет одну точку наблюдения; пишет историю и, при необходимости, алерт."""
+    if prev is None:
+        session.add(ModelPrice(model=model, provider=provider, prompt_usd=cur["prompt"],
+                               completion_usd=cur["completion"],
+                               request_usd=cur.get("request", 0.0),
+                               web_search_usd=cur.get("web_search", 0.0), fetched_at=now))
+        return 0
+    pct_p = _pct(prev.prompt_usd or 0.0, cur["prompt"])
+    pct_c = _pct(prev.completion_usd or 0.0, cur["completion"])
+    pct_w = _pct(prev.web_search_usd or 0.0, cur.get("web_search") or 0.0)
+    if max(abs(pct_p), abs(pct_c), abs(pct_w)) < history_min_pct:
+        return 0
+    session.add(ModelPrice(model=model, provider=provider, prompt_usd=cur["prompt"],
+                           completion_usd=cur["completion"],
+                           request_usd=cur.get("request", 0.0),
+                           web_search_usd=cur.get("web_search", 0.0), fetched_at=now))
+    worst = max(pct_p, pct_c, pct_w)
+    if abs(worst) < threshold:
+        return 0
+    exists = (await session.execute(
+        select(ModelPriceAlert.id).where(
+            ModelPriceAlert.model == model, ModelPriceAlert.provider == provider,
+            ModelPriceAlert.acknowledged.is_(False),
+            ModelPriceAlert.created_at >= now - timedelta(days=14)).limit(1))).scalar_one_or_none()
+    if exists is not None:
+        return 0
+    session.add(ModelPriceAlert(
+        model=model, provider=provider, old_prompt=prev.prompt_usd, new_prompt=cur["prompt"],
+        old_completion=prev.completion_usd, new_completion=cur["completion"],
+        change_pct=abs(worst), direction="up" if worst > 0 else "down"))
+    log.warning("price_watch: %s [%s] цена %s: input $%.3f -> $%.3f за 1M (%.1f%%), "
+                "output $%.3f -> $%.3f за 1M (%.1f%%)",
+                model, provider or "агрегат", "выросла" if worst > 0 else "снизилась",
+                (prev.prompt_usd or 0) * 1e6, cur["prompt"] * 1e6, pct_p,
+                (prev.completion_usd or 0) * 1e6, cur["completion"] * 1e6, pct_c)
+    return 1
+
+
 async def watch_models() -> int:
     """Один проход сверки. Возвращает число созданных предупреждений."""
     async with session_scope() as session:
         enabled = int(await get_setting(session, Keys.PRICE_WATCH_ENABLED))
         threshold = float(await get_setting(session, Keys.PRICE_ALERT_PCT))
         history_min_pct = float(await get_setting(session, Keys.PRICE_HISTORY_MIN_CHANGE_PCT))
+        scope = str(await get_setting(session, Keys.PRICE_WATCH_SCOPE)).strip().lower()
+        mgmt_key = str(await get_setting(session, Keys.OPENROUTER_MANAGEMENT_KEY) or "").strip()
     if not enabled:
         return 0
-    watched = await _watched_models()
-    if not watched:
+    targets = await _watched_targets()
+    if not targets:
         return 0
     try:
         pricing = await _fetch_pricing()
@@ -137,71 +288,41 @@ async def watch_models() -> int:
         log.warning("price_watch: каталог OpenRouter недоступен (%s: %s) — url: %s",
                     exc.__class__.__name__, exc, MODELS_URL)
         return 0
+
+    key = mgmt_key or settings.openrouter_api_key
+    points: list = []          # (model, provider_label, price_dict)
+    for model in sorted(targets):
+        cur, matched = None, model
+        for v in _variants(model):
+            if v in pricing:
+                cur, matched = pricing[v], v
+                break
+        if cur is None:
+            log.warning("price_watch: %s не найден в каталоге (пробовал: %s) — проверьте slug",
+                        model, ", ".join(_variants(model)))
+            continue
+        if matched != model:
+            log.info("price_watch: %s найден в каталоге как %s", model, matched)
+        points.append((model, "", cur))
+        if scope in ("pinned", "cheapest", "all"):
+            eps = await _fetch_endpoints(model, key)
+            for e in _choose_endpoints(eps, scope, targets.get(model) or set()):
+                if cur.get("web_search") or e.get("web_search"):
+                    log.info("price_watch: %s [%s] — web_search $%.4f за вызов",
+                             model, _label(e), e.get("web_search") or 0.0)
+                points.append((model, _label(e), e))
+
     now = datetime.now(timezone.utc)
     created = 0
     async with session_scope() as session:
-        for model in sorted(watched):
-            cur, matched = None, model
-            for v in _variants(model):
-                if v in pricing:
-                    cur, matched = pricing[v], v
-                    break
-            if cur is None:
-                log.warning("price_watch: %s не найден в каталоге OpenRouter (пробовал: %s) — "
-                            "проверьте slug в Настройках", model, ", ".join(_variants(model)))
-                continue
-            if matched != model:
-                log.info("price_watch: %s найден в каталоге как %s", model, matched)
-            prev = (await session.execute(
-                select(ModelPrice).where(ModelPrice.model == model)
-                .order_by(ModelPrice.id.desc()).limit(1))).scalar_one_or_none()
-            if cur.get("web_search"):
-                log.info("price_watch: %s — доп. плата за веб-поиск $%.4f за вызов%s",
-                         model, cur["web_search"],
-                         " (есть надбавка за длинный контекст)" if cur.get("overrides") else "")
-            if prev is None:
-                session.add(ModelPrice(model=model, prompt_usd=cur["prompt"],
-                                       completion_usd=cur["completion"],
-                                       request_usd=cur["request"],
-                                       web_search_usd=cur.get("web_search") or 0.0,
-                                       fetched_at=now))
-                continue
-            pct_p = _pct(prev.prompt_usd or 0.0, cur["prompt"])
-            pct_c = _pct(prev.completion_usd or 0.0, cur["completion"])
-            pct_w = _pct(prev.web_search_usd or 0.0, cur.get("web_search") or 0.0)
-            drift = max(abs(pct_p), abs(pct_c), abs(pct_w))
-            if drift < history_min_pct:
-                continue          # мелкий дрейф в историю не пишем
-            session.add(ModelPrice(model=model, prompt_usd=cur["prompt"],
-                                   completion_usd=cur["completion"],
-                                   request_usd=cur["request"],
-                                   web_search_usd=cur.get("web_search") or 0.0,
-                                   fetched_at=now))
-            worst = max(pct_p, pct_c, pct_w)
-            if abs(worst) < threshold:
-                continue
-            exists = (await session.execute(
-                select(ModelPriceAlert.id).where(
-                    ModelPriceAlert.model == model,
-                    ModelPriceAlert.acknowledged.is_(False),
-                    ModelPriceAlert.created_at >= now - timedelta(days=14))
-                .limit(1))).scalar_one_or_none()
-            if exists is not None:
-                continue
-            session.add(ModelPriceAlert(
-                model=model, old_prompt=prev.prompt_usd, new_prompt=cur["prompt"],
-                old_completion=prev.completion_usd, new_completion=cur["completion"],
-                change_pct=abs(worst), direction="up" if worst > 0 else "down"))
-            created += 1
-            log.warning("price_watch: %s цена %s: input $%.3f -> $%.3f за 1M (%.1f%%), "
-                        "output $%.3f -> $%.3f за 1M (%.1f%%)",
-                        model, "выросла" if worst > 0 else "снизилась",
-                        (prev.prompt_usd or 0) * 1e6, cur["prompt"] * 1e6, pct_p,
-                        (prev.completion_usd or 0) * 1e6, cur["completion"] * 1e6, pct_c)
+        for model, provider, cur in points:
+            prev = await _last_price(session, model, provider)
+            created += await _track(session, model, provider, cur, prev, now,
+                                    threshold, history_min_pct)
         await session.commit()
-    log.info("price_watch: проверено моделей %d, записей истории %d, новых предупреждений %d "
+    log.info("price_watch: точек наблюдения %d (моделей %d, режим %s), новых предупреждений %d "
              "(порог истории %.1f%%, порог предупреждения %.1f%%)",
-             len(watched), created, created, history_min_pct, threshold)
+             len(points), len(targets), scope or "off", created, history_min_pct, threshold)
     return created
 
 
@@ -211,8 +332,8 @@ async def active_alerts(limit: int = 5) -> list[dict]:
             select(ModelPriceAlert).where(ModelPriceAlert.acknowledged.is_(False))
             .order_by(ModelPriceAlert.id.desc()).limit(limit))).scalars().all()
         return [{
-            "id": a.id, "model": a.model, "direction": a.direction,
-            "change_pct": float(a.change_pct or 0),
+            "id": a.id, "model": a.model, "provider": a.provider or "",
+            "direction": a.direction, "change_pct": float(a.change_pct or 0),
             "old_prompt": float(a.old_prompt or 0), "new_prompt": float(a.new_prompt or 0),
             "old_completion": float(a.old_completion or 0),
             "new_completion": float(a.new_completion or 0),
@@ -235,11 +356,7 @@ async def acknowledge(ids: list[int]) -> int:
 
 
 async def loop() -> None:
-    """Фоновый цикл в api-контейнере: проверка раз в interval_hours.
-
-    Отметка о последнем прогоне пишется в redis (price_watch:last_run) —
-    признак живости, не зависящий от уровня логирования.
-    """
+    """Фоновый цикл в api: проверка раз в interval_hours + отметка живости в redis."""
     while True:
         created, error = 0, None
         try:

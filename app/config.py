@@ -95,6 +95,9 @@ class Settings(BaseSettings):
     price_alert_pct: float = 25.0        # на сколько % должна вырасти цена, чтобы предупредить
     price_watch_interval_hours: int = 8
     price_history_min_change_pct: float = 1.0  # мельче — в историю не пишем (защита от волатильности)
+    # Наблюдение цен по провайдерам: pinned | cheapest | all | off
+    price_watch_scope: str = "pinned"
+    openrouter_management_key: str = ""   # только для API цен провайдеров (не для инференса)
     publish_dup_recap_window_hours: int = 24  # окно «ранее писали» для дублей-агрегаторов
     publish_restore_links: int = 0   # 0 = выкл (ссылки и так публикуются кликабельными); 1 = страховка только для информационных ссылок
     # Публикация медиа: лимиты размера и опциональное сжатие видео (ffmpeg)

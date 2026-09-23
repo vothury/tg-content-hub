@@ -436,6 +436,7 @@ class ModelPrice(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     model: Mapped[str] = mapped_column(String(255), index=True)
+    provider: Mapped[str] = mapped_column(String(160), default="", index=True)  # '' = агрегат (топ-провайдер каталога)
     prompt_usd: Mapped[float] = mapped_column(Float, default=0.0)
     completion_usd: Mapped[float] = mapped_column(Float, default=0.0)
     request_usd: Mapped[float] = mapped_column(Float, default=0.0)
@@ -450,6 +451,7 @@ class ModelPriceAlert(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     model: Mapped[str] = mapped_column(String(255), index=True)
+    provider: Mapped[str] = mapped_column(String(160), default="")
     old_prompt: Mapped[float | None] = mapped_column(Float)
     new_prompt: Mapped[float | None] = mapped_column(Float)
     old_completion: Mapped[float | None] = mapped_column(Float)

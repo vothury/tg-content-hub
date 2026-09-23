@@ -37,6 +37,8 @@ class Keys:
     PRICE_ALERT_PCT = "price_watch.alert_pct"
     PRICE_WATCH_INTERVAL_HOURS = "price_watch.interval_hours"
     PRICE_HISTORY_MIN_CHANGE_PCT = "price_watch.history_min_change_pct"
+    PRICE_WATCH_SCOPE = "price_watch.scope"
+    OPENROUTER_MANAGEMENT_KEY = "openrouter.management_key"
     PUBLISH_DUP_RECAP_WINDOW_HOURS = "publish.dup_recap_window_hours"
     PUBLISH_RESTORE_LINKS = "publish.restore_links"
     PUBLISH_MAX_MEDIA_MB = "publish.max_media_mb"
@@ -109,6 +111,8 @@ _ENV_DEFAULTS: dict[str, Any] = {
     Keys.PRICE_ALERT_PCT: settings.price_alert_pct,
     Keys.PRICE_WATCH_INTERVAL_HOURS: settings.price_watch_interval_hours,
     Keys.PRICE_HISTORY_MIN_CHANGE_PCT: settings.price_history_min_change_pct,
+    Keys.PRICE_WATCH_SCOPE: settings.price_watch_scope,
+    Keys.OPENROUTER_MANAGEMENT_KEY: settings.openrouter_management_key,
     Keys.PUBLISH_DUP_RECAP_WINDOW_HOURS: settings.publish_dup_recap_window_hours,
     Keys.PUBLISH_RESTORE_LINKS: settings.publish_restore_links,
     Keys.PUBLISH_MAX_MEDIA_MB: settings.publish_max_media_mb,
