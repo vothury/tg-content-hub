@@ -36,6 +36,22 @@ def _norm(model: str) -> str:
     return re.sub(r":online$", "", m)
 
 
+def _variants(model: str) -> list[str]:
+    """Варианты slug'а для поиска в каталоге: точный, без :варианта, без -latest, :free."""
+    base = model.split(":")[0]
+    out = [model, base]
+    if base.endswith("-latest"):
+        out.append(base[: -len("-latest")])
+        out.append(base[: -len("-latest")] + ":free")
+    out.append(base + ":free")
+    seen, res = set(), []
+    for v in out:
+        if v and v not in seen:
+            seen.add(v)
+            res.append(v)
+    return res
+
+
 def _pct(old: float, new: float) -> float:
     if not old:
         return 0.0
@@ -121,10 +137,17 @@ async def watch_models() -> int:
     created = 0
     async with session_scope() as session:
         for model in sorted(watched):
-            cur = pricing.get(model)
+            cur, matched = None, model
+            for v in _variants(model):
+                if v in pricing:
+                    cur, matched = pricing[v], v
+                    break
             if cur is None:
-                log.info("price_watch: %s отсутствует в каталоге OpenRouter", model)
+                log.warning("price_watch: %s не найден в каталоге OpenRouter (пробовал: %s) — "
+                            "проверьте slug в Настройках", model, ", ".join(_variants(model)))
                 continue
+            if matched != model:
+                log.info("price_watch: %s найден в каталоге как %s", model, matched)
             prev = (await session.execute(
                 select(ModelPrice).where(ModelPrice.model == model)
                 .order_by(ModelPrice.id.desc()).limit(1))).scalar_one_or_none()
@@ -207,4 +230,5 @@ async def loop() -> None:
                 hours = int(await get_setting(session, Keys.PRICE_WATCH_INTERVAL_HOURS))
         except Exception:  # noqa: BLE001
             pass
+        log.info("price_watch: следующая проверка через %d ч", max(1, hours))
         await asyncio.sleep(max(1, hours) * 3600)
