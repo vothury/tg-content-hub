@@ -16,6 +16,7 @@ from sqlalchemy import select
 
 from app.db.models import LLMCall, ModelPrice, ModelPriceAlert
 from app.db.session import session_scope
+from app.redis_client import get_redis
 from app.services.settings import Keys, get_setting
 
 log = logging.getLogger("price_watch")
@@ -179,7 +180,7 @@ async def watch_models() -> int:
                 change_pct=abs(worst), direction="up" if worst > 0 else "down"))
             created += 1
             log.warning("price_watch: %s цена %s: input $%.4f -> $%.4f (%.1f%%), "
-                        "output $%.4f -> $%.4f",
+                        "output $%.4f -> $%.4f (%.1f%%)",
                         model, "выросла" if worst > 0 else "снизилась",
                         prev.prompt_usd or 0, cur["prompt"], pct_p,
                         prev.completion_usd or 0, cur["completion"], pct_c)
@@ -218,16 +219,28 @@ async def acknowledge(ids: list[int]) -> int:
 
 
 async def loop() -> None:
-    """Фоновый цикл в api-контейнере: проверка раз в interval_hours."""
+    """Фоновый цикл в api-контейнере: проверка раз в interval_hours.
+
+    Отметка о последнем прогоне пишется в redis (price_watch:last_run) —
+    признак живости, не зависящий от уровня логирования.
+    """
     while True:
+        created, error = 0, None
         try:
-            await watch_models()
-        except Exception:  # noqa: BLE001
+            created = await watch_models()
+        except Exception as exc:  # noqa: BLE001
+            error = f"{exc.__class__.__name__}: {exc}"
             log.exception("price_watch: сбой проверки")
         hours = 24
         try:
             async with session_scope() as session:
                 hours = int(await get_setting(session, Keys.PRICE_WATCH_INTERVAL_HOURS))
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            await get_redis().set("price_watch:last_run",
+                                  f"{stamp} alerts={created}" + (f" error={error}" if error else ""))
         except Exception:  # noqa: BLE001
             pass
         log.info("price_watch: следующая проверка через %d ч", max(1, hours))
