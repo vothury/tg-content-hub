@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
 from datetime import datetime, timedelta, timezone
@@ -21,7 +22,7 @@ from app.config import settings
 from app.db.models import LLMCall, ModelPrice, ModelPriceAlert
 from app.db.session import session_scope
 from app.redis_client import get_redis
-from app.services.settings import Keys, get_setting
+from app.services.settings import Keys, get_providers, get_setting
 
 log = logging.getLogger("price_watch")
 
@@ -104,12 +105,25 @@ async def _watched_targets() -> dict:
             provs: set = set()
             if pk is not None:
                 try:
-                    pv = await get_setting(session, pk)
-                    if isinstance(pv, str):
-                        pv = [x.strip() for x in pv.split(",") if x.strip()]
-                    provs = {str(x).strip() for x in (pv or []) if str(x).strip()}
+                    pv = await get_providers(session, pk)
                 except Exception:  # noqa: BLE001
-                    provs = set()
+                    pv = None
+                if isinstance(pv, str):
+                    s = pv.strip()
+                    try:
+                        pv = (json.loads(s) if s[:1] in ("{", "[")
+                              else [x.strip() for x in s.split(",") if x.strip()])
+                    except Exception:  # noqa: BLE001
+                        pv = [x.strip() for x in s.split(",") if x.strip()]
+                if isinstance(pv, dict):
+                    for field in ("order", "only"):
+                        v = pv.get(field)
+                        if isinstance(v, list):
+                            provs.update(str(x).strip() for x in v if str(x).strip())
+                        elif isinstance(v, str) and v.strip():
+                            provs.add(v.strip())
+                elif isinstance(pv, list):
+                    provs.update(str(x).strip() for x in pv if str(x).strip())
             for m in models:
                 if _valid(m):
                     targets.setdefault(m, set()).update(provs)
@@ -169,21 +183,24 @@ async def _fetch_pricing() -> dict:
 
 
 async def _fetch_endpoints(model: str, key: str) -> list:
-    """Цены по провайдерам модели. Пустой список — если недоступно (403/404/сеть)."""
-    author, _, slug = model.partition("/")
-    if not author or not slug:
-        return []
+    """Цены по провайдерам модели. Пробуем все варианты slug'а (алиасы/-latest/:free).
+
+    Пустой список — если недоступно (403 без management-ключа, 404, сеть).
+    """
     headers = {"User-Agent": "TGContentHub/1.0"}
     if key:
         headers["Authorization"] = f"Bearer {key}"
-    variants = [slug] + ([slug.split(":")[0]] if ":" in slug else [])
-    status = None
+    status, tried = None, []
     try:
         async with httpx.AsyncClient(timeout=45, follow_redirects=True, headers=headers) as client:
-            for s in variants:
-                r = await client.get(ENDPOINTS_URL.format(author=author, slug=s))
+            for variant in _variants(model):
+                author, _, slug = variant.partition("/")
+                if not author or not slug:
+                    continue
+                tried.append(variant)
+                r = await client.get(ENDPOINTS_URL.format(author=author, slug=slug))
                 status = r.status_code
-                if r.status_code != 200:
+                if status != 200:
                     continue
                 eps = ((r.json() or {}).get("data") or {}).get("endpoints") or []
                 out = []
@@ -192,7 +209,11 @@ async def _fetch_endpoints(model: str, key: str) -> list:
                     if p is None:
                         continue
                     p["provider"] = str(e.get("provider_name") or e.get("tag") or "?")
+                    p["key"] = str(e.get("tag") or e.get("provider_name") or "?") \
+                        .strip().lower().replace(" ", "-")
+                    p["name"] = str(e.get("name") or "").strip()
                     p["quantization"] = str(e.get("quantization") or "")
+                    p["context_length"] = e.get("context_length")
                     p["uptime"] = e.get("uptime_last_30m")
                     out.append(p)
                 return out
@@ -200,7 +221,8 @@ async def _fetch_endpoints(model: str, key: str) -> list:
         log.warning("price_watch: endpoints %s -> %s: %s", model, exc.__class__.__name__, exc)
         return []
     hint = " — нужен management-ключ (OPENROUTER_MANAGEMENT_KEY)" if status == 403 else ""
-    log.warning("price_watch: endpoints для %s недоступны (HTTP %s)%s", model, status, hint)
+    log.warning("price_watch: endpoints для %s недоступны (HTTP %s; пробовал: %s)%s",
+                model, status, ", ".join(tried), hint)
     return []
 
 
@@ -209,18 +231,34 @@ def _cheapest(eps: list) -> list:
 
 
 def _choose_endpoints(eps: list, scope: str, pinned: set) -> list:
+    """Отбор точек наблюдения: все / закреплённые в настройках / самая дешёвая."""
+    if not eps:
+        return []
     if scope == "all":
         return eps
     if scope == "pinned" and pinned:
-        chosen = [e for e in eps if e["provider"] in pinned]
+        norm = {str(p).strip().lower() for p in pinned}
+        chosen = [e for e in eps
+                  if e.get("key") in norm
+                  or str(e.get("provider", "")).strip().lower().replace(" ", "-") in norm]
         if chosen:
             return chosen
+        log.info("price_watch: закреплённые провайдеры %s среди эндпоинтов не найдены — "
+                 "беру самый дешёвый", sorted(norm))
     return _cheapest(eps)
 
 
 def _label(e: dict) -> str:
-    q = e.get("quantization") or ""
-    return f"{e['provider']} ({q})" if q else str(e["provider"])
+    """Уникальная человекочитаемая подпись эндпоинта (провайдеры повторяются с разной ценой)."""
+    base = str(e.get("name") or e.get("provider") or "?")
+    parts = []
+    q = (e.get("quantization") or "").strip().lower()
+    if q and q != "unknown":
+        parts.append(q)
+    ctx = e.get("context_length")
+    if ctx:
+        parts.append(f"{int(ctx) // 1000}k")
+    return base + (" (" + ", ".join(parts) + ")" if parts else "")
 
 
 async def _last_price(session, model: str, provider: str):
