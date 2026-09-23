@@ -704,6 +704,31 @@ async def _publish(bot: Bot, job_id: int) -> None:
     await purge_post_media(post_id)
 
 
+async def recover_in_progress_jobs() -> int:
+    """Старт планировщика: возвращаем в очередь задачи, оставшиеся IN_PROGRESS.
+
+    Их исполнитель (прошлый процесс) погиб, а _next_candidates берёт только
+    QUEUED/SCHEDULED — без этого задача зависала бы навсегда.
+    Задачи каналов в режиме repost не трогаем: ими владеет reader.
+    """
+    async with session_scope() as session:
+        rows = (await session.execute(
+            select(PublishJob)
+            .join(TargetChannel, TargetChannel.id == PublishJob.target_channel_id)
+            .where(PublishJob.state == PublishJobState.IN_PROGRESS,
+                   TargetChannel.aggregate_mode != "repost"))).scalars().all()
+        ids = [j.id for j in rows]
+        for job in rows:
+            job.state = PublishJobState.QUEUED
+            job.defer_reason = None
+            job.last_error = "восстановлено после перезапуска планировщика"
+        if rows:
+            await session.commit()
+    if ids:
+        log.warning("восстановлены задачи публикации после перезапуска: %s", ids)
+    return len(ids)
+
+
 async def process_ready_jobs(bot) -> None:
     now = datetime.now(timezone.utc)
     for job_id, channel_id, post_id in await _next_candidates():

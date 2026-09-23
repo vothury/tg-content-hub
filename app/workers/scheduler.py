@@ -10,7 +10,7 @@ from aiogram import Bot
 
 from app.common.logging import setup_logging
 from app.config import settings
-from app.services.publishing import process_ready_jobs
+from app.services.publishing import process_ready_jobs, recover_in_progress_jobs
 from app.services import monitor
 
 log = setup_logging("scheduler")
@@ -23,6 +23,7 @@ async def main() -> None:
 
     bot = Bot(token=settings.bot_token)  # без parse_mode: безопасное форматирование
     log.info("scheduler запущен (Этап 5); шаг %d сек", settings.scheduler_poll_interval_sec)
+    await recover_in_progress_jobs()
     try:
         while True:
             try:
