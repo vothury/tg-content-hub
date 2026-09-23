@@ -56,6 +56,7 @@ async def approve(post_id: int, target_channel_id: int | None = None) -> ActionR
 
         post.status = PostStatus.APPROVED
         post.approved_at = datetime.now(timezone.utc)
+        post.autopilot = False   # одобрено владельцем, а не автопилотом
         _event(session, post_id, EventActor.OWNER, "approved",
                PostStatus.AWAITING_REVIEW.value, PostStatus.APPROVED.value,
                {"target_channel": channel_username})
@@ -204,6 +205,7 @@ async def restart_pipeline(post_id: int) -> ActionResult:
         post.status = PostStatus.NEW
         post.approved_at = None
         post.needs_media_review = False
+        post.autopilot = False
 
         media = (await session.execute(
             select(MediaItem).where(MediaItem.post_id == post_id))).scalars().all()

@@ -95,6 +95,9 @@ async def post_detail(request: Request, post_id: int, msg: str = ""):
                 PostEvent.action.in_(["clean_fallback_used", "clean_verify_failed"]))
             .order_by(PostEvent.id.desc()))).all()
     delete_armed = await security.is_hard_delete_armed()
+    pub_in_flight = any(j.state in (PublishJobState.QUEUED, PublishJobState.SCHEDULED,
+                                    PublishJobState.IN_PROGRESS) for j in jobs_rows)
+    pub_done = any(j.state is PublishJobState.DONE for j in jobs_rows)
     fallback_used = any(a == "clean_fallback_used" for a, _ in fb_events)
     clean_failed = any(a == "clean_verify_failed" for a, _ in fb_events)
     fallback_model = ""
@@ -125,6 +128,8 @@ async def post_detail(request: Request, post_id: int, msg: str = ""):
         "fallback_first": fallback_first,
         "clean_failed": clean_failed,
         "delete_armed": delete_armed,
+        "pub_in_flight": pub_in_flight,
+        "pub_done": pub_done,
     })
 
 

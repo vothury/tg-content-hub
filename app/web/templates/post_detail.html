@@ -9,7 +9,8 @@
   {% if fallback_used %}<div class="warnline">⚠ Бесплатная модель очистки не справилась{{ ' (' ~ fallback_first ~ ')' if fallback_first }} — подписи удалены сильной моделью{{ ' ' ~ fallback_model if fallback_model }}</div>{% endif %}
   {% if clean_failed %}<div class="warnline crit">⛔ Очистка подписей не прошла сверку (обе модели) — текст не изменён, нужно ручное решение</div>{% endif %}
   {% if p.verdict_reason %}<div class="sub">Вердикт: {{ p.verdict_reason }}</div>{% endif %}
-  {% if p.autopilot %}<div class="sub">🤖 Опубликовано автопилотом{% if channel_obj and channel_obj.double_check %} · двойная проверка: одобрена{% endif %}</div>{% endif %}
+  {% if pub_in_flight %}<div class="sub">⏳ Публикация не завершена: задача в работе или ждёт лимитов канала{{ ' · одобрено автопилотом' if p.autopilot else '' }}</div>
+  {% elif p.autopilot %}<div class="sub">🤖 {{ 'Опубликовано' if pub_done else 'Одобрено' }} автопилотом{% if channel_obj and channel_obj.double_check %} · двойная проверка: одобрена{% endif %}</div>{% endif %}
   {% if p.double_check_note %}<div class="sub" style="color:#ff9c9c">⛔ Двойная проверка отклонила: {{ p.double_check_note }}</div>{% endif %}
 </div>
 

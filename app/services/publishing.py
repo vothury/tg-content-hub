@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -48,6 +49,25 @@ def _safe_unlink(p: Path) -> None:
         log.warning("не удалось удалить временный файл %s", p)
 
 
+async def _job_note(job_id, text) -> None:
+    """Заметка о текущем действии: видна в карточке поста и в /queue,
+    а также меняет сигнатуру опроса — страница сама обновится."""
+    if not job_id:
+        return
+    async with session_scope() as session:
+        job = await session.get(PublishJob, job_id)
+        if job is not None:
+            job.defer_reason = text
+            await session.commit()
+
+
+async def _post_event(post_id: int, action: str, details: dict | None = None) -> None:
+    async with session_scope() as session:
+        session.add(PostEvent(post_id=post_id, actor=EventActor.SYSTEM,
+                              action=action, details=details or {}))
+        await session.commit()
+
+
 async def _media_settings():
     async with session_scope() as session:
         max_mb = int(await get_setting(session, Keys.PUBLISH_MAX_MEDIA_MB))
@@ -86,6 +106,10 @@ async def _compress_video(src: Path, target_mb: int, max_side: int):
         log.warning("сжатие видео %s: целевой битрейт слишком мал (%d kbps) — не сжимаем",
                     src.name, video_kbps)
         return None
+    log.info("ffmpeg: сжимаю %s (%.1f МБ, длительность %.0f с) -> цель %d МБ, "
+             "видео %d kbps, сторона<=%d",
+             src.name, _file_size(src) / 1048576, duration, target_mb, video_kbps, max_side)
+    started = time.monotonic()
     dst = src.with_name(f"{src.stem}_{target_mb}mb.mp4")
 
     def _run() -> None:
@@ -105,7 +129,11 @@ async def _compress_video(src: Path, target_mb: int, max_side: int):
         _safe_unlink(dst)
         return None
     if not dst.exists() or _file_size(dst) == 0:
+        log.warning("ffmpeg: %s — результат пустой", src.name)
         return None
+    log.info("ffmpeg: готово %s за %.1f с: %.1f -> %.1f МБ",
+             dst.name, time.monotonic() - started,
+             _file_size(src) / 1048576, _file_size(dst) / 1048576)
     return dst
 
 
@@ -441,7 +469,8 @@ def _split_caption(text: str) -> tuple[str, str]:
     return cut, text[CAPTION_LIMIT:]
 
 
-async def _send_to_channel(bot: Bot, chat_id: int, post: Post) -> tuple[int, str, list]:
+async def _send_to_channel(bot: Bot, chat_id: int, post: Post,
+                           job_id: int | None = None) -> tuple[int, str, list]:
     """Отправка поста (медиа + текст + блок «ранее писали») без parse-режима.
 
     Возвращает (message_id, итоговый текст, ссылки) — они сохраняются в пост,
@@ -492,7 +521,22 @@ async def _send_to_channel(bot: Bot, chat_id: int, post: Post) -> tuple[int, str
         if max_bytes and size > max_bytes:
             compressed = None
             if compress_on and m["media_type"] is MediaType.VIDEO:
-                compressed = await _compress_video(path, min(target_mb or max_mb, max_mb), max_side)
+                goal_mb = min(target_mb or max_mb, max_mb)
+                await _job_note(job_id, f"сжатие видео ffmpeg: {size / 1048576:.1f} МБ → цель {goal_mb} МБ")
+                await _post_event(post.id, "media_compress_started",
+                                  {"file": path.name, "mb": round(size / 1048576, 1),
+                                   "target_mb": goal_mb})
+                started = time.monotonic()
+                compressed = await _compress_video(path, goal_mb, max_side)
+                elapsed = round(time.monotonic() - started, 1)
+                if compressed is not None:
+                    await _post_event(post.id, "media_compress_done",
+                                      {"file": compressed.name, "seconds": elapsed,
+                                       "mb": round(_file_size(compressed) / 1048576, 1)})
+                else:
+                    await _post_event(post.id, "media_compress_failed",
+                                      {"file": path.name, "seconds": elapsed})
+                await _job_note(job_id, None)
             if compressed is not None and _file_size(compressed) <= max_bytes:
                 send_path = compressed
                 tmp_files.append(compressed)
@@ -573,6 +617,7 @@ async def _finish_failed(bot, job_id: int, error: str, attempts: int, final: boo
         job = await session.get(PublishJob, job_id)
         if job is None:
             return
+        job.defer_reason = None
         if final or non_retryable or job.attempts >= job.max_attempts:
             job.state = PublishJobState.FAILED
             is_final = True
@@ -624,8 +669,9 @@ async def _publish(bot: Bot, job_id: int) -> None:
         await _finish_failed(bot, job_id, "канал недоступен: бот должен быть админом", attempts, final=False)
         return
 
+    log.info("задача %s (пост %s): начинаю публикацию в @%s", job_id, post_id, channel.username)
     try:
-        published_id, final_text, final_links = await _send_to_channel(bot, chat_id, post)
+        published_id, final_text, final_links = await _send_to_channel(bot, chat_id, post, job_id)
     except OversizedMedia as exc:
         await _finish_failed(bot, job_id, f"медиа больше лимита: {exc}", attempts, final=True)
         return
