@@ -105,6 +105,8 @@ async def _fetch_pricing() -> dict[str, dict]:
                         "prompt": float(pr.get("prompt") or 0),
                         "completion": float(pr.get("completion") or 0),
                         "request": float(pr.get("request") or 0),
+                        "web_search": float(pr.get("web_search") or 0),
+                        "overrides": bool(pr.get("overrides")),
                     }
                 except (TypeError, ValueError):
                     continue
@@ -123,6 +125,7 @@ async def watch_models() -> int:
     async with session_scope() as session:
         enabled = int(await get_setting(session, Keys.PRICE_WATCH_ENABLED))
         threshold = float(await get_setting(session, Keys.PRICE_ALERT_PCT))
+        history_min_pct = float(await get_setting(session, Keys.PRICE_HISTORY_MIN_CHANGE_PCT))
     if not enabled:
         return 0
     watched = await _watched_models()
@@ -152,18 +155,29 @@ async def watch_models() -> int:
             prev = (await session.execute(
                 select(ModelPrice).where(ModelPrice.model == model)
                 .order_by(ModelPrice.id.desc()).limit(1))).scalar_one_or_none()
-            unchanged = (prev is not None
-                         and abs(prev.prompt_usd - cur["prompt"]) < 1e-12
-                         and abs(prev.completion_usd - cur["completion"]) < 1e-12)
-            if prev is None or not unchanged:
+            if cur.get("web_search"):
+                log.info("price_watch: %s — доп. плата за веб-поиск $%.4f за вызов%s",
+                         model, cur["web_search"],
+                         " (есть надбавка за длинный контекст)" if cur.get("overrides") else "")
+            if prev is None:
                 session.add(ModelPrice(model=model, prompt_usd=cur["prompt"],
                                        completion_usd=cur["completion"],
-                                       request_usd=cur["request"], fetched_at=now))
-            if prev is None or unchanged:
+                                       request_usd=cur["request"],
+                                       web_search_usd=cur.get("web_search") or 0.0,
+                                       fetched_at=now))
                 continue
             pct_p = _pct(prev.prompt_usd or 0.0, cur["prompt"])
             pct_c = _pct(prev.completion_usd or 0.0, cur["completion"])
-            worst = max(pct_p, pct_c)
+            pct_w = _pct(prev.web_search_usd or 0.0, cur.get("web_search") or 0.0)
+            drift = max(abs(pct_p), abs(pct_c), abs(pct_w))
+            if drift < history_min_pct:
+                continue          # мелкий дрейф в историю не пишем
+            session.add(ModelPrice(model=model, prompt_usd=cur["prompt"],
+                                   completion_usd=cur["completion"],
+                                   request_usd=cur["request"],
+                                   web_search_usd=cur.get("web_search") or 0.0,
+                                   fetched_at=now))
+            worst = max(pct_p, pct_c, pct_w)
             if abs(worst) < threshold:
                 continue
             exists = (await session.execute(
@@ -185,7 +199,9 @@ async def watch_models() -> int:
                         (prev.prompt_usd or 0) * 1e6, cur["prompt"] * 1e6, pct_p,
                         (prev.completion_usd or 0) * 1e6, cur["completion"] * 1e6, pct_c)
         await session.commit()
-    log.info("price_watch: проверено моделей %d, новых предупреждений %d", len(watched), created)
+    log.info("price_watch: проверено моделей %d, записей истории %d, новых предупреждений %d "
+             "(порог истории %.1f%%, порог предупреждения %.1f%%)",
+             len(watched), created, created, history_min_pct, threshold)
     return created
 
 

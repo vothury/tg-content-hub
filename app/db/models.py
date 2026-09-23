@@ -439,6 +439,7 @@ class ModelPrice(Base):
     prompt_usd: Mapped[float] = mapped_column(Float, default=0.0)
     completion_usd: Mapped[float] = mapped_column(Float, default=0.0)
     request_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    web_search_usd: Mapped[float] = mapped_column(Float, default=0.0)  # цена за один веб-поиск
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
