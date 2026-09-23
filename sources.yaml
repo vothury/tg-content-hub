@@ -79,6 +79,8 @@ targets:
     daily_limit: 30
     min_interval_min: 30
     # стиль не указан -> профиль default
+    llm_instructions: >
+      Если приложенных фото больше 1 - ставь оценку не больше 5 без лишних рассуждений.
 
   # Канал-агрегатор: склад сырья из релевантных TG-каналов   
   - username: moskva_novostroy
@@ -162,6 +164,15 @@ sources:
     relevance: 9
     filters: *filters_default
     # poll_interval_sec: 300 
+    
+  - username: thehouseofcelebs
+    kind: external
+    target: testimfilm
+    relevance: 7
+    filters: *filters_default
+    llm_instructions: >
+      Этот канал имеет релевантные посты о кино и актерах, но в перемешку с другими индустриями (музыка, мода и прочее) - их отсеивай.
+      Так же отсеивай откровенно желтушные новости, вроде "Ченнинг Татум прокомментировал слухи о том, что он якобы использовал фейковый аккаунт для нападок на свою бывшую невесту Зои Кравиц" - такие новости не формат.
 
   # ================= источники для: testimfoto =================
   - username: go_tests
