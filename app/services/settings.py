@@ -38,6 +38,8 @@ def repair_list(value, depth: int = 0) -> list:
                 except Exception:  # noqa: BLE001
                     continue
             return []
+        if "," in s:                      # строка «a, b» из input или из битого сохранения
+            return repair_list([x for x in s.split(",")], depth + 1)
         t = s.strip("'\"").strip()
         return [t] if t and not set(t) & set("[]{}") else []
     if isinstance(value, (list, tuple)):
@@ -208,14 +210,29 @@ _ENV_DEFAULTS: dict[str, Any] = {
 }
 
 
+LIST_SETTING_KEYS = {
+    Keys.LLM_FALLBACK_MODELS,
+    Keys.PREFILTER_BLACKLIST_WORDS,
+    Keys.PREFILTER_SELFPROMO_PATTERNS,
+    Keys.PREFILTER_EVENT_MARKERS,
+    Keys.PREFILTER_EVENT_DOMAINS,
+}
+
+
 async def get_setting(session: AsyncSession, key: str) -> Any:
-    """Значение из БД-переопределения или дефолт из окружения."""
+    """Значение из БД-переопределения или дефолт из окружения.
+
+    Для списочных ключей значение дополнительно проходит repair_list: даже если
+    в БД лежит битое представление (repr/фрагменты), потребители и страница
+    настроек получают чистый список.
+    """
     from app.db.models import AppSetting  # локальный импорт против циклов
 
     row = await session.get(AppSetting, key)
-    if row is not None and row.value is not None:
-        return row.value
-    return _ENV_DEFAULTS.get(key)
+    value = row.value if (row is not None and row.value is not None) else _ENV_DEFAULTS.get(key)
+    if key in LIST_SETTING_KEYS:
+        return repair_list(value)
+    return value
 
 
 async def set_setting(session: AsyncSession, key: str, value: Any) -> None:
