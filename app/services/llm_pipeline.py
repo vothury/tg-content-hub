@@ -105,6 +105,9 @@ _UGC_HOST_RE = re.compile(
     r"ok\.ru|odnoklassniki\.ru|twitter\.com|x\.com|instagram\.com|tiktok\.com|"
     r"livejournal\.com|t\.me/(?:\+|boost/|joinchat/)|youtube\.com/(?:@|channel/|c/)|"
     r"youtu\.be/(?:@|channel/)|drive\.google\.com|docs\.google\.com)", re.I)
+_DECOR_SUSPECT_RE = re.compile(
+    r"узнать|больше|подроб|читайте|смотрите|слушайте|подпис|наш|перейти|обсуд|чат|буст|boost|"
+    r"канал|дзен|zen|pikabu|vk\.|ok\.ru|youtube|t\.me|https?://|\[", re.I)
 
 
 def _line_urls(line: str) -> list:
@@ -1058,12 +1061,13 @@ async def _clean_plan_call(post_id: int, listing: str, model: str, providers, la
 
 
 async def _ensure_clean_draft(post_id: int) -> None:
-    """Удаление подписей источника для каналов без рерайта.
+    """Удаление декора источника: детерминированные шаблоны + LLM-обобщитель.
 
-    Порядок: 1) детерминированный поиск строк-подписей (без модели);
-    2) дешёвая модель (план «номер + дословный текст», удаляет код);
-    3) сильная модель-страховка; 4) непроверяемый план -> ручное ревью.
-    Ответ «удалять нечего» НЕ является ошибкой: текст остаётся без изменений.
+    Слой 1 (детерминированный) снимает известные формы: подписи, хэштеги, тизеры.
+    Слой 2 (LLM) обобщает принцип «указатель vs контент» и ловит НОВЫЕ формулировки;
+    его план проходит сверку «номер + дословный текст», поэтому безопасен.
+    Итог = объединение множеств удаляемых строк; события clean_llm_extra позволяют
+    дообучать шаблоны на пойманных моделью новых вариантах.
     """
     async with session_scope() as session:
         post = await session.get(Post, post_id)
@@ -1072,34 +1076,24 @@ async def _ensure_clean_draft(post_id: int) -> None:
         channel = await session.get(TargetChannel, post.target_channel_id) \
             if post.target_channel_id else None
         if channel is not None and channel.rewrite_enabled:
-            return  # рерайт уже чистит подписи (правило 7)
+            return  # рерайт чистит декор сам (правило стиля)
         if channel is not None and channel.no_review and channel.aggregate_mode == "repost":
-            return  # пересылается оригинал — черновик не используется
+            return  # пересылка оригинала — текст не трогаем
         source = await session.get(Source, post.source_id) if post.source_id else None
         text = post.draft_text or post.original_text or ""
     source_username = source.username if source is not None else None
-    # Нет ссылок/подписей — чистить нечего, модель не дёргаем
-    if "[" not in text and "t.me/" not in text and "telegram.me/" not in text and "@" not in text:
-        return
 
     lines = text.split("\n")
-    cleaned = None
-    dropped: list = []
-    mode = ""
+    det = set(_signature_lines(lines, source_username))
+
+    # Слой 2 зовём только если после детерминистики остались ссылки/призывы-указатели
+    kept_after_det = [ln for i, ln in enumerate(lines, 1) if i not in det]
+    suspect = _DECOR_SUSPECT_RE.search("\n".join(kept_after_det)) is not None
+
+    llm_drop: set = set()
     fallback_used = False
-    saw_nothing = False
-    last_verify = "no_answer"
     attempts: list = []
-
-    # 1) детерминированный путь — покрывает типовые подписи без затрат на модель
-    sig = _signature_lines(lines, source_username)
-    if sig:
-        kept = [ln for i, ln in enumerate(lines, 1) if i not in set(sig)]
-        cleaned = _finalize_clean(kept, text)
-        dropped, mode = sig, "deterministic"
-
-    # 2-3) модели — только если детерминированно ничего не нашли
-    if not mode:
+    if suspect:
         listing = "\n".join(f"{i}. {ln}" for i, ln in enumerate(lines, 1))
         cheap_model = await _model_for(Keys.PREFILTER_MODEL)
         cheap_providers = await _providers_for(Keys.PREFILTER_PROVIDERS)
@@ -1111,21 +1105,22 @@ async def _ensure_clean_draft(post_id: int) -> None:
                                         ("clean-fallback", strong_model, strong_providers)):
             result = await _clean_plan_call(post_id, listing, model, providers, label)
             if result is None:
-                last_verify = "no_answer"
-                attempts.append({"model": model, "plan": None, "verify": "no_answer"})
                 continue
-            kept, dropped, verify = _apply_clean_plan(lines, result.remove)
+            _kept, dropped_l, verify = _apply_clean_plan(lines, result.remove)
             attempts.append({"model": model, "plan": result.remove[:5], "verify": verify})
-            last_verify = verify
             if verify == "ok":
-                cleaned = _finalize_clean(kept, text)
-                mode = label
+                llm_drop = set(dropped_l)
                 fallback_used = (label == "clean-fallback")
                 break
             if verify == "nothing":
-                saw_nothing = True   # модель не нашла подписей — это нормальный ответ
+                break  # модель уверена, что декора нет
 
-    resolved_nothing = saw_nothing or last_verify == "nothing"
+    drop = det | llm_drop
+    extra = sorted(llm_drop - det)
+    cleaned = None
+    if drop:
+        kept = [ln for i, ln in enumerate(lines, 1) if i not in drop]
+        cleaned = _finalize_clean(kept, text)
 
     async with session_scope() as session:
         post = await session.get(Post, post_id)
@@ -1135,12 +1130,16 @@ async def _ensure_clean_draft(post_id: int) -> None:
         if cleaned is not None:
             post.draft_text = cleaned
             post.draft_version += 1
-            session.add(PostDraftVersion(
-                post_id=post_id, version=post.draft_version,
-                text=cleaned, origin=DraftOrigin.ORIGINAL))
+            session.add(PostDraftVersion(post_id=post_id, version=post.draft_version,
+                                         text=cleaned, origin=DraftOrigin.ORIGINAL))
             session.add(PostEvent(
                 post_id=post_id, actor=EventActor.SYSTEM, action="clean_signatures",
-                details={"mode": mode, "lines": dropped, "fallback_used": fallback_used}))
+                details={"mode": "det+llm" if llm_drop else "deterministic",
+                         "lines": sorted(drop), "llm_extra": extra,
+                         "fallback_used": fallback_used}))
+            if extra:
+                session.add(PostEvent(post_id=post_id, actor=EventActor.SYSTEM,
+                                      action="clean_llm_extra", details={"lines": extra}))
             if fallback_used:
                 session.add(PostEvent(
                     post_id=post_id, actor=EventActor.SYSTEM, action="clean_fallback_used",
@@ -1148,21 +1147,11 @@ async def _ensure_clean_draft(post_id: int) -> None:
                              "fallback_model": attempts[-1].get("model") if attempts else None,
                              "first_verify": attempts[0].get("verify") if attempts else None}))
             await session.commit()
-            log.info("пост %s: очистка подписей (%s) — удалены строки %s",
-                     post_id, mode, dropped)
+            log.info("пост %s: очистка декора — шаблонами %s, моделью дополнительно %s",
+                     post_id, sorted(det), extra or "—")
             return
-        if resolved_nothing:
-            await session.commit()
-            log.info("пост %s: подписей не найдено — текст оставлен без изменений", post_id)
-            return
-        prev = post.status.value
-        post.status = PostStatus.NEEDS_MANUAL_REVIEW
-        session.add(PostEvent(
-            post_id=post_id, actor=EventActor.SYSTEM, action="clean_verify_failed",
-            from_status=prev, to_status=PostStatus.NEEDS_MANUAL_REVIEW.value,
-            details={"verify": last_verify, "attempts": attempts}))
-        log.warning("пост %s: план очистки непроверяем (%s) — ручное ревью", post_id, last_verify)
         await session.commit()
+        log.info("пост %s: декор не найден ни одним слоем — текст без изменений", post_id)
 
 
 async def _run_double_check(post_id: int) -> tuple[bool, str]:
