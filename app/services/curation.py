@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 
 from sqlalchemy import select
 from telethon.tl.types import PeerChannel
@@ -59,14 +60,54 @@ def parse_targets(caption, known: set) -> list:
     return out
 
 
+_TARGETS_CACHE: tuple = (0.0, {})
+_INBOX_CACHE: tuple = (0.0, set())
+
+
+async def _cached_targets() -> dict:
+    global _TARGETS_CACHE
+    ts, val = _TARGETS_CACHE
+    if time.monotonic() - ts > 60:
+        val = await _target_usernames()
+        _TARGETS_CACHE = (time.monotonic(), val)
+    return val
+
+
+async def inbox_set() -> set:
+    global _INBOX_CACHE
+    ts, val = _INBOX_CACHE
+    if time.monotonic() - ts > 60:
+        val = set(await _inbox_channels())
+        _INBOX_CACHE = (time.monotonic(), val)
+    return val
+
+
+async def claims(msg) -> bool:
+    """Относится ли сообщение приёмника к курированию: пересылка + валидная подпись-список."""
+    fwd = getattr(msg, "forward", None) or getattr(msg, "fwd_from", None)
+    if fwd is None:
+        return False
+    caption = getattr(msg, "message", None) or getattr(msg, "text", None)
+    return bool(parse_targets(caption, set(await _cached_targets())))
+
+
+async def _cursor_get(inbox: str) -> int:
+    from app.redis_client import get_redis
+    v = await get_redis().get(f"curation:cursor:{inbox}")
+    return int(v) if v else 0
+
+
+async def _cursor_set(inbox: str, msg_id: int) -> None:
+    from app.redis_client import get_redis
+    await get_redis().set(f"curation:cursor:{inbox}", str(msg_id))
+
+
 async def _ensure_source(username: str, telegram_id, title) -> int:
+    """Source для оригинала/приёмника; manual=True только для СОЗДАННЫХ здесь."""
     async with session_scope() as session:
         row = (await session.execute(
             select(Source).where(Source.username == username))).scalar_one_or_none()
         if row is not None:
-            if not row.manual:
-                row.manual = True
-                await session.commit()
             return row.id
         row = Source(username=username, telegram_id=telegram_id,
                      title=title or f"manual:{username}",
@@ -121,13 +162,8 @@ async def process_inboxes(client) -> None:
 
 async def _process_one_inbox(client, R, inbox: str, targets: dict) -> None:
     entity = await client.get_entity(inbox)
-    inbox_src_id = await _ensure_source(inbox, getattr(entity, "id", None),
-                                        getattr(entity, "title", None))
-    async with session_scope() as session:
-        src = await session.get(Source, inbox_src_id)
-        cursor = src.last_read_message_id if src is not None else None
-
-    messages = sorted(await client.get_messages(entity, min_id=cursor or 0, limit=50),
+    cursor = await _cursor_get(inbox)
+    messages = sorted(await client.get_messages(entity, min_id=cursor, limit=50),
                       key=lambda m: m.id)
     if not messages:
         return
@@ -196,9 +232,4 @@ async def _process_one_inbox(client, R, inbox: str, targets: dict) -> None:
         if created:
             log.info("курирование: %s -> посты %s (цели: %s)", inbox, created, tg)
 
-    async with session_scope() as session:
-        src = await session.get(Source, inbox_src_id)
-        if src is not None:
-            src.last_read_message_id = max(src.last_read_message_id or 0,
-                                           max(m.id for m in messages))
-            await session.commit()
+    await _cursor_set(inbox, max(m.id for m in messages))

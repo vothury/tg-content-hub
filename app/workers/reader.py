@@ -462,8 +462,14 @@ async def process_source(client: TelegramClient, snap: SourceSnapshot) -> None:
 
     if selected:
         created = 0
-        for unit in build_units(selected):
-            post_id = await _persist_unit(client, snap, entity, unit)
+        known_ids = await _load_source_peer_ids()
+        units = build_units(selected)
+        # Канал-приёмник курирования: пересылки с валидной подписью-списком
+        # обрабатывает curation, обычное чтение их пропускает (нет двойного ingest).
+        if (snap.username or "").lower() in await curation.inbox_set():
+            units = [u for u in units if not await curation.claims(u.messages[0])]
+        for unit in units:
+            post_id = await _persist_unit(client, snap, entity, unit, known_ids)
             if post_id is not None:
                 created += 1
                 await enqueue_post(post_id)
