@@ -68,6 +68,61 @@ async def _post_event(post_id: int, action: str, details: dict | None = None) ->
         await session.commit()
 
 
+async def _drop_oversized_media(post_id: int, limit_bytes: int) -> int:
+    """Удаляет с диска и обнуляет в БД медиа поста, превышающие лимит.
+
+    Строки media_items остаются (позиции альбома), но downloaded=false и без путей:
+    пост можно одобрить без этих медиа или перезапустить для повторной загрузки.
+    """
+    root = _media_root()
+    removed = 0
+    async with session_scope() as session:
+        rows = (await session.execute(
+            select(MediaItem).where(MediaItem.post_id == post_id))).scalars().all()
+        for m in rows:
+            if not m.local_path:
+                continue
+            size = _file_size(root / m.local_path) or (m.size_bytes or 0)
+            if size <= limit_bytes:
+                continue
+            for rel in (m.local_path, m.preview_path):
+                if rel:
+                    _safe_unlink(root / rel)
+            m.downloaded = False
+            m.local_path = None
+            m.preview_path = None
+            m.phash = None
+            m.luma_mean = None
+            removed += 1
+        if removed:
+            session.add(PostEvent(
+                post_id=post_id, actor=EventActor.SYSTEM, action="oversized_media_dropped",
+                details={"removed": removed,
+                         "limit_mb": round(limit_bytes / 1048576, 1)}))
+            await session.commit()
+    if removed:
+        log.warning("пост %s: удалено медиа больше лимита (%d файл(ов)); "
+                    "одобрите без медиа или перезапустите для повторной загрузки",
+                    post_id, removed)
+    return removed
+
+
+async def _set_status_awaiting(post_id: int, note: str) -> None:
+    """Пост возвращён владельцу: медиа убрано по размеру, нужно решение."""
+    async with session_scope() as session:
+        post = await session.get(Post, post_id)
+        if post is None:
+            return
+        prev = post.status.value
+        post.status = PostStatus.AWAITING_REVIEW
+        post.verdict_reason = note
+        session.add(PostEvent(
+            post_id=post_id, actor=EventActor.SYSTEM, action="oversize_to_review",
+            from_status=prev, to_status=PostStatus.AWAITING_REVIEW.value,
+            details={"note": note}))
+        await session.commit()
+
+
 async def _media_settings():
     async with session_scope() as session:
         max_mb = int(await get_setting(session, Keys.PUBLISH_MAX_MEDIA_MB))
@@ -673,16 +728,32 @@ async def _publish(bot: Bot, job_id: int) -> None:
     try:
         published_id, final_text, final_links = await _send_to_channel(bot, chat_id, post, job_id)
     except OversizedMedia as exc:
-        await _finish_failed(bot, job_id, f"медиа больше лимита: {exc}", attempts, final=True)
-        await purge_post_media(post_id)
-        log.info("пост %s: медиа удалены с диска — файл заведомо больше лимита Telegram", post_id)
+        max_mb, compress_on, _t, _s, _skip = await _media_settings()
+        if compress_on:
+            # файл нужен для перекодировки/повтора — оставляем, пост в FAILED
+            await _finish_failed(bot, job_id, f"медиа больше лимита: {exc}", attempts, final=True)
+        else:
+            await _drop_oversized_media(post_id, max_mb * 1024 * 1024)
+            await _set_status_awaiting(post_id, f"медиа больше лимита удалено: {exc}")
+            async with session_scope() as session:
+                job = await session.get(PublishJob, job_id)
+                if job is not None:
+                    job.state = PublishJobState.FAILED
+                    job.last_error = f"медиа больше лимита: {exc}"[:200]
+                    await session.commit()
+            await _notify_owner(
+                bot, f"⚠️ Пост #{post_id}: медиа больше лимита Telegram, файл удалён с диска. "
+                     f"Одобрите без медиа или нажмите «Повторить обработку» для повторной загрузки.")
         return
     except Exception as exc:  # noqa: BLE001
         msg = f"{exc.__class__.__name__}: {exc}"
-        await _finish_failed(bot, job_id, msg, attempts, final=False)
-        if any(mark in msg for mark in ("EntityTooLarge", "FileIsTooBig")):
-            await purge_post_media(post_id)
-            log.info("пост %s: медиа удалены с диска после 413 от Telegram", post_id)
+        is_size = any(mark in msg for mark in ("EntityTooLarge", "FileIsTooBig"))
+        mm = await _media_settings() if is_size else None
+        final = bool(is_size and mm and not mm[1])   # сжатие выключено — повторы бессмысленны
+        await _finish_failed(bot, job_id, msg, attempts, final=final)
+        if final:
+            await _drop_oversized_media(post_id, mm[0] * 1024 * 1024)
+            await _set_status_awaiting(post_id, "медиа удалено после ошибки размера Telegram")
         return
 
     async with session_scope() as session:
