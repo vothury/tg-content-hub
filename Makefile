@@ -1,4 +1,4 @@
-.PHONY: up down restart logs ps migrate revision psql health test login source-add source-list source-disable rm_post_true rm_post_false rm_post_status
+.PHONY: up down restart logs ps migrate revision psql health test login source-add source-list source-disable rm_post_true rm_post_false rm_post_status verify verify-full verify-json
 
 up:            ## собрать и запустить всё
 	docker compose up -d --build
@@ -93,3 +93,12 @@ rm_post_false: ## выключить возможность полного уд�
 rm_post_status: ## показать состояние предохранителя
 	docker compose exec -T api python -c "import asyncio;from app.services.security import is_hard_delete_armed;print('armed =', asyncio.run(is_hard_delete_armed()))"
 	docker compose exec -T redis redis-cli ttl admin:hard_delete_armed
+
+verify: ## автоматические проверки после деплоя (read-only)
+	docker compose run --rm --entrypoint python api scripts/verify.py
+
+verify-full: ## проверки + внешние запросы OpenRouter + один вызов модели
+	docker compose run --rm --entrypoint python api scripts/verify.py --net --llm --write
+
+verify-json: ## то же, что verify, но вывод в JSON
+	docker compose run --rm --entrypoint python api scripts/verify.py --json
