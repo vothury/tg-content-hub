@@ -71,12 +71,25 @@ async def _log_call(stage, model, messages, resp, status, error) -> None:
         await session.commit()
 
 
+_MODEL_SLUG_RE = re.compile(r"^[\w.\-]+/[\w.\-]+(?::[\w.\-]+)?$")
+
+
 async def _fallback_models() -> list:
+    """Запасные модели; некорректные значения (мусор после ручных правок) отбрасываются."""
     async with session_scope() as session:
         raw = await get_setting(session, Keys.LLM_FALLBACK_MODELS)
     if isinstance(raw, str):
         raw = [x.strip() for x in raw.split(",") if x.strip()]
-    return [str(x).strip() for x in (raw or []) if str(x).strip()]
+    out = []
+    for x in (raw or []):
+        s = str(x).strip()
+        if not s:
+            continue
+        if _MODEL_SLUG_RE.match(s):
+            out.append(s)
+        else:
+            log.warning("llm.fallback_models: пропущено некорректное значение %r", s)
+    return out
 
 
 async def _call_json(messages, model, providers, max_tokens, schema,

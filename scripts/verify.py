@@ -21,6 +21,7 @@ import importlib
 import json
 import shutil
 import sys
+import re
 from datetime import datetime, timezone
 
 from sqlalchemy import text
@@ -174,11 +175,18 @@ async def chk_price_history():
 
 
 async def chk_price_settings():
-    rows = await qall("select key, value from app_settings "
-                      "where key like 'price_watch%' or key like 'price_alert%' order by key")
-    if not rows:
-        return WARN, "настройки price_watch не засеяны"
-    return OK, ", ".join(f"{k.split('.')[-1]}={v}" for k, v in rows)[:200]
+    from app.services.settings import Keys, get_setting
+    names = ("PRICE_WATCH_ENABLED", "PRICE_ALERT_PCT", "PRICE_WATCH_INTERVAL_HOURS",
+             "PRICE_WATCH_SCOPE", "PRICE_HISTORY_MIN_CHANGE_PCT")
+    vals = {}
+    async with session_scope() as session:
+        for n in names:
+            k = getattr(Keys, n, None)
+            if k is not None:
+                vals[k] = await get_setting(session, k)
+    if not vals:
+        return FAIL, "в Keys нет настроек price_watch"
+    return OK, ", ".join(f"{k.split('.')[-1]}={v}" for k, v in vals.items())[:200]
 
 
 async def chk_price_run():
@@ -319,9 +327,15 @@ async def chk_clean_stats():
 # ------------------------------------------------- F. Надёжность LLM
 
 async def chk_no_verdict():
-    n = await q1("select count(*) from posts where status='UNSUITABLE' "
-                 "and coalesce(verdict_reason,'') like '%не дал ответа%'")
-    return (FAIL if n else OK), f"{n} постов отклонено из-за отсутствия вердикта модели"
+    cond = ("status='UNSUITABLE' and coalesce(verdict_reason,'') like '%не дал ответа%'")
+    recent = await q1(f"select count(*) from posts where {cond} "
+                      "and created_at > now() - interval '1 day'")
+    total = await q1(f"select count(*) from posts where {cond}")
+    if recent:
+        return FAIL, f"{recent} за сутки отклонено без вердикта модели"
+    if total:
+        return WARN, f"новых нет; исторических {total} (до фикса) — перезапустите или удалите"
+    return OK, "нет отказов без вердикта модели"
 
 
 async def chk_parse_errors():
@@ -337,12 +351,21 @@ async def chk_parse_errors():
     return (WARN if share > 20 else OK), detail
 
 
+MODEL_SLUG_RE = re.compile(r"^[\w.\-]+/[\w.\-]+(?::[\w.\-]+)?$")
+
+
 async def chk_fallback_settings():
-    fb = await q1("select value from app_settings where key='llm.fallback_models'")
-    cf = await q1("select value from app_settings where key='llm.clean_fallback_model'")
-    if not fb:
+    from app.services.settings import Keys, get_setting
+    async with session_scope() as session:
+        fb = await get_setting(session, Keys.LLM_FALLBACK_MODELS)
+        cf = await get_setting(session, Keys.CLEAN_FALLBACK_MODEL)
+    items = fb if isinstance(fb, list) else [x.strip() for x in str(fb or "").split(",") if x.strip()]
+    bad = [x for x in items if not MODEL_SLUG_RE.match(str(x).strip())]
+    if bad:
+        return FAIL, f"мусор в llm.fallback_models: {bad} — пересохраните список в Настройках"
+    if not items:
         return WARN, "llm.fallback_models пуст — цепочка запасных моделей не задана"
-    return OK, f"fallback_models={fb}; clean_fallback_model={cf or '—'}"
+    return OK, f"fallback_models={items}; clean_fallback_model={cf or '—'}"
 
 
 # ------------------------------------------------- G. Дедупликация
@@ -396,10 +419,16 @@ async def chk_repost_unique():
 
 async def chk_aggregate_calls():
     rows = await qall("select post_id, count(*) c from llm_calls "
-                      "where prompt_version like 'aggregate%' group by 1 order by c desc limit 3")
+                      "where prompt_version like 'aggregate%' "
+                      "and created_at > now() - interval '1 day' "
+                      "group by 1 order by c desc limit 3")
+    hist = await q1("select coalesce(max(c), 0) from (select count(*) c from llm_calls "
+                    "where prompt_version like 'aggregate%' group by post_id) t")
+    detail = ("за сутки: " + (", ".join(f"#{p}:{c}" for p, c in rows) or "вызовов не было")
+              + f"; исторический максимум {hist}")
     if rows and rows[0][1] > 3:
-        return WARN, f"до {rows[0][1]} вызовов фильтра на пост #{rows[0][0]}"
-    return OK, ", ".join(f"#{p}:{c}" for p, c in rows) or "вызовов фильтра не было"
+        return WARN, f"до {rows[0][1]} вызовов фильтра за сутки на пост #{rows[0][0]}"
+    return OK, detail
 
 
 async def chk_repost_pending():
@@ -473,11 +502,13 @@ async def chk_publish_settings():
 
 
 async def chk_media_sizes():
-    row = await qall("select count(*) filter (where size_bytes > 50*1024*1024) big, "
-                     "coalesce(max(size_bytes),0)/(1024*1024) max_mb from media_items")[0]
-    if int(row[0] or 0):
-        return WARN, f"{row[0]} файлов больше 50 МБ (максимум {int(row[1])} МБ) — проверьте лимиты"
-    return OK, f"файлов больше 50 МБ нет (максимум {int(row[1])} МБ)"
+    rows = await qall("select count(*) filter (where size_bytes > 50*1024*1024) as big, "
+                      "coalesce(max(size_bytes), 0)/(1024*1024) as max_mb from media_items")
+    row = rows[0]
+    big, max_mb = int(row[0] or 0), int(row[1] or 0)
+    if big:
+        return WARN, f"{big} файлов больше 50 МБ (максимум {max_mb} МБ) — проверьте лимиты"
+    return OK, f"файлов больше 50 МБ нет (максимум {max_mb} МБ)"
 
 
 # ------------------------------------------------- K. Reader
@@ -505,9 +536,9 @@ async def chk_stuck_new():
 
 
 async def chk_media_download():
-    rows = await qall("select coalesce(left(download_error, 20), 'ok'), count(*) "
-                      "from media_items group by 1 order by 2 desc limit 4")
-    return OK, ", ".join(f"{e}={n}" for e, n in rows) or "медиа нет"
+    rows = await qall("select coalesce(split_part(download_error, ':', 1), 'ok') as kind, count(*) "
+                      "from media_items group by 1 order by 2 desc limit 5")
+    return OK, ", ".join(f"{k}={n}" for k, n in rows) or "медиа нет"
 
 
 async def chk_sources_fresh():
