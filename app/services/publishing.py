@@ -674,9 +674,15 @@ async def _publish(bot: Bot, job_id: int) -> None:
         published_id, final_text, final_links = await _send_to_channel(bot, chat_id, post, job_id)
     except OversizedMedia as exc:
         await _finish_failed(bot, job_id, f"медиа больше лимита: {exc}", attempts, final=True)
+        await purge_post_media(post_id)
+        log.info("пост %s: медиа удалены с диска — файл заведомо больше лимита Telegram", post_id)
         return
     except Exception as exc:  # noqa: BLE001
-        await _finish_failed(bot, job_id, f"{exc.__class__.__name__}: {exc}", attempts, final=False)
+        msg = f"{exc.__class__.__name__}: {exc}"
+        await _finish_failed(bot, job_id, msg, attempts, final=False)
+        if any(mark in msg for mark in ("EntityTooLarge", "FileIsTooBig")):
+            await purge_post_media(post_id)
+            log.info("пост %s: медиа удалены с диска после 413 от Telegram", post_id)
         return
 
     async with session_scope() as session:

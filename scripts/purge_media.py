@@ -20,13 +20,18 @@ from app.services.publishing import _media_root
 TERMINAL = ("UNSUITABLE", "REJECTED", "DEDUPLICATED", "FAILED")
 
 
-async def _terminal_files(root, days: int) -> set:
+async def _terminal_files(root, days: int, published_days: int = 0) -> set:
+    cond = ("p.status::text = any(:st) "
+            "and p.created_at < now() - make_interval(days => :d)")
+    params = {"st": list(TERMINAL), "d": days}
+    if published_days:
+        cond += (" or (p.status::text = 'PUBLISHED' "
+                 "and p.created_at < now() - make_interval(days => :pd))")
+        params["pd"] = published_days
     async with session_scope() as session:
         rows = (await session.execute(text(
             "select m.local_path, m.preview_path from media_items m "
-            "join posts p on p.id = m.post_id "
-            "where p.status::text = any(:st) and p.created_at < now() - make_interval(days => :d)"),
-            {"st": list(TERMINAL), "d": days})).all()
+            "join posts p on p.id = m.post_id where " + cond), params)).all()
     out = set()
     for local_path, preview_path in rows:
         for rel in (local_path, preview_path):
@@ -49,10 +54,13 @@ async def main() -> None:
     parser.add_argument("--days", type=int, default=3,
                         help="возраст поста в терминальном статусе (дней)")
     parser.add_argument("--apply", action="store_true", help="реально удалять (иначе dry-run)")
+    parser.add_argument("--published-days", type=int, default=0,
+                        help="также удалять медиа опубликованных постов старше N дней "
+                             "(0 = не трогать; повторная публикация таких постов уйдёт без медиа)")
     args = parser.parse_args()
 
     root = _media_root()
-    terminal = await _terminal_files(root, args.days)
+    terminal = await _terminal_files(root, args.days, args.published_days)
     known = await _known_rels()
     orphans = {p for p in root.rglob("*") if p.is_file() and str(p.relative_to(root)) not in known}
     targets = sorted(terminal | orphans)
