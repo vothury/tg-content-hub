@@ -25,7 +25,7 @@ MEDIA_TEXT_FLOOR = 0.20  # минимальное совпадение кано�
 
 _FACT_QUOTED = re.compile(r"«([^»]+)»")
 _FACT_NAME = re.compile(r"[А-ЯЁA-Z][а-яёa-z]+(?: [А-ЯЁA-Z][а-яёa-z]+){0,2}")
-_FACT_DATE = re.compile(r"\d{1,2}\.\d{1,2}\.\d{4}|\d{4}-\d{2}-\d{2}|\d{1,2} [а-яё]+ \d{4}|\d{4}")
+_FACT_DATE = re.compile(r"\d{1,2}\.\d{1,2}\.\d{4}|\d{4}-\d{2}-\d{2}|\d{1,2} [а-яё]+ \d{4}")
 
 
 def _fact_tokens(text: str) -> set[str]:
@@ -37,8 +37,8 @@ def _fact_tokens(text: str) -> set[str]:
 
 def _fact_sim(a: str, b: str) -> float:
     ta, tb = _fact_tokens(a), _fact_tokens(b)
-    if not ta or not tb:
-        return 0.0
+    if len(ta) < 2 or len(tb) < 2:
+        return 0.0   # единичный якорь (общий год, одно имя) — не признак дубля
     return len(ta & tb) / min(len(ta), len(tb))
 
 
@@ -119,7 +119,7 @@ async def _log_confirm_call(post_id, model, messages, resp, ok, error, same) -> 
         await session.commit()
 
 
-async def _confirm_same(a: str, b: str, post_id: int | None = None) -> bool:
+async def _confirm_same(a: str, b: str, post_id: int | None = None) -> bool | None:
     """Сверка ПОЛНЫХ текстов: та же новость или разные факты при общем поводе.
 
     Модель и провайдеры настраиваются отдельно (по умолчанию — модель очистки).
@@ -154,8 +154,8 @@ async def _confirm_same(a: str, b: str, post_id: int | None = None) -> bool:
             if attempt == 1:
                 await asyncio.sleep(20)
     await _log_confirm_call(post_id, model, messages, None, False, last_error, None)
-    log.warning("dedup-confirm не ответил после 2 попыток — оставляем лексическое решение")
-    return True
+    log.warning("dedup-confirm не ответил после 2 попыток — решение примет вызывающий код")
+    return None
 
 
 async def run_semantic_dedup(post_id: int) -> bool:
@@ -243,8 +243,12 @@ async def run_semantic_dedup(post_id: int) -> bool:
                                     "cos": round(cos, 3), "cont": round(cont, 3),
                                     "fact": round(fact, 3),
                                     "text_a": new_full[:120], "text_b": c_full[:120]}
-                    if same:
+                    lexical_strong = cos >= cos_min or cont >= cont_min
+                    fact_ok = fact >= fact_min and (cos >= 0.25 or cont >= 0.25)
+                    if same is True and (lexical_strong or fact_ok):
                         dup_of, reason = c.id, "canonical"
+                    elif same is None and lexical_strong:
+                        dup_of, reason = c.id, "canonical"   # модель недоступна — доверяем только сильной лексике
             if dup_of is not None:
                 break
 

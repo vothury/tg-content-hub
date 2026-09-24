@@ -281,6 +281,7 @@ class Post(Base):
     published_text: Mapped[str | None] = mapped_column(Text)
     published_links: Mapped[list | None] = mapped_column(JSONB)
     curated: Mapped[bool] = mapped_column(default=False)  # создан вручную пересылкой в приёмник
+    sensitive: Mapped[bool] = mapped_column(default=False)  # есть слова из чувствительного списка
 
     # Публикация автопилотом + причина/заметка двойной проверки
     autopilot: Mapped[bool] = mapped_column(default=False)

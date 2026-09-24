@@ -19,7 +19,7 @@ from sqlalchemy import select
 from app.db.enums import EventActor, PostStatus
 from app.db.models import MediaItem, Post, PostEvent, Source
 from app.db.session import session_scope
-from app.services.settings import Keys, get_setting
+from app.services.settings import Keys, get_setting, is_sensitive_text, sensitive_words Keys, get_setting
 from app.services.dedup import _hamming
 
 log = logging.getLogger(__name__)
@@ -262,6 +262,28 @@ async def run_prefilter(post_id: int) -> None:
             await session.commit()
             log.info("пост %s: отсечён технически — анонс мероприятия (%s)", post.id, ev)
             return
+
+        # Чувствительная лексика: провайдеры обрывают рассуждения на таких словах.
+        # Без заданной llm_sensitive_model семантику не запускаем — только ручное решение.
+        words = await sensitive_words(session)
+        if is_sensitive_text(post.normalized_text or post.original_text or "", words):
+            post.sensitive = True
+            sm = str(await get_setting(session, Keys.LLM_SENSITIVE_MODEL) or "").strip()
+            if not sm:
+                post.status = PostStatus.NEEDS_MANUAL_REVIEW
+                post.verdict_reason = ("чувствительная лексика: семантика отключена — "
+                                       "решите вручную или задайте «LLM: модель для чувствительных постов»")
+                session.add(PostEvent(
+                    post_id=post.id, actor=EventActor.SYSTEM, action="sensitive_manual",
+                    from_status=PostStatus.NEW.value,
+                    to_status=PostStatus.NEEDS_MANUAL_REVIEW.value))
+                await session.commit()
+                log.info("пост %s: чувствительная лексика — только ручное решение", post.id)
+                return
+            session.add(PostEvent(
+                post_id=post.id, actor=EventActor.SYSTEM, action="sensitive_route",
+                details={"model": sm}))
+            log.info("пост %s: чувствительная лексика — семантика через %s", post.id, sm)
 
         has_media = (
             await session.execute(

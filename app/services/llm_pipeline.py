@@ -197,6 +197,16 @@ async def _model_for(key: str) -> str:
         return str(await get_setting(session, key))
 
 
+async def _model_for_post(post, key: str) -> str:
+    """Для чувствительных постов — отдельная модель (если задана), иначе обычная."""
+    if post is not None and getattr(post, "sensitive", False):
+        async with session_scope() as session:
+            sm = str(await get_setting(session, Keys.LLM_SENSITIVE_MODEL) or "").strip()
+        if sm:
+            return sm
+    return await _model_for(key)
+
+
 async def _media_hint(post_id: int) -> str | None:
     async with session_scope() as session:
         rows = (await session.execute(
@@ -330,7 +340,7 @@ async def classify_post(post_id: int) -> None:
 
     async with session_scope() as session:
         verbose = bool(await get_setting(session, Keys.CLASSIFY_VERBOSE))
-    model = await _model_for(Keys.CLASSIFY_MODEL)
+    model = await _model_for_post(post, Keys.CLASSIFY_MODEL)
     providers = await _providers_for(Keys.CLASSIFY_PROVIDERS)
     system_prompt = build_classify_prompt(
         channel_title=channel.title if channel is not None else None,
@@ -739,7 +749,7 @@ async def _aggregate_filter(post_id: int, channel) -> tuple[bool | None, float, 
     topic = (channel.description or "").strip() or "тематика канала"
     accept = (channel.aggregate_accept or "").strip() or accept_default
     reject = (channel.aggregate_reject or "").strip() or reject_default
-    model = await _model_for(Keys.CLASSIFY_MODEL)
+    model = await _model_for_post(post, Keys.CLASSIFY_MODEL)
     providers = await _providers_for(Keys.CLASSIFY_PROVIDERS)
     messages = [
         {"role": "system", "content": AGGREGATE_SYSTEM.format(
@@ -1068,6 +1078,8 @@ async def _ensure_clean_draft(post_id: int) -> None:
     его план проходит сверку «номер + дословный текст», поэтому безопасен.
     Итог = объединение множеств удаляемых строк; события clean_llm_extra позволяют
     дообучать шаблоны на пойманных моделью новых вариантах.
+    Для чувствительных постов (post.sensitive) обе ступени очистки заменяются на
+    llm_sensitive_model (если задана) — там, где базовые модели обрывают рассуждения.
     """
     async with session_scope() as session:
         post = await session.get(Post, post_id)
@@ -1081,6 +1093,7 @@ async def _ensure_clean_draft(post_id: int) -> None:
             return  # пересылка оригинала — текст не трогаем
         source = await session.get(Source, post.source_id) if post.source_id else None
         text = post.draft_text or post.original_text or ""
+        sensitive = bool(getattr(post, "sensitive", False))
     source_username = source.username if source is not None else None
 
     lines = text.split("\n")
@@ -1099,6 +1112,13 @@ async def _ensure_clean_draft(post_id: int) -> None:
         cheap_providers = await _providers_for(Keys.PREFILTER_PROVIDERS)
         async with session_scope() as session:
             fb = str(await get_setting(session, Keys.CLEAN_FALLBACK_MODEL) or "").strip()
+            sm = ""
+            if sensitive:
+                sm = str(await get_setting(session, Keys.LLM_SENSITIVE_MODEL) or "").strip()
+        if sm:
+            cheap_model = sm
+            fb = sm
+            log.info("пост %s: чувствительная лексика — очистка через %s", post_id, sm)
         strong_model = fb or await _model_for(Keys.DOUBLE_CHECK_MODEL)
         strong_providers = await _providers_for(Keys.DOUBLE_CHECK_PROVIDERS)
         for label, model, providers in (("clean", cheap_model, cheap_providers),
@@ -1155,12 +1175,18 @@ async def _ensure_clean_draft(post_id: int) -> None:
 
 
 async def _run_double_check(post_id: int) -> tuple[bool, str]:
+    """Двойная проверка черновика перед автопубликацией.
+
+    Для постов с чувствительной лексикой (post.sensitive) используется отдельная
+    модель llm_sensitive_model (если задана) — там, где базовые модели обрывают
+    рассуждения из-за модерации провайдера.
+    """
     async with session_scope() as session:
         post = await session.get(Post, post_id)
         if post is None:
             return False, "пост не найден"
-        channel = await session.get(TargetChannel, post.target_channel_id) \
-            if post.target_channel_id else None
+        channel = (await session.get(TargetChannel, post.target_channel_id)
+                   if post.target_channel_id else None)
         source = await session.get(Source, post.source_id) if post.source_id else None
         draft = post.draft_text or post.original_text or ""
         verdict = post.verdict_reason or ""
@@ -1174,7 +1200,9 @@ async def _run_double_check(post_id: int) -> tuple[bool, str]:
         strictness = (channel.double_check_fact_strictness
                       if channel is not None and channel.double_check_fact_strictness
                       else settings.double_check_fact_strictness)
-        base = (await get_setting(session, Keys.DOUBLE_CHECK_MODEL)) or settings.effective_revision_model
+
+        base = (await get_setting(session, Keys.DOUBLE_CHECK_MODEL)) \
+            or settings.effective_revision_model
         if online:
             chosen = (await get_setting(session, Keys.DOUBLE_CHECK_ONLINE_MODEL)) or base
             model = chosen + ":online"
@@ -1182,6 +1210,14 @@ async def _run_double_check(post_id: int) -> tuple[bool, str]:
         else:
             model = base
             providers = await _providers_for(Keys.DOUBLE_CHECK_PROVIDERS)
+
+        # Чувствительный пост -> отдельная модель (если задана);
+        # суффикс :online сохраняем, чтобы веб-инструмент остался включён
+        if getattr(post, "sensitive", False):
+            sm = str(await get_setting(session, Keys.LLM_SENSITIVE_MODEL) or "").strip()
+            if sm:
+                model = sm + (":online" if online else "")
+
     media_hint = await _media_hint(post_id)
     messages = [
         {"role": "system", "content": build_double_check_prompt(
@@ -1194,6 +1230,7 @@ async def _run_double_check(post_id: int) -> tuple[bool, str]:
             verdict=verdict or "нет",
             draft=draft[:TEXT_LIMIT])},
     ]
+
     max_attempts = 2
     for attempt in range(1, max_attempts + 1):
         resp, result, call_status, error_text = await _call_and_parse(
@@ -1205,8 +1242,9 @@ async def _run_double_check(post_id: int) -> tuple[bool, str]:
         if resp is not None and resp.cost_usd:
             await guards.add_llm_cost(resp.cost_usd)
         async with session_scope() as session:
-            session.add(_make_call_row(post_id, LLMStage.REVISION, model, DOUBLE_CHECK_VERSION, messages,
-                                       resp, asdict(result) if result else None, call_status, error_text))
+            session.add(_make_call_row(
+                post_id, LLMStage.REVISION, model, DOUBLE_CHECK_VERSION, messages,
+                resp, asdict(result) if result else None, call_status, error_text))
             session.add(PostEvent(
                 post_id=post_id, actor=EventActor.SYSTEM, action="double_check_attempt",
                 details={"attempt": attempt,
@@ -1218,7 +1256,8 @@ async def _run_double_check(post_id: int) -> tuple[bool, str]:
             if attempt > 1:
                 async with session_scope() as session:
                     session.add(PostEvent(
-                        post_id=post_id, actor=EventActor.SYSTEM, action="double_check_recovered",
+                        post_id=post_id, actor=EventActor.SYSTEM,
+                        action="double_check_recovered",
                         details={"attempt": attempt},
                     ))
                     await session.commit()

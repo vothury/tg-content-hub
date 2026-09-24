@@ -116,6 +116,8 @@ class Keys:
     PREFILTER_SELFPROMO_PATTERNS = "prefilter.selfpromo_patterns"
     PREFILTER_EVENT_MARKERS = "prefilter.event_markers"
     PREFILTER_EVENT_DOMAINS = "prefilter.event_domains"
+    PREFILTER_SENSITIVE_WORDS = "prefilter.sensitive_words"
+    LLM_SENSITIVE_MODEL = "llm.sensitive_model"
     MAX_MEDIA_DOWNLOAD_MB = "reader.max_media_download_mb"
     READER_DEFAULT_SOURCE_INTERVAL_SEC = "reader.default_source_interval_sec"
     AUTOPILOT_MIN_SCORE = "autopilot.min_score"
@@ -193,6 +195,8 @@ _ENV_DEFAULTS: dict[str, Any] = {
     Keys.PREFILTER_SELFPROMO_PATTERNS: settings.prefilter_selfpromo_patterns,
     Keys.PREFILTER_EVENT_MARKERS: settings.prefilter_event_markers,
     Keys.PREFILTER_EVENT_DOMAINS: settings.prefilter_event_domains,
+    Keys.PREFILTER_SENSITIVE_WORDS: settings.prefilter_sensitive_words,
+    Keys.LLM_SENSITIVE_MODEL: settings.llm_sensitive_model,
     Keys.MAX_MEDIA_DOWNLOAD_MB: settings.max_media_download_mb,
     Keys.READER_DEFAULT_SOURCE_INTERVAL_SEC: settings.reader_default_source_interval_sec,
     Keys.AUTOPILOT_MIN_SCORE: settings.autopilot_min_score,
@@ -274,3 +278,15 @@ async def get_providers(session: AsyncSession, key: str) -> dict | None:
     if isinstance(value, dict) and value:
         return value
     return None
+
+
+def is_sensitive_text(text, words) -> bool:
+    low = (text or "").lower()
+    return any(w and w.strip().lower() in low for w in (words or []))
+
+
+async def sensitive_words(session: AsyncSession) -> list:
+    v = await get_setting(session, Keys.PREFILTER_SENSITIVE_WORDS)
+    if isinstance(v, str):
+        v = [x.strip() for x in v.split(",") if x.strip()]
+    return [str(x).strip().lower() for x in (v or []) if str(x).strip()]
