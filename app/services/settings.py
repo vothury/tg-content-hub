@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import ast
 import json
 import logging
 from typing import Any
@@ -14,6 +15,48 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 
 log = logging.getLogger(__name__)
+
+
+def repair_list(value, depth: int = 0) -> list:
+    """Приводит любое вложенное/битое представление списка к плоскому списку строк.
+
+    Обрабатывает: чистый список, JSON-строку, repr-строку и «массив фрагментов»,
+    который получается, если repr списка разрезали по запятым.
+    """
+    if depth > 8 or value is None:
+        return []
+    if isinstance(value, (int, float)):
+        return [str(value)]
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return []
+        if s[0] in "[{":
+            for loader in (json.loads, ast.literal_eval):
+                try:
+                    return repair_list(loader(s), depth + 1)
+                except Exception:  # noqa: BLE001
+                    continue
+            return []
+        t = s.strip("'\"").strip()
+        return [t] if t and not set(t) & set("[]{}") else []
+    if isinstance(value, (list, tuple)):
+        items = list(value)
+        if items and all(isinstance(x, str) for x in items):
+            joined = ", ".join(items)
+            for loader in (json.loads, ast.literal_eval):
+                try:
+                    return repair_list(loader(joined), depth + 1)
+                except Exception:  # noqa: BLE001
+                    continue
+        out, seen = [], set()
+        for x in items:
+            for t in repair_list(x, depth + 1):
+                if t not in seen:
+                    seen.add(t)
+                    out.append(t)
+        return out
+    return []
 
 
 class Keys:
@@ -203,6 +246,7 @@ async def get_providers(session: AsyncSession, key: str) -> dict | None:
             log.warning("настройка %s: некорректный JSON — предпочтение провайдеров игнорируется", key)
             return None
     if isinstance(value, list):
+        value = repair_list(value)
         return {"order": value, "allow_fallbacks": True} if value else None
     if isinstance(value, dict) and value:
         return value
