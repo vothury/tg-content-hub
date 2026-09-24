@@ -295,8 +295,50 @@ def _post_url(entity, message_id: int) -> str | None:
     return None
 
 
-async def _persist_unit(client, snap: SourceSnapshot, entity, unit) -> int | None:
+_SOURCE_PEER_IDS: set = set()
+
+
+async def _load_source_peer_ids() -> set:
+    """telegram_id всех подключённых источников — чтобы узнавать «свои» пересылки."""
+    global _SOURCE_PEER_IDS
+    async with session_scope() as session:
+        rows = (await session.execute(
+            select(Source.telegram_id).where(Source.telegram_id.isnot(None)))).scalars().all()
+    _SOURCE_PEER_IDS = {int(r) for r in rows if r}
+    return _SOURCE_PEER_IDS
+
+
+def _forward_origin_id(msg) -> int | None:
+    """Числовой id канала/пользователя-отправителя пересылки (None, если не пересылка)."""
+    fwd = getattr(msg, "forward", None) or getattr(msg, "fwd_from", None)
+    if fwd is None:
+        return None
+    for attr in ("chat_id", "channel_id", "user_id"):
+        v = getattr(fwd, attr, None)
+        if isinstance(v, int):
+            return v
+    for attr in ("chat", "from_id"):
+        peer = getattr(fwd, attr, None)
+        if peer is None:
+            continue
+        for sub in ("channel_id", "chat_id", "user_id"):
+            v = getattr(peer, sub, None)
+            if isinstance(v, int):
+                return v
+    return None
+
+
+async def _persist_unit(client, snap: SourceSnapshot, entity, unit,
+                        known_ids: set | None = None) -> int | None:
     first = unit.messages[0]
+
+    # Пересылка из нашего же источника = контент, который у нас уже есть:
+    # пост не создаём и медиа повторно не скачиваем (типовой случай — репосты агрегатора).
+    origin = _forward_origin_id(first)
+    if origin is not None and known_ids and origin in known_ids:
+        log.info("источник #%s: сообщение %s — пересылка из нашего источника, пропускаю",
+                 snap.id, first.id)
+        return None
 
     # Дедупликация до любых затрат на медиа
     async with session_scope() as session:
