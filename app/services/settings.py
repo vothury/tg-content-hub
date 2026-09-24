@@ -91,6 +91,7 @@ class Keys:
     PUBLISH_COMPRESS_TARGET_MB = "publish.compress_target_mb"
     PUBLISH_COMPRESS_MAX_SIDE = "publish.compress_max_side"
     PUBLISH_SKIP_OVERSIZED = "publish.skip_oversized"
+    PUBLISH_STRIP_SOURCE_DECOR = "publish.strip_source_decor"
     EDITORIAL_ENABLED = "editorial.enabled"
     EDITORIAL_CYCLE_TIMES = "editorial.cycle_times"
     EDITORIAL_PUBLISH_WINDOWS = "editorial.publish_windows"
@@ -165,6 +166,7 @@ _ENV_DEFAULTS: dict[str, Any] = {
     Keys.PUBLISH_COMPRESS_TARGET_MB: settings.publish_compress_target_mb,
     Keys.PUBLISH_COMPRESS_MAX_SIDE: settings.publish_compress_max_side,
     Keys.PUBLISH_SKIP_OVERSIZED: settings.publish_skip_oversized,
+    Keys.PUBLISH_STRIP_SOURCE_DECOR: settings.publish_strip_source_decor,
     Keys.EDITORIAL_ENABLED: settings.editorial_enabled,
     Keys.EDITORIAL_CYCLE_TIMES: settings.editorial_cycle_times,
     Keys.EDITORIAL_PUBLISH_WINDOWS: settings.editorial_publish_windows,

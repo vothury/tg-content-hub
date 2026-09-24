@@ -106,6 +106,7 @@ class Settings(BaseSettings):
     publish_compress_target_mb: int = 45 # целевой размер после сжатия
     publish_compress_max_side: int = 1280  # ограничение большей стороны кадра
     publish_skip_oversized: int = 0      # 1 = публиковать без «тяжёлого» медиа, а не падать
+    publish_strip_source_decor: int = 1  # 1 = убирать хэштеги и ссылки-тизеры источника при публикации
 
     # ---- Виртуальная редакция ----
     editorial_enabled: int = 1

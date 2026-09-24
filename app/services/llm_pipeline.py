@@ -93,6 +93,52 @@ _ANY_LINK_RE = re.compile(
 _CTA_RE = re.compile(r"подпис|subscribe|наш канал|наш телеграм|читайте нас|смотрите нас", re.I)
 _SOURCE_LINE_RE = re.compile(r"^\s*\W{0,3}\s*источник\s*[:—-]", re.I)
 
+_HASHTAG_LINE_RE = re.compile(r"^\s*(?:#[\wа-яёА-ЯЁ\-]+)(?:\s+#[\wа-яёА-ЯЁ\-]+)*\s*$")
+_HASHTAG_TAIL_RE = re.compile(r"(?:\s+#[\wа-яёА-ЯЁ\-]+)+\s*$")
+_TEASER_WORD_RE = re.compile(
+    r"подробнее|подробней|читайте|смотрите|слушайте|обсуд|подпис|тут|здесь|чат|буст|boost|"
+    r"наш канал|наш дзен|наш zen|переходи|присоедин", re.I)
+# Личные/UGC-площадки и трафик-ссылки: dzen, pikabu, vk, ok, youtube-КАНАЛ, t.me-чат/boost/invite…
+# (youtube.com/watch и официальные сайты сюда НЕ входят — это контент, а не декор)
+_UGC_HOST_RE = re.compile(
+    r"(?<![a-z0-9\-])(?:dzen\.ru|zen\.yandex\.[a-z]{2,3}|pikabu\.ru|vk\.com|vk\.ru|vkontakte\.ru|"
+    r"ok\.ru|odnoklassniki\.ru|twitter\.com|x\.com|instagram\.com|tiktok\.com|"
+    r"livejournal\.com|t\.me/(?:\+|boost/|joinchat/)|youtube\.com/(?:@|channel/|c/)|"
+    r"youtu\.be/(?:@|channel/)|drive\.google\.com|docs\.google\.com)", re.I)
+
+
+def _line_urls(line: str) -> list:
+    out = [m.group(2) for m in _MD_LINK_FULL_RE.finditer(line)]
+    out += _BARE_URL_RE.findall(line)
+    return [u for u in out if u]
+
+
+def _is_teaser_line(line: str) -> bool:
+    """Строка-тизер: все ссылки ведут на личные/UGC-страницы, остальной текст — обвязка."""
+    urls = _line_urls(line)
+    if not urls or not all(_UGC_HOST_RE.search(u) for u in urls):
+        return False
+    leftover = _MD_LINK_FULL_RE.sub("", line)
+    leftover = _BARE_URL_RE.sub("", leftover)
+    plain = " ".join(re.sub(r"[^\w\s]", " ", leftover).split())
+    if len(plain) <= 20:
+        return True
+    return bool(_TEASER_WORD_RE.search(plain)) and len(plain) <= 60
+
+
+def _strip_source_decor(text: str) -> str:
+    """Убирает хэштеги источника и строки-тизеры; официальный контент не трогает."""
+    lines = [ln for ln in text.split("\n")
+             if not _HASHTAG_LINE_RE.match(ln) and not _is_teaser_line(ln)]
+    res = _HASHTAG_TAIL_RE.sub("", "\n".join(lines)).rstrip()
+    return re.sub(r"\n{3,}", "\n\n", res).strip()
+
+
+async def _strip_decor_enabled() -> bool:
+    async with session_scope() as session:
+        v = await get_setting(session, Keys.PUBLISH_STRIP_SOURCE_DECOR)
+    return True if v is None else bool(int(v))
+    
 
 def _plain_len(s: str) -> int:
     """Длина строки без эмодзи/скобок/пунктуации — для оценки «строка состоит из ссылки»."""
@@ -117,6 +163,9 @@ def _signature_lines(lines: list, source_username: str | None = None) -> list:
     out = []
     for i in nonempty:
         s = lines[i].strip()
+        if _HASHTAG_LINE_RE.match(s) or _is_teaser_line(s):
+            out.append(i + 1)
+            continue
         low = s.lower()
         has_link = bool(_ANY_LINK_RE.search(s))
         if uname and (f"t.me/{uname}" in low or f"@{uname}" in low):
@@ -978,9 +1027,8 @@ def _apply_clean_plan(lines: list, plan: list) -> tuple[list, list, str]:
 
 
 def _finalize_clean(kept: list, text: str):
-    """Дочищает голые url и лишние пустые строки; None, если текст не изменился."""
     kept = [_BARE_URL_RE.sub("", ln).rstrip() for ln in kept]
-    out = re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
+    out = _strip_source_decor("\n".join(kept))
     return out if (out and out != text.strip()) else None
 
 
