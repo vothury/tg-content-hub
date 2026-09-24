@@ -33,7 +33,7 @@ from app.services.times import owner_now
 from app.services.queue import enqueue_post
 from app.services.sources_sync import SourcesFileError, sync_sources
 from app.services.text import html_to_text, make_text_hash, normalize_text
-from app.services import config_yaml, monitor
+from app.services import config_yaml, curation, monitor
 
 
 log = setup_logging("reader")
@@ -748,6 +748,10 @@ async def main() -> None:
                     log.exception("ошибка обработки источника #%s", snap.id)
                 await asyncio.sleep(2)  # щадящая пауза между источниками
             await process_media_refresh(client)
+            try:
+                await curation.process_inboxes(client)
+            except Exception:  # noqa: BLE001 — сбой курирования не останавливает чтение
+                log.exception("сбой курирования — продолжаю читать источники")
             try:
                 await _process_reposts(client)
             except Exception:  # noqa: BLE001 — сбой пересылок не останавливает чтение

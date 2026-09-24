@@ -85,9 +85,14 @@ async def _drop_oversized_media(post_id: int, limit_bytes: int) -> int:
             size = _file_size(root / m.local_path) or (m.size_bytes or 0)
             if size <= limit_bytes:
                 continue
-            for rel in (m.local_path, m.preview_path):
-                if rel:
-                    _safe_unlink(root / rel)
+            shared = (await session.execute(
+                select(MediaItem.id).where(
+                    MediaItem.local_path == m.local_path, MediaItem.id != m.id)
+                .limit(1))).scalar_one_or_none()
+            if shared is None:
+                for rel in (m.local_path, m.preview_path):
+                    if rel:
+                        _safe_unlink(root / rel)
             m.downloaded = False
             m.local_path = None
             m.preview_path = None
@@ -201,18 +206,34 @@ def _media_root() -> Path:
 
 async def purge_post_media(post_id: int) -> None:
     """После публикации файлы медиа не нужны: удаляем с диска.
-    Строки MediaItem (тип, phash) остаются для дедупликации и истории."""
+
+    Строки MediaItem (тип, phash) остаются для дедупликации и истории.
+    Файл НЕ удаляется, если на него ссылается другой пост (курированные клоны
+    используют один и тот же файл) — иначе чистка одного клона сломает другой.
+    """
     root = _media_root()
     async with session_scope() as session:
         rows = (await session.execute(
             select(MediaItem).where(MediaItem.post_id == post_id)
         )).scalars().all()
         paths = [r.local_path for r in rows if r.local_path]
+        ids = [r.id for r in rows]
+        # какие из этих файлов используются ещё кем-то (другой post_id)
+        shared = set()
+        if paths:
+            others = (await session.execute(
+                select(MediaItem.local_path).where(
+                    MediaItem.local_path.in_(paths),
+                    MediaItem.post_id != post_id))).scalars().all()
+            shared = {o for o in others if o}
         for r in rows:
             r.local_path = None
             r.downloaded = False
         await session.commit()
     for rel in paths:
+        if rel in shared:
+            log.info("пост %s: файл %s оставлен на диске — используется другим постом", post_id, rel)
+            continue
         p = root / rel
         try:
             if p.exists():

@@ -53,6 +53,7 @@ class Source(Base):
     username: Mapped[str | None] = mapped_column(String(64), index=True)
     telegram_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     enabled: Mapped[bool] = mapped_column(default=True)
+    manual: Mapped[bool] = mapped_column(default=False)  # создан курированием; sources_sync не трогает
     poll_interval_sec: Mapped[int | None] = mapped_column(Integer)
     backfill_limit: Mapped[int | None] = mapped_column(Integer)
     last_read_message_id: Mapped[int | None] = mapped_column(BigInteger)
@@ -279,6 +280,7 @@ class Post(Base):
     # Что фактически ушло в канал (итоговый текст + ссылки) — для карточки поста
     published_text: Mapped[str | None] = mapped_column(Text)
     published_links: Mapped[list | None] = mapped_column(JSONB)
+    curated: Mapped[bool] = mapped_column(default=False)  # создан вручную пересылкой в приёмник
 
     # Публикация автопилотом + причина/заметка двойной проверки
     autopilot: Mapped[bool] = mapped_column(default=False)

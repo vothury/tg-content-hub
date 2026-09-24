@@ -92,6 +92,8 @@ class Keys:
     PUBLISH_COMPRESS_MAX_SIDE = "publish.compress_max_side"
     PUBLISH_SKIP_OVERSIZED = "publish.skip_oversized"
     PUBLISH_STRIP_SOURCE_DECOR = "publish.strip_source_decor"
+    CURATION_ENABLED = "curation.enabled"
+    CURATION_INBOX_CHANNELS = "curation.inbox_channels"
     EDITORIAL_ENABLED = "editorial.enabled"
     EDITORIAL_CYCLE_TIMES = "editorial.cycle_times"
     EDITORIAL_PUBLISH_WINDOWS = "editorial.publish_windows"
@@ -167,6 +169,8 @@ _ENV_DEFAULTS: dict[str, Any] = {
     Keys.PUBLISH_COMPRESS_MAX_SIDE: settings.publish_compress_max_side,
     Keys.PUBLISH_SKIP_OVERSIZED: settings.publish_skip_oversized,
     Keys.PUBLISH_STRIP_SOURCE_DECOR: settings.publish_strip_source_decor,
+    Keys.CURATION_ENABLED: settings.curation_enabled,
+    Keys.CURATION_INBOX_CHANNELS: settings.curation_inbox_channels,
     Keys.EDITORIAL_ENABLED: settings.editorial_enabled,
     Keys.EDITORIAL_CYCLE_TIMES: settings.editorial_cycle_times,
     Keys.EDITORIAL_PUBLISH_WINDOWS: settings.editorial_publish_windows,

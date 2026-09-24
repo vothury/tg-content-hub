@@ -335,10 +335,11 @@ async def apply_parsed(parsed) -> dict:
                 if src.filters != e["filters"]: src.filters = e["filters"]; changed = True
                 if changed: stats["sources"][1] += 1
         for src in existing_s.values():
+            if getattr(src, "manual", False):
+                continue  # источники курирования (приёмники/оригиналы пересылок) не трогаем
             if src.id not in keep and src.enabled:
                 src.enabled = False; stats["disabled"] += 1
         await session.commit()
-    return stats
 
 
 async def sync_sources(path=DEFAULT_PATH):
