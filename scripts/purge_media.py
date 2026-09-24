@@ -14,13 +14,15 @@ import asyncio
 
 from sqlalchemy import text
 
+from sqlalchemy import text
+
 from app.db.session import session_scope
 from app.services.publishing import _media_root
 
 TERMINAL = ("UNSUITABLE", "REJECTED", "DEDUPLICATED", "FAILED")
 
 
-async def _terminal_files(root, days: int, published_days: int = 0) -> set:
+async def _terminal_files(root, days: int, published_days: int = 0):
     cond = ("p.status::text = any(:st) "
             "and p.created_at < now() - make_interval(days => :d)")
     params = {"st": list(TERMINAL), "d": days}
@@ -30,14 +32,15 @@ async def _terminal_files(root, days: int, published_days: int = 0) -> set:
         params["pd"] = published_days
     async with session_scope() as session:
         rows = (await session.execute(text(
-            "select m.local_path, m.preview_path from media_items m "
+            "select m.id, m.local_path, m.preview_path from media_items m "
             "join posts p on p.id = m.post_id where " + cond), params)).all()
-    out = set()
-    for local_path, preview_path in rows:
+    paths, ids = set(), []
+    for mid, local_path, preview_path in rows:
+        ids.append(mid)
         for rel in (local_path, preview_path):
             if rel:
-                out.add(root / rel)
-    return out
+                paths.add(root / rel)
+    return paths, ids
 
 
 async def _known_rels() -> set:
@@ -60,7 +63,7 @@ async def main() -> None:
     args = parser.parse_args()
 
     root = _media_root()
-    terminal = await _terminal_files(root, args.days, args.published_days)
+    terminal, terminal_ids = await _terminal_files(root, args.days, args.published_days)
     known = await _known_rels()
     orphans = {p for p in root.rglob("*") if p.is_file() and str(p.relative_to(root)) not in known}
     targets = sorted(terminal | orphans)
@@ -89,6 +92,14 @@ async def main() -> None:
                 d.rmdir()
         except OSError:
             pass
+    if terminal_ids:
+        async with session_scope() as session:
+            await session.execute(text(
+                "update media_items set downloaded=false, local_path=null, preview_path=null, "
+                "phash=null, luma_mean=null where id = any(:ids)"), {"ids": terminal_ids})
+            await session.commit()
+        print(f"обнулены ссылки на удалённые файлы у media_items: {len(terminal_ids)} "
+              "(перезапуск поста теперь перескачает медиа)")
     print(f"удалено файлов: {removed}, освобождено: {freed / 1048576:.1f} МБ")
 
 
