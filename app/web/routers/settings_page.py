@@ -9,7 +9,7 @@ from sqlalchemy import select
 from app.config import settings
 from app.db.models import AppSetting, Source, StyleProfile, TargetChannel
 from app.db.session import session_scope
-from app.services.settings import Keys, get_setting
+from app.services.settings import Keys, get_setting, repair_list
 from app.web.auth import csrf_protect, get_csrf_token, require_auth
 from app.web.templating import templates
 
@@ -34,10 +34,17 @@ def _providers_to_str(v) -> str:
         except Exception:
             return v
     if isinstance(v, dict):
-        return ", ".join(v.get("order") or [])
+        return ", ".join(repair_list(v.get("order") or []))
     if isinstance(v, list):
-        return ", ".join(v)
+        return ", ".join(repair_list(v))
     return str(v)
+
+
+def _list_to_str(v) -> str:
+    """Список в человекочитаемую строку для input (без repr-скобок и кавычек)."""
+    if v is None or v == "":
+        return ""
+    return ", ".join(repair_list(v))
 
 
 EDITABLE = [
@@ -257,6 +264,9 @@ async def settings_page(request: Request, msg: str = ""):
             if e["type"] == "providers":
                 current = _providers_to_str(current)
                 default = _providers_to_str(default)
+            elif e["type"] == "list":
+                current = _list_to_str(current)
+                default = _list_to_str(default)
             editable.append({
                 "key": e["key"], "label": e["label"], "type": e["type"],
                 "attr": e["attr"], "hint": e.get("hint", ""),
@@ -347,7 +357,7 @@ async def settings_save(request: Request, key: str = Form(...), value: str = For
         except ValueError:
             return RedirectResponse("/settings?msg=ошибка+значения", status_code=303)
     elif vtype == "list":
-        val = [w.strip() for w in val.replace("\n", ",").split(",") if w.strip()]
+        val = repair_list(val)
     elif vtype == "providers":
         order = [w.strip() for w in val.replace("\n", ",").split(",") if w.strip()]
         val = {"order": order, "allow_fallbacks": True} if order else {}
@@ -381,8 +391,8 @@ async def settings_save_all(request: Request):
                     continue
                 val = {"order": order, "allow_fallbacks": True} if order else {}
             elif e["type"] == "list":
-                cur_list = list(current or []) if isinstance(current, list) else []
-                val = [w.strip() for w in raw.replace("\n", ",").split(",") if w.strip()]
+                cur_list = repair_list(current)
+                val = repair_list(raw)
                 if cur_list == val:
                     continue
             elif e["type"] == "number":
