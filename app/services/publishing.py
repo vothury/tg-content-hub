@@ -532,6 +532,10 @@ async def _send_to_channel(bot: Bot, chat_id: int, post: Post,
     чтобы в карточке было видно, что именно опубликовано в канале.
     """
     raw = html_to_text(post.draft_text or post.original_text or "") or ""
+    # Локальный импорт: llm_pipeline импортирует publishing, поэтому на уровне модуля — цикл
+    from app.services.llm_pipeline import _strip_decor_enabled, _strip_source_decor
+    if await _strip_decor_enabled():
+        raw = _strip_source_decor(raw)   # чистим ДО превращения markdown в сущности
     text, entities = _md_to_entities(raw)
     text, entities = await _restore_lost_links(post, text, entities)
     # Ссылки публикации: из markdown исходника + добавленные строкой «Подробнее:»
