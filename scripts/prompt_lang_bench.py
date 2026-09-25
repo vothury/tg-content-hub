@@ -36,10 +36,10 @@ EN_SYSTEM_TEMPLATE = (
 async def _samples(n: int) -> list:
     async with session_scope() as session:
         rows = (await session.execute(
-            select(Post.original_text, Post.id)
+            select(Post.id, Post.original_text)
             .where(Post.original_text.isnot(None))
             .order_by(Post.id.desc()).limit(n))).all()
-    return [(pid, (t or "")[:4000]) for pid, t in rows]
+    return [(int(r[0]), (r[1] or "")[:4000]) for r in rows]
 
 
 async def _run(messages: list, model: str, providers) -> tuple:
