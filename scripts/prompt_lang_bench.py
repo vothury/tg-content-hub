@@ -1,11 +1,13 @@
-"""Замер выгоды перевода промптов на EN: 3 конфигурации на одних и тех же постах.
+"""Бенч выгоды перевода промптов на EN: 3 конфигурации на одних и тех же постах.
 
-A = текущий RU-каркас, рассуждения RU (как сейчас)
+A = текущий RU-каркас, рассуждения RU (как сейчас в бою)
 B = EN-каркас, рассуждения EN, ответ RU
 C = EN-каркас, рассуждения EN, ответ EN
-Печатает input/output/стоимость и экономию B,A и C,A. Расход — несколько центов.
+Печатает input/output/стоимость/finish_reason и экономию B vs A и C vs A.
+Расход — несколько центов (на openrouter/free — 0, но видны токены и обрывы).
 
-Запуск: docker compose run --rm --entrypoint python api scripts/prompt_lang_bench.py [--samples 3] [--model SLUG]
+Запуск:
+    docker compose run --rm --entrypoint python api scripts/prompt_lang_bench.py [--samples 3] [--model SLUG]
 """
 from __future__ import annotations
 
@@ -19,8 +21,10 @@ from app.db.models import Post
 from app.db.session import session_scope
 from app.services.llm.openrouter import chat_completion
 from app.services.llm.prompts import CLASSIFY_USER, build_classify_prompt
-from app.services.settings import Keys, get_setting, get_providers
+from app.services.settings import Keys, get_providers, get_setting
 
+# EN-каркас для замера: ключи JSON описаны словами, чтобы не было конфликта
+# кавычек и фигурных скобок с .format()
 EN_SYSTEM_TEMPLATE = (
     "You are a strict editor-classifier for a Telegram repost hub.\n"
     "Decide whether the source post fits the target channel and score it 0-10.\n"
@@ -34,6 +38,7 @@ EN_SYSTEM_TEMPLATE = (
 
 
 async def _samples(n: int) -> list:
+    """Последние посты с текстом: (post_id, текст[:4000])."""
     async with session_scope() as session:
         rows = (await session.execute(
             select(Post.id, Post.original_text)
@@ -43,10 +48,14 @@ async def _samples(n: int) -> list:
 
 
 async def _run(messages: list, model: str, providers) -> tuple:
-    resp = await chat_completion(messages, model, 1200, temperature=0.2,
+    """Один вызов. Суммарный лимит = финал + рассуждения (как в _call_and_parse),
+    иначе рассуждения съедают весь потолок и output нерепрезентативен."""
+    total = 1200 + (settings.llm_reasoning_max_tokens or 0)
+    resp = await chat_completion(messages, model, total, temperature=0.2,
                                  provider=providers,
                                  reasoning_max_tokens=settings.llm_reasoning_max_tokens)
-    return resp.input_tokens or 0, resp.output_tokens or 0, resp.cost_usd or 0.0
+    return (resp.input_tokens or 0, resp.output_tokens or 0,
+            resp.cost_usd or 0.0, resp.finish_reason or "")
 
 
 async def main() -> None:
@@ -59,30 +68,35 @@ async def main() -> None:
         model = args.model or str(await get_setting(session, Keys.CLASSIFY_MODEL))
         providers = await get_providers(session, Keys.CLASSIFY_PROVIDERS)
     samples = await _samples(args.samples)
+    if not samples:
+        print("нет постов с текстом для бенча")
+        return
     totals = {"A": [0, 0, 0.0], "B": [0, 0, 0.0], "C": [0, 0, 0.0]}
 
     for pid, text in samples:
+        # один и тот же русский заголовок канала во всех конфигурациях:
+        # меряем именно язык каркаса, а не разницу данных
         ru_system = build_classify_prompt(
             channel_title="тест-канал", channel_description=None, relevance=None,
             verbose=False, media_hint=None, source_note=None,
             source_username=None, source_title=None, channel_note=None)
         configs = {
             "A": (ru_system, CLASSIFY_USER.format(text=text)),
-            "B": (EN_SYSTEM_TEMPLATE.format(channel_title="test channel",
+            "B": (EN_SYSTEM_TEMPLATE.format(channel_title="тест-канал",
                                             relevance="none", response_lang="Russian"),
                   CLASSIFY_USER.format(text=text)),
-            "C": (EN_SYSTEM_TEMPLATE.format(channel_title="test channel",
+            "C": (EN_SYSTEM_TEMPLATE.format(channel_title="тест-канал",
                                             relevance="none", response_lang="English"),
                   CLASSIFY_USER.format(text=text)),
         }
         for key, (system, user) in configs.items():
-            inp, out, cost = await _run(
+            inp, out, cost, finish = await _run(
                 [{"role": "system", "content": system}, {"role": "user", "content": user}],
                 model, providers)
             totals[key][0] += inp
             totals[key][1] += out
             totals[key][2] += cost
-            print(f"пост {pid} [{key}] input={inp} output={out} cost=${cost:.6f}")
+            print(f"пост {pid} [{key}] input={inp} output={out} cost=${cost:.6f} finish={finish}")
 
     print("-" * 70)
     for key in ("A", "B", "C"):
@@ -96,5 +110,20 @@ async def main() -> None:
         dc = (1 - cost / a_cost) * 100 if a_cost else 0
         print(f"экономия {key} vs A: input {di:.1f}%, output {do:.1f}%, стоимость {dc:.1f}%")
 
+    # закрываем пул БД, чтобы не оставлять висящих соединений при завершении
+    try:
+        from app.db.session import engine
+        await engine.dispose()
+    except Exception:  # noqa: BLE001
+        pass
 
-asyncio.run(main())
+
+if __name__ == "__main__":
+    import os
+    import sys
+    try:
+        # общий таймаут: зависший вызов модели не может держать бенч вечно
+        asyncio.run(asyncio.wait_for(main(), timeout=900))
+    finally:
+        sys.stdout.flush()
+        os._exit(0)  # бенч: гарантированный выход даже при зависших фоновых задачах/пулах
