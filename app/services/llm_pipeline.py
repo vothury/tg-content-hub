@@ -207,6 +207,13 @@ async def _model_for_post(post, key: str) -> str:
     return await _model_for(key)
 
 
+async def _response_lang() -> str:
+    """Язык строковых значений ответов моделей: Russian или English."""
+    async with session_scope() as session:
+        v = str(await get_setting(session, Keys.LLM_RESPONSE_LANG) or "ru").strip().lower()
+    return "Russian" if v in ("ru", "rus", "russian") else "English"
+
+
 async def _media_hint(post_id: int) -> str | None:
     async with session_scope() as session:
         rows = (await session.execute(
@@ -352,6 +359,7 @@ async def classify_post(post_id: int) -> None:
         source_username=source.username if source is not None else None,
         source_title=source.title if source is not None else None,
         channel_note=channel.llm_instructions if channel is not None else None,
+        response_lang=await _response_lang(),
     )
     messages = [
         {"role": "system", "content": system_prompt},

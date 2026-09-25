@@ -118,6 +118,7 @@ class Keys:
     PREFILTER_EVENT_DOMAINS = "prefilter.event_domains"
     PREFILTER_SENSITIVE_WORDS = "prefilter.sensitive_words"
     LLM_SENSITIVE_MODEL = "llm.sensitive_model"
+    LLM_RESPONSE_LANG = "llm.response_lang"
     MAX_MEDIA_DOWNLOAD_MB = "reader.max_media_download_mb"
     READER_DEFAULT_SOURCE_INTERVAL_SEC = "reader.default_source_interval_sec"
     AUTOPILOT_MIN_SCORE = "autopilot.min_score"
@@ -197,6 +198,7 @@ _ENV_DEFAULTS: dict[str, Any] = {
     Keys.PREFILTER_EVENT_DOMAINS: settings.prefilter_event_domains,
     Keys.PREFILTER_SENSITIVE_WORDS: settings.prefilter_sensitive_words,
     Keys.LLM_SENSITIVE_MODEL: settings.llm_sensitive_model,
+    Keys.LLM_RESPONSE_LANG: settings.llm_response_lang,
     Keys.MAX_MEDIA_DOWNLOAD_MB: settings.max_media_download_mb,
     Keys.READER_DEFAULT_SOURCE_INTERVAL_SEC: settings.reader_default_source_interval_sec,
     Keys.AUTOPILOT_MIN_SCORE: settings.autopilot_min_score,
