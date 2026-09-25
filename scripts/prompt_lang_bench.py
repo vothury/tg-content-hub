@@ -25,10 +25,11 @@ EN_SYSTEM_TEMPLATE = (
     "You are a strict editor-classifier for a Telegram repost hub.\n"
     "Decide whether the source post fits the target channel and score it 0-10.\n"
     "Channel: {channel_title}. Topic relevance notes: {relevance}.\n"
-    "Return ONLY JSON: {{"canonical": str, "suitable": bool, "score": number, "
-    "category": str, "reason": str, "risks": [str]}}.\n"
+    "Return ONLY JSON with keys: canonical (str), suitable (bool), score (number), "
+    "category (str), reason (str), risks (list of str).\n"
     "LANGUAGE RULES: think and reason in English; write JSON string values in "
-    "{response_lang}; canonical MUST stay in the source text language; ONLY valid JSON.\n"
+    "{response_lang}; canonical MUST stay in the same language as the source text; "
+    "return ONLY valid JSON, no markdown fences.\n"
 )
 
 
