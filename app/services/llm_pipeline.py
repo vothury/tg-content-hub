@@ -86,7 +86,7 @@ TEXT_LIMIT = 6000  #Очень длинные исходники усекаем 
 # Голые url вне markdown-ссылок: удаляются кодом, а не моделью
 _BARE_URL_RE = re.compile(r"(?<!\]\()(?<!\()(?:https?://|t\.me/|telegram\.me/)[^\s)\]]+")
 
-_MD_LINK_FULL_RE = re.compile(r"\[[^\]]*\]\([^)]*\)")
+_MD_LINK_FULL_RE = re.compile(r"\[([^\]]*)\]\(([^)]*)\)")
 _TG_LINK_RE = re.compile(r"(?:https?://)?(?:t\.me|telegram\.me)/[\w+/\-]+", re.I)
 _ANY_LINK_RE = re.compile(
     r"https?://\S+|(?:t\.me|telegram\.me)/[\w+/\-]+|@[A-Za-z0-9_]{4,}", re.I)
