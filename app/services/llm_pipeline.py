@@ -92,8 +92,6 @@ _NO_REASONING_DIRECTIVE = (
     "already analyzed. JSON only, no extra text, no markdown fences."
 )
 
-_BAD_MODELS: set = set()   # модели, пойманные на зацикле или ответе модерации вместо JSON
-
 # Голые url вне markdown-ссылок: удаляются кодом, а не моделью
 _BARE_URL_RE = re.compile(r"(?<!\]\()(?<!\()(?:https?://|t\.me/|telegram\.me/)[^\s)\]]+")
 
@@ -349,9 +347,6 @@ def _make_call_row(post_id, stage, model, prompt_version, messages, resp, parsed
     )
 
 
-_LOOPING_MODELS: set = set()
-
-
 def _is_reasoning_loop(resp, total_cap: int) -> bool:
     """Дегенеративный зацикл: выход съел ~весь лимит, финального ответа нет."""
     if resp is None or getattr(resp, "finish_reason", None) != "length":
@@ -381,7 +376,6 @@ async def _call_and_parse(messages, model, max_tokens, temperature, schema, prov
                                      temperature=temperature,
                                      provider=provider, reasoning_max_tokens=reason_cap)
         if _is_reasoning_loop(resp, total_cap):
-            _LOOPING_MODELS.add(model)
             raise LLMParseError("reasoning loop: модель зациклилась на повторе и исчерпала лимит без ответа")
         result = schema.from_response(resp.content)
     except OpenRouterError as exc:
@@ -824,9 +818,7 @@ async def _call_with_fallback(messages, model, max_tokens, temperature, schema,
     Ответ модели модерации и непроходимый JSON считаются сбоем маршрутизации —
     пробуем следующую модель. Возвращает (использованная модель, resp, result, status, error).
     """
-    base_chain = [model] + [m for m in await _fallback_models() if m != model]
-    clean = [m for m in base_chain if m not in _BAD_MODELS]
-    chain = clean + [m for m in base_chain if m not in clean]   # «плохие» модели — в конец
+    chain = [model] + [m for m in await _fallback_models() if m != model]
     used, resp, result = model, None, None
     call_status, error_text = LLMCallStatus.ERROR, "нет ответа"
     for m in chain:
@@ -842,7 +834,6 @@ async def _call_with_fallback(messages, model, max_tokens, temperature, schema,
                         (error_text or "")[:160])
         if resp is not None and is_provider_safety_reply(resp.content):
             result = None
-            _BAD_MODELS.add(m)
             call_status = LLMCallStatus.PARSE_ERROR
             error_text = f"модель {m} вернула ответ модерации: {resp.content[:60]!r}"
             log.warning("llm: %s — ответ модели модерации вместо JSON, пробуем следующую", m)
