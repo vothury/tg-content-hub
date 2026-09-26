@@ -350,6 +350,17 @@ async def watch_models() -> int:
                              model, _label(e), e.get("web_search") or 0.0)
                 points.append((model, _label(e), e))
 
+    # В одном цикле может быть несколько эндпоинтов с одинаковой меткой (model, provider)
+    # (разные квантования): оставляем самый дешёвый — иначе точки сравниваются друг с другом
+    # внутри цикла и рождают ложные алерты, а ряды прыгают между циклами.
+    best: dict = {}
+    for model, provider, cur in points:
+        key = (model, provider)
+        old = best.get(key)
+        if old is None or (cur["prompt"] + cur["completion"]) < (old[2]["prompt"] + old[2]["completion"]):
+            best[key] = (model, provider, cur)
+    points = list(best.values())
+
     now = datetime.now(timezone.utc)
     created = 0
     async with session_scope() as session:
