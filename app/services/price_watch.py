@@ -30,6 +30,37 @@ MODELS_URL = "https://openrouter.ai/api/v1/models"
 ENDPOINTS_URL = "https://openrouter.ai/api/v1/models/{author}/{slug}/endpoints"
 POOLED = {"openrouter/free", "openrouter/auto"}
 
+_MODEL_SETTING_KEYS = (
+    Keys.CLASSIFY_MODEL, Keys.REWRITE_MODEL, Keys.REVISION_MODEL,
+    Keys.DOUBLE_CHECK_MODEL, Keys.DOUBLE_CHECK_ONLINE_MODEL,
+    Keys.PREFILTER_MODEL, Keys.CLEAN_FALLBACK_MODEL, Keys.LLM_SENSITIVE_MODEL,
+    Keys.LLM_FALLBACK_MODELS,
+)
+
+
+def _clean_slug(s: str) -> str:
+    """'~slug:online' и пробелы -> канонический slug; пусто -> ''."""
+    s = (s or "").strip().lstrip("~")
+    if ":online" in s:
+        s = s.split(":online")[0]
+    return s.strip()
+
+
+async def _models_from_settings() -> list:
+    """Все модели, реально используемые стадиями (в т.ч. списки через запятую)."""
+    async with session_scope() as session:
+        out: list = []
+        for key in _MODEL_SETTING_KEYS:
+            raw = await get_setting(session, key)
+            if raw is None:
+                continue
+            items = [str(x) for x in raw] if isinstance(raw, list) else str(raw).split(",")
+            for it in items:
+                slug = _clean_slug(it)
+                if slug and slug not in POOLED and slug not in out:
+                    out.append(slug)   # роутер-пулы (openrouter/free) не имеют своей цены
+        return out
+
 # пары «модель стадии -> закреплённые провайдеры стадии»
 STAGE_PAIRS = (
     ("CLASSIFY_MODEL", "CLASSIFY_PROVIDERS"),
@@ -55,7 +86,7 @@ def _valid(model: str) -> bool:
 
 def _pct(old: float, new: float) -> float:
     if not old:
-        return 0.0 if not new else 100.0   # платная опция появилась там, где было 0
+        return 100.0 if new else 0.0   # модель была бесплатной и стала платной = +100%
     return round((new - old) / old * 100.0, 1)
 
 
@@ -318,6 +349,8 @@ async def watch_models() -> int:
     if not enabled:
         return 0
     targets = await _watched_targets()
+    for slug in await _models_from_settings():
+        targets.setdefault(slug, set())   # наблюдение за каждой моделью из настроек стадий
     if not targets:
         return 0
     try:
