@@ -3,7 +3,7 @@
 LANGUAGE_RULES = (
     "LANGUAGE RULES: think and reason in English, briefly. "
     "Write final JSON string values in {response_lang}. "
-    "EXCEPTIONS: \"canonical\" MUST be in the same language as the source text; "
+    "EXCEPTIONS: \"canonical\" and \"draft\" MUST stay in the same language and script as the source text; "
     "any verbatim quoted line must be copied exactly from the source. "
     "Return ONLY valid JSON with English keys, no markdown fences."
 )
@@ -12,7 +12,7 @@ LANGUAGE_RULES = (
 # Классификация (версия 4 — режимы релевантности источника)
 # ---------------------------------------------------------------------------
 
-CLASSIFY_VERSION = "classify-v11"
+CLASSIFY_VERSION = "classify-v12"
 
 CRITERIA = """CATEGORIES — pick exactly one for "category":
 - "ads" — the post's goal is to SELL or drive purchase/visit: promo codes, discounts, "buy", "hurry", bets, affiliate links, "our partner", purchase/ticket links with a call to action, prices paired with a buy call, third-party channel/bot self-advertising, AND EVENT ANNOUNCEMENTS with registration/participation (webinar, live stream, workshop, conference, offline/online meetup): "Регистрация по ссылке".
@@ -101,7 +101,7 @@ Normalize: dates as DD.MM.YYYY; film/studio titles in «…»; names verbatim; A
 For collections: "ПОДБОРКА | type | ~N | gist" (keep the literal token ПОДБОРКА; gist in the source language).
 For trivial posts (emoji, one word) — empty string.
 Do NOT list all elements of lists, do NOT add sources, quotes, emoji or explanations.
-CANONICAL LANGUAGE: always the same language as the source text (Russian text → Russian canonical).
+CANONICAL LANGUAGE/SCRIPT: write canonical in the SAME language AND the SAME script as the source text. Cyrillic source → Cyrillic canonical: names, titles and the action verb exactly as they appear in the source (Russian words, titles in «…»). Transliteration to Latin is FORBIDDEN. Latin source → Latin canonical.
 
 {requirements}
 
@@ -117,7 +117,9 @@ Answer strictly JSON with no text outside it:
   "category": "ok|ads|self_promo|water|off_topic",
   "reason": "<brief reason or empty>",
   "risks": ["..."]
-}}"""
+}}
+
+FINAL SELF-CHECK before answering (silently): (1) the script of "canonical" equals the script of the source text (Cyrillic source → Cyrillic canonical, no transliteration); (2) there is no text outside the JSON."""
 
 CLASSIFY_USER = """Candidate post from the source:
 <source_post>

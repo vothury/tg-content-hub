@@ -236,6 +236,26 @@ def _has_cjk(text: str | None) -> bool:
     return bool(text and _CJK_RE.search(text))
 
 
+def _script_kind(s: str) -> str:
+    """Преобладающая графика текста: cyr | lat | none."""
+    cyr = sum(1 for ch in (s or "") if "Ѐ" <= ch <= "ӿ")
+    lat = sum(1 for ch in (s or "") if ("a" <= ch <= "z") or ("A" <= ch <= "Z"))
+    if not cyr and not lat:
+        return "none"
+    return "cyr" if cyr >= lat else "lat"
+
+
+def _canonical_script_mismatch(source: str, canonical: str) -> bool:
+    return _script_kind(source) == "cyr" and _script_kind(canonical) == "lat"
+
+
+def _canonical_reminder(source: str) -> str:
+    script = "Cyrillic" if _script_kind(source) == "cyr" else "Latin"
+    return (f"CRITICAL: the \"canonical\" field MUST use the same script as the source text: "
+            f"{script}. Copy names, titles and the action verb exactly as they appear in the "
+            f"source; transliteration is FORBIDDEN. Answer JSON only.")
+
+
 async def _translate_to_russian(text: str, model: str, providers) -> tuple[str | None, "LLMResponse | None"]:
     """Дешёвый перевод причины на русский, если модель ответила иероглифами."""
     messages = [
@@ -373,6 +393,17 @@ async def classify_post(post_id: int) -> None:
             None, settings.llm_reasoning_max_tokens,
         )
         if result is not None and call_status is LLMCallStatus.OK:
+            # Слабая модель могла транслитерировать канон: один повтор с напоминанием
+            if _canonical_script_mismatch(original_text, result.canonical or "") and attempt == 1:
+                messages.append({"role": "system", "content": _canonical_reminder(original_text)})
+                async with session_scope() as session:
+                    session.add(PostEvent(
+                        post_id=post_id, actor=EventActor.SYSTEM, action="canonical_lang_retry",
+                        details={"attempt": attempt}))
+                    await session.commit()
+                log.warning("пост %s: canonical пришёл не в той графике — повтор с напоминанием",
+                            post_id)
+                continue
             break
         if attempt == 1:
             async with session_scope() as session:
@@ -385,6 +416,14 @@ async def classify_post(post_id: int) -> None:
             log.warning("пост %s: классификация не удалась (%s) — повтор через 60 сек",
                         post_id, error_text)
             await asyncio.sleep(60)
+
+    if result is not None and _canonical_script_mismatch(original_text, result.canonical or ""):
+        async with session_scope() as session:
+            session.add(PostEvent(
+                post_id=post_id, actor=EventActor.SYSTEM, action="canonical_lang_mismatch",
+                details={"canonical": (result.canonical or "")[:120]}))
+            await session.commit()
+        log.warning("пост %s: canonical остался не в той графике после повтора", post_id)
 
     # Языковой барьер: если причина пришла иероглифами — переводим тем же дешёвым вызовом
     translate_resp = None
