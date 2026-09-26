@@ -14,6 +14,7 @@ import re
 import time
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from telethon.tl.types import PeerChannel
 
 from app.db.enums import EventActor, PostStatus
@@ -276,7 +277,14 @@ async def _process_one_inbox(client, R, inbox: str, targets: dict) -> None:
                             original_text=text, normalized_text=normalized, text_hash=thash,
                             status=PostStatus.NEW, source_published_at=first.date, curated=True)
                 session.add(post)
-                await session.flush()
+                try:
+                    await session.flush()
+                except IntegrityError:
+                    await session.rollback()
+                    log.warning("курирование: пост для %s уже существует "
+                                "(источник %s, сообщение %s) — пропуск цели",
+                                tgt, origin_src_id, first.id)
+                    continue
                 for row in media_rows:
                     session.add(MediaItem(post_id=post.id, **row))
                 session.add(PostEvent(post_id=post.id, actor=EventActor.OWNER, action="curated",

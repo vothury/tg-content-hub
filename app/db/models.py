@@ -250,7 +250,7 @@ class Post(Base):
 
     __tablename__ = "posts"
     __table_args__ = (
-        UniqueConstraint("source_id", "source_message_id", name="uq_posts_source_message"),
+        UniqueConstraint("source_id", "source_message_id", "target_channel_id", name="uq_posts_source_message_target"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

@@ -807,7 +807,7 @@ async def _fallback_models() -> list:
         raw = [x.strip() for x in raw.split(",") if x.strip()]
     out = []
     for x in (raw or []):
-        s = str(x).strip()
+        s = str(x).strip().lstrip("~")   # ~ — маршрутный маркер reader'а, не часть slug'а
         if not s:
             continue
         if _MODEL_SLUG_RE.match(s):
