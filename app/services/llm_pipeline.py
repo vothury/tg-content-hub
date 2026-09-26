@@ -82,6 +82,7 @@ from app.services.dedup import run_semantic_dedup
 log = logging.getLogger(__name__)
 
 TEXT_LIMIT = 6000  #Очень длинные исходники усекаем до вызова модели
+REASONING_HARD_CAP = 4000  # жёсткий потолок бюджета рассуждений: защита от опечаток в настройках и от зациклов
 
 # Голые url вне markdown-ссылок: удаляются кодом, а не моделью
 _BARE_URL_RE = re.compile(r"(?<!\]\()(?<!\()(?:https?://|t\.me/|telegram\.me/)[^\s)\]]+")
@@ -320,6 +321,19 @@ def _make_call_row(post_id, stage, model, prompt_version, messages, resp, parsed
     )
 
 
+_LOOPING_MODELS: set = set()
+
+
+def _is_reasoning_loop(resp, total_cap: int) -> bool:
+    """Дегенеративный зацикл: выход съел ~весь лимит, финального ответа нет."""
+    if resp is None or getattr(resp, "finish_reason", None) != "length":
+        return False
+    if (resp.content or "").strip():
+        return False
+    out = resp.output_tokens or 0
+    return bool(total_cap) and out >= int(total_cap * 0.9)
+
+
 async def _call_and_parse(messages, model, max_tokens, temperature, schema, provider=None,
                           reasoning_max_tokens: int | None = None):
     """Вызов модели + парсинг. Возвращает (ответ, результат, статус, текст ошибки)."""
@@ -330,9 +344,17 @@ async def _call_and_parse(messages, model, max_tokens, temperature, schema, prov
     try:
         # max_tokens = лимит финального ответа стадии + бюджет рассуждений:
         # рассуждения тарифицируются внутри max_tokens, ответ не должен голодать
-        resp = await chat_completion(messages, model, max_tokens + (reasoning_max_tokens or 0),
+        reason_cap = min(reasoning_max_tokens or 0, REASONING_HARD_CAP)
+        if (reasoning_max_tokens or 0) > REASONING_HARD_CAP:
+            log.warning("llm: бюджет рассуждений %d урезан до %d (защита от обрыва и расхода)",
+                        reasoning_max_tokens, REASONING_HARD_CAP)
+        total_cap = max_tokens + reason_cap
+        resp = await chat_completion(messages, model, total_cap,
                                      temperature=temperature,
-                                     provider=provider, reasoning_max_tokens=reasoning_max_tokens)
+                                     provider=provider, reasoning_max_tokens=reason_cap)
+        if _is_reasoning_loop(resp, total_cap):
+            _LOOPING_MODELS.add(model)
+            raise LLMParseError("reasoning loop: модель зациклилась на повторе и исчерпала лимит без ответа")
         result = schema.from_response(resp.content)
     except OpenRouterError as exc:
         call_status, error_text = LLMCallStatus.ERROR, str(exc)
@@ -388,9 +410,11 @@ async def classify_post(post_id: int) -> None:
     resp = result = None
     call_status, error_text = LLMCallStatus.OK, None
     for attempt in (1, 2):
+        reason_budget = (settings.llm_reasoning_max_tokens if attempt == 1
+                         else min(settings.llm_reasoning_max_tokens, 1200))  # повтор дешевле
         model, resp, result, call_status, error_text = await _call_with_fallback(
             messages, model, settings.llm_classify_max_tokens, 0.2, ClassifyResult,
-            None, settings.llm_reasoning_max_tokens,
+            None, reason_budget,
         )
         if result is not None and call_status is LLMCallStatus.OK:
             # Слабая модель могла транслитерировать канон: один повтор с напоминанием
@@ -763,7 +787,9 @@ async def _call_with_fallback(messages, model, max_tokens, temperature, schema,
     Ответ модели модерации и непроходимый JSON считаются сбоем маршрутизации —
     пробуем следующую модель. Возвращает (использованная модель, resp, result, status, error).
     """
-    chain = [model] + [m for m in await _fallback_models() if m != model]
+    base_chain = [model] + [m for m in await _fallback_models() if m != model]
+    clean = [m for m in base_chain if m not in _LOOPING_MODELS]
+    chain = clean + [m for m in base_chain if m not in clean]   # зацикленные — в конец
     used, resp, result = model, None, None
     call_status, error_text = LLMCallStatus.ERROR, "нет ответа"
     for m in chain:
