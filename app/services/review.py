@@ -209,7 +209,15 @@ async def restart_pipeline(post_id: int) -> ActionResult:
 
         media = (await session.execute(
             select(MediaItem).where(MediaItem.post_id == post_id))).scalars().all()
-        if media and any(m.local_path is None for m in media):
+        bad_media = any(m.local_path is None or m.download_error for m in media)
+        # Медиа могли быть удалены ЦЕЛИКОМ (oversized_media_dropped): строк нет,
+        # но перезапуск обязан перескачать их заново, а не публиковать текст
+        oversize_was = (await session.execute(
+            select(PostEvent.id).where(
+                PostEvent.post_id == post_id,
+                PostEvent.action == "oversized_media_dropped").limit(1)
+        )).first() is not None
+        if bad_media or oversize_was:
             for m in media:
                 await session.delete(m)
             post.needs_media_refresh = True

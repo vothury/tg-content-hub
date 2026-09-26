@@ -554,6 +554,16 @@ async def process_media_refresh(client: TelegramClient) -> None:
             entity = await resolve_entity(client, snap)
             msgs = [m for m in await client.get_messages(entity, ids=[msg_id]) if m is not None]
             if not msgs:
+                # оригинал удалён/недоступен: медиа не будет никогда —
+                # снимаем флаг и отдаём пост конвейеру как есть
+                async with session_scope() as session:
+                    p = await session.get(Post, post_id)
+                    if p is not None:
+                        p.needs_media_refresh = False
+                        await session.commit()
+                await enqueue_post(post_id)
+                log.warning("пост %s: оригинал недоступен — перескачивание медиа невозможно",
+                            post_id)
                 continue
             unit = type("Unit", (), {"messages": msgs})()
             rows = await _download_unit_media(client, snap, unit)

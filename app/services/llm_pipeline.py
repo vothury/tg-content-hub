@@ -669,6 +669,11 @@ async def advance_post(post_id: int) -> None:
             src_row = await session.get(Source, post_row.source_id) if post_row is not None else None
         if src_row is not None and src_row.editorial_only:
             return  # сырьё виртуальной редакции: copy-конвейер не трогаем
+            
+        if post_row is not None and post_row.needs_media_refresh:
+            log.info("пост %s: ожидает перескачивания медиа — обработка отложена до refresh",
+                     post_id)
+            return  # reader перескачает медиа и сам поставит пост в очередь
 
         if status is PostStatus.NEW:
             await run_prefilter(post_id)
