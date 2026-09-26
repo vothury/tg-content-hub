@@ -274,6 +274,17 @@ def _canonical_reminder(source: str) -> str:
             f"source; transliteration is FORBIDDEN. Answer JSON only.")
 
 
+_CANON_PLACEHOLDER_RE = re.compile(r"\.?\bYYYY\b", re.I)
+_CANON_PIPE_RE = re.compile(r"\s*\|\s*")
+
+
+def _norm_canonical(s: str) -> str:
+    """Убирает плейсхолдеры года и чистит трубы: «12.11.YYYY |» -> «12.11»."""
+    s = _CANON_PLACEHOLDER_RE.sub("", s or "")
+    s = _CANON_PIPE_RE.sub(" | ", s)
+    return s.strip(" |").strip()
+
+
 async def _translate_to_russian(text: str, model: str, providers) -> tuple[str | None, "LLMResponse | None"]:
     """Дешёвый перевод причины на русский, если модель ответила иероглифами."""
     messages = [
@@ -475,8 +486,8 @@ async def classify_post(post_id: int) -> None:
         translated, translate_resp = await _translate_to_russian(result.reason, model, providers)
         if translated:
             result.reason = translated
-    if result is not None and result.risks:
-        result.risks = [r for r in result.risks if not _has_cjk(r)]
+    if result is not None and result.canonical:
+        result.canonical = _norm_canonical(result.canonical)
     if translate_resp is not None and translate_resp.cost_usd:
         await guards.add_llm_cost(translate_resp.cost_usd)
 

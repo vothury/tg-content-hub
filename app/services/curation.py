@@ -82,13 +82,48 @@ async def inbox_set() -> set:
     return val
 
 
+def _has_media(msg) -> bool:
+    from telethon.tl.types import MessageMediaWebPage
+    if isinstance(getattr(msg, "media", None), MessageMediaWebPage):
+        return False
+    return getattr(msg, "media", None) is not None
+
+
 async def claims(msg) -> bool:
-    """Относится ли сообщение приёмника к курированию: пересылка + валидная подпись-список."""
+    """Сообщение приёмника принадлежит курированию: ЛЮБАЯ пересылка в приёмнике
+    или текстовая декларация списка целевых каналов (её заберёт reader иначе)."""
     fwd = getattr(msg, "forward", None) or getattr(msg, "fwd_from", None)
-    if fwd is None:
+    if fwd is not None:
+        return True
+    if _has_media(msg):
         return False
     caption = getattr(msg, "message", None) or getattr(msg, "text", None)
     return bool(parse_targets(caption, set(await _cached_targets())))
+
+
+async def _pending_get(inbox: str):
+    import json as _json
+    from app.redis_client import get_redis
+    v = await get_redis().get(f"curation:pending:{inbox}")
+    if not v:
+        return None
+    try:
+        d = _json.loads(v)
+        return int(d["id"]), list(d["targets"])
+    except Exception:  # noqa: BLE001
+        return None
+
+
+async def _pending_set(inbox: str, msg_id: int, targets: list) -> None:
+    import json as _json
+    from app.redis_client import get_redis
+    await get_redis().set(f"curation:pending:{inbox}",
+                          _json.dumps({"id": msg_id, "targets": targets}), ex=600)
+
+
+async def _pending_clear(inbox: str) -> None:
+    from app.redis_client import get_redis
+    await get_redis().delete(f"curation:pending:{inbox}")
 
 
 async def _cursor_get(inbox: str) -> int:
@@ -171,9 +206,32 @@ async def _process_one_inbox(client, R, inbox: str, targets: dict) -> None:
     for msg in messages:
         fwd = getattr(msg, "forward", None) or getattr(msg, "fwd_from", None)
         caption = getattr(msg, "message", None) or getattr(msg, "text", None)
-        tg = parse_targets(caption, set(targets))
-        if fwd is None or not tg:
-            continue  # не пересылка или подпись без известных целевых каналов
+        own = parse_targets(caption, set(targets))
+
+        # Декларация: текстовое сообщение без медиа, состоящее из имён целевых каналов.
+        # Запоминаем: следующая пересылка предназначена для этих каналов.
+        if fwd is None and not _has_media(msg) and own:
+            await _pending_set(inbox, msg.id, own)
+            log.info("курирование: %s — декларация целей %s у сообщения %s",
+                     inbox, own, msg.id)
+            continue
+
+        if fwd is None:
+            continue  # обычное сообщение приёмника — его читает reader как источник
+
+        # Цели: из подписи пересылки, иначе из недавней декларации (не дальше 3 сообщений)
+        tg = own
+        if not tg:
+            pend = await _pending_get(inbox)
+            if pend is not None and 0 < msg.id - pend[0] <= 3:
+                tg = pend[1]
+                log.info("курирование: %s — пересылка %s взяла цели из декларации %s: %s",
+                         inbox, msg.id, pend[0], tg)
+            await _pending_clear(inbox)
+        if not tg:
+            log.warning("курирование: пересылка в %s (id %s) без подписи-списка и без "
+                        "декларации рядом — пропуск", inbox, msg.id)
+            continue
 
         origin_entity, orig_msgs = await _origin_messages(client, msg)
         if not orig_msgs:
