@@ -836,6 +836,10 @@ async def _call_with_fallback(messages, model, max_tokens, temperature, schema,
             provider=providers, reasoning_max_tokens=reasoning_max_tokens)
         if resp is not None and resp.cost_usd:
             await guards.add_llm_cost(resp.cost_usd)
+        if call_status is not LLMCallStatus.OK:
+            log.warning("llm: %s — сбой вызова (%s): %s — пробуем следующую модель",
+                        m, call_status.value if call_status else None,
+                        (error_text or "")[:160])
         if resp is not None and is_provider_safety_reply(resp.content):
             result = None
             _BAD_MODELS.add(m)
@@ -845,6 +849,9 @@ async def _call_with_fallback(messages, model, max_tokens, temperature, schema,
             continue
         if result is not None and call_status is LLMCallStatus.OK:
             break
+    if used != chain[0]:
+        log.info("llm: ротация модели %s -> %s (причина у исходной видна в предупреждениях выше)",
+                 chain[0], used)
     return used, resp, result, call_status, error_text
 
 
