@@ -39,8 +39,8 @@ _MODEL_SETTING_KEYS = (
 
 
 def _clean_slug(s: str) -> str:
-    """'~slug:online' и пробелы -> канонический slug; пусто -> ''."""
-    s = (s or "").strip().lstrip("~")
+    """'~slug:online', пробелы, скобки и кавычки вокруг -> канонический slug; пусто -> ''."""
+    s = (s or "").strip().strip("[]\"'").strip().lstrip("~")
     if ":online" in s:
         s = s.split(":online")[0]
     return s.strip()
@@ -55,7 +55,10 @@ async def _models_from_settings() -> list:
             if raw is None:
                 continue
             items = [str(x) for x in raw] if isinstance(raw, list) else str(raw).split(",")
+            parts: list = []
             for it in items:
+                parts.extend(str(it).split(","))   # элемент списка сам может быть строкой-списком
+            for it in parts:
                 slug = _clean_slug(it)
                 if slug and slug not in POOLED and slug not in out:
                     out.append(slug)   # роутер-пулы (openrouter/free) не имеют своей цены
@@ -350,7 +353,16 @@ async def watch_models() -> int:
         return 0
     targets = await _watched_targets()
     for slug in await _models_from_settings():
-        targets.setdefault(slug, set())   # наблюдение за каждой моделью из настроек стадий
+        targets.setdefault(slug, set())
+    # Санитария целей: записи ручного списка могут приходить со скобками/кавычками
+    # или целыми строками-списками — расщепляем до отдельных slug'ов
+    clean_targets: dict = {}
+    for raw_model, pinned in list(targets.items()):
+        for part in str(raw_model).split(","):
+            slug = _clean_slug(part)
+            if slug and slug not in POOLED:
+                clean_targets.setdefault(slug, set()).update(pinned or set())
+    targets = clean_targets
     if not targets:
         return 0
     try:
