@@ -152,7 +152,8 @@ async def chat_completion(
         provider=data.get("provider"),
         input_tokens=input_tokens,
         output_tokens=output_tokens,
-        cost_usd=_price_book.cost(answer_model, input_tokens, output_tokens),
+        cost_usd=(0.0 if str(answer_model).endswith(":free")
+                  else _price_book.cost(answer_model, input_tokens, output_tokens)),
         latency_ms=latency_ms,
         finish_reason=finish_reason,
     )

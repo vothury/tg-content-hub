@@ -203,7 +203,7 @@ async def _get_status(post_id: int) -> PostStatus | None:
 
 async def _model_for(key: str) -> str:
     async with session_scope() as session:
-        return str(await get_setting(session, key))
+        return str(await get_setting(session, key) or "").strip().lstrip("~")
 
 
 async def _model_for_post(post, key: str) -> str:
@@ -337,7 +337,7 @@ def _make_call_row(post_id, stage, model, prompt_version, messages, resp, parsed
         model=model,
         prompt_version=prompt_version,
         request={"messages": messages},
-        response={"content": resp.content, "parsed": parsed, "provider": resp.provider} if resp is not None else None,
+        response={"content": resp.content, "parsed": parsed, "provider": resp.provider, "model": resp.model} if resp is not None else None,
         status=status,
         error=error,
         input_tokens=resp.input_tokens if resp is not None else None,
@@ -823,7 +823,8 @@ async def _call_with_fallback(messages, model, max_tokens, temperature, schema,
     Ответ модели модерации и непроходимый JSON считаются сбоем маршрутизации —
     пробуем следующую модель. Возвращает (использованная модель, resp, result, status, error).
     """
-    chain = [model] + [m for m in await _fallback_models() if m != model]
+    heads = [x.strip() for x in str(model).split(",") if x.strip()]
+    chain = heads + [m for m in await _fallback_models() if m not in heads]
     used, resp, result = model, None, None
     call_status, error_text = LLMCallStatus.ERROR, "нет ответа"
     for m in chain:
@@ -1322,7 +1323,7 @@ async def _run_double_check(post_id: int) -> tuple[bool, str]:
         base = (await get_setting(session, Keys.DOUBLE_CHECK_MODEL)) \
             or settings.effective_revision_model
         if online:
-            chosen = (await get_setting(session, Keys.DOUBLE_CHECK_ONLINE_MODEL)) or base
+            chosen = (str(await get_setting(session, Keys.DOUBLE_CHECK_ONLINE_MODEL) or "").strip().lstrip("~") or base)
             model = chosen + ":online"
             providers = await _providers_for(Keys.DOUBLE_CHECK_ONLINE_PROVIDERS)
         else:
