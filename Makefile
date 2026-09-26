@@ -1,4 +1,4 @@
-.PHONY: up down restart logs ps migrate revision psql health test login source-add source-list source-disable rm_post_true rm_post_false rm_post_status verify verify-full verify-json
+.PHONY: up down restart logs ps migrate revision psql health test login source-add source-list source-disable rm_post_true rm_post_false rm_post_status verify verify-full verify-json is_post_processing wait-idl
 
 up:            ## собрать и запустить всё
 	docker compose up -d --build
@@ -102,3 +102,31 @@ verify-full: ## проверки + внешние запросы OpenRouter + о
 
 verify-json: ## то же, что verify, но вывод в JSON
 	docker compose run --rm --entrypoint python api scripts/verify.py --json
+
+# --- Предохранитель деплоя: посты с неопределившимся статусом ----------------
+# Активно = пост движется по конвейеру/автопилоту/пересылке/публикации.
+# Отложенные и ожидающие владельца статусы деплой НЕ блокируют.
+IDLE_SQL := select coalesce(sum(c),0) from (select count(*) as c from posts where (status in ('NEW','PREFILTERED','LLM_CLASSIFYING','CANDIDATE','REWRITING','REVISION') and updated_at > now() - interval '3 minutes') or (status = 'AWAITING_REVIEW' and updated_at > now() - interval '5 minutes' and exists (select 1 from target_channels tc where tc.id = posts.target_channel_id and tc.autopilot)) or (repost_pending and updated_at > now() - interval '10 minutes') union all select count(*) as c from publish_jobs where state = 'IN_PROGRESS' or (state = 'QUEUED' and coalesce(defer_reason,'') = '') or (state = 'SCHEDULED' and scheduled_at <= now() and coalesce(defer_reason,'') = '')) t
+BUSY_SQL := select id, status::text as what, updated_at from posts where (status in ('NEW','PREFILTERED','LLM_CLASSIFYING','CANDIDATE','REWRITING','REVISION') and updated_at > now() - interval '3 minutes') or (status = 'AWAITING_REVIEW' and updated_at > now() - interval '5 minutes' and exists (select 1 from target_channels tc where tc.id = posts.target_channel_id and tc.autopilot)) or (repost_pending and updated_at > now() - interval '10 minutes') union all select id, 'publish:' || state::text, now() from publish_jobs where state = 'IN_PROGRESS' or (state = 'QUEUED' and coalesce(defer_reason,'') = '') or (state = 'SCHEDULED' and scheduled_at <= now() and coalesce(defer_reason,'') = '') order by 1
+
+# Мгновенная проверка: exit 0 = всё определено (деплоить можно), exit 1 = есть активные
+is_post_processing:
+	@busy=$$(docker compose exec -T postgres psql -U content_hub -d content_hub -Atc "$(IDLE_SQL)"); \
+	if [ "$$busy" != "0" ]; then \
+		echo "⚠️ Постов/задач в активной обработке: $$busy"; \
+		docker compose exec -T postgres psql -U content_hub -d content_hub -c "$(BUSY_SQL)"; \
+		echo "Деплой остановлен: дождитесь определения статусов или используйте make wait-idle."; \
+		exit 1; \
+	else \
+		echo "OK: все посты в определённых статусах — деплой разрешён"; \
+	fi
+
+# Мягкая проверка: ждать определения статусов до 15 минут
+wait-idle:
+	@for i in $$(seq 1 90); do \
+		busy=$$(docker compose exec -T postgres psql -U content_hub -d content_hub -Atc "$(IDLE_SQL)"); \
+		if [ "$$busy" = "0" ]; then echo "idle: все посты в определённых статусах"; exit 0; fi; \
+		echo "ожидание завершения обработки: $$busy (попытка $$i/90)"; sleep 10; \
+	done; \
+	echo "таймаут 15 минут: обработка не завершилась — смотрите вывод ниже и решайте вручную"; \
+	docker compose exec -T postgres psql -U content_hub -d content_hub -c "$(BUSY_SQL)"; exit 1
