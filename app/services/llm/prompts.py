@@ -11,7 +11,9 @@ from __future__ import annotations
 
 LANGUAGE_RULES = (
     "LANGUAGE RULES: think and reason in English, briefly; if you catch yourself "
-    "repeating the same phrase or structure twice, stop reasoning and answer immediately. "
+    "repeating the same phrase or structure twice, stop reasoning and answer immediately; "
+    "if you sense your reasoning is being cut off or interrupted, stop at once and output "
+    "the final JSON with your best judgment. "
     "Write final JSON string values in {response_lang}. "
     "EXCEPTIONS: \"canonical\" and \"draft\" MUST stay in the same language and script as "
     "the source text; any verbatim quoted line must be copied exactly from the source. "

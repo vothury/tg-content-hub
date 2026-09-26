@@ -86,6 +86,14 @@ log = logging.getLogger(__name__)
 TEXT_LIMIT = 6000  #Очень длинные исходники усекаем до вызова модели
 REASONING_HARD_CAP = 4000  # жёсткий потолок бюджета рассуждений: защита от опечаток в настройках и от зациклов
 
+_NO_REASONING_DIRECTIVE = (
+    "IMPORTANT: your reasoning budget is now ZERO. Do not reason any further. "
+    "Output the final JSON immediately, with your best judgment based on what you "
+    "already analyzed. JSON only, no extra text, no markdown fences."
+)
+
+_BAD_MODELS: set = set()   # модели, пойманные на зацикле или ответе модерации вместо JSON
+
 # Голые url вне markdown-ссылок: удаляются кодом, а не моделью
 _BARE_URL_RE = re.compile(r"(?<!\]\()(?<!\()(?:https?://|t\.me/|telegram\.me/)[^\s)\]]+")
 
@@ -419,8 +427,11 @@ async def classify_post(post_id: int) -> None:
     resp = result = None
     call_status, error_text = LLMCallStatus.OK, None
     for attempt in (1, 2):
-        reason_budget = (settings.llm_reasoning_max_tokens if attempt == 1
-                         else min(settings.llm_reasoning_max_tokens, 1200))  # повтор дешевле
+        # Попытка 2: рассуждений нет — весь лимит токенов идёт финальному JSON.
+        # Это спасение вердикта, когда рассуждения обрезаны лимитом или модерацией провайдера.
+        reason_budget = settings.llm_reasoning_max_tokens if attempt == 1 else 0
+        if attempt == 2:
+            messages.append({"role": "system", "content": _NO_REASONING_DIRECTIVE})
         model, resp, result, call_status, error_text = await _call_with_fallback(
             messages, model, settings.llm_classify_max_tokens, 0.2, ClassifyResult,
             None, reason_budget,
@@ -571,10 +582,13 @@ async def rewrite_post(post_id: int) -> None:
     resp = result = None
     call_status, error_text = LLMCallStatus.OK, None
     for attempt in (1, 2):
+        reason_budget = settings.llm_reasoning_rewrite if attempt == 1 else 0
+        if attempt == 2:
+            messages.append({"role": "system", "content": _NO_REASONING_DIRECTIVE})
         resp, result, call_status, error_text = await _call_and_parse(
             messages, model, settings.llm_rewrite_max_tokens, temperature=0.4,
             schema=RewriteResult, provider=providers,
-            reasoning_max_tokens=settings.llm_reasoning_rewrite,
+            reasoning_max_tokens=reason_budget,
         )
         if resp is not None and resp.cost_usd:
             await guards.add_llm_cost(resp.cost_usd)
@@ -800,8 +814,8 @@ async def _call_with_fallback(messages, model, max_tokens, temperature, schema,
     пробуем следующую модель. Возвращает (использованная модель, resp, result, status, error).
     """
     base_chain = [model] + [m for m in await _fallback_models() if m != model]
-    clean = [m for m in base_chain if m not in _LOOPING_MODELS]
-    chain = clean + [m for m in base_chain if m not in clean]   # зацикленные — в конец
+    clean = [m for m in base_chain if m not in _BAD_MODELS]
+    chain = clean + [m for m in base_chain if m not in clean]   # «плохие» модели — в конец
     used, resp, result = model, None, None
     call_status, error_text = LLMCallStatus.ERROR, "нет ответа"
     for m in chain:
@@ -813,6 +827,7 @@ async def _call_with_fallback(messages, model, max_tokens, temperature, schema,
             await guards.add_llm_cost(resp.cost_usd)
         if resp is not None and is_provider_safety_reply(resp.content):
             result = None
+            _BAD_MODELS.add(m)
             call_status = LLMCallStatus.PARSE_ERROR
             error_text = f"модель {m} вернула ответ модерации: {resp.content[:60]!r}"
             log.warning("llm: %s — ответ модели модерации вместо JSON, пробуем следующую", m)
@@ -1323,11 +1338,14 @@ async def _run_double_check(post_id: int) -> tuple[bool, str]:
 
     max_attempts = 2
     for attempt in range(1, max_attempts + 1):
+        reason_budget = ((settings.llm_reasoning_online_check if online
+                          else settings.llm_reasoning_max_tokens) if attempt == 1 else 0)
+        if attempt == 2:
+            messages.append({"role": "system", "content": _NO_REASONING_DIRECTIVE})
         resp, result, call_status, error_text = await _call_and_parse(
             messages, model, settings.llm_rewrite_max_tokens, temperature=0.1,
             schema=DoubleCheckResult, provider=providers,
-            reasoning_max_tokens=(settings.llm_reasoning_online_check if online
-                                  else settings.llm_reasoning_max_tokens),
+            reasoning_max_tokens=reason_budget,
         )
         if resp is not None and resp.cost_usd:
             await guards.add_llm_cost(resp.cost_usd)
