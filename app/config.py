@@ -113,7 +113,8 @@ class Settings(BaseSettings):
     # Чувствительная лексика: слова, из-за которых провайдеры обрывают рассуждения
     prefilter_sensitive_words: list = ["порно"]
     llm_sensitive_model: str = ""   # пусто = чувствительные посты только вручную; иначе — модель без обрывов
-    llm_response_lang: str = "ru"   # ru|en: язык строковых значений ответов моделей
+    # Язык строковых значений ответов моделей (ru|en)
+    llm_response_lang: str = "ru"
 
     # ---- Виртуальная редакция ----
     editorial_enabled: int = 1

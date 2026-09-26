@@ -63,6 +63,8 @@ from app.services.llm.prompts import (
     build_classify_prompt,
     build_style_instructions,
     build_double_check_prompt,
+    LANGUAGE_RULES,
+    with_language_rules,
 )
 from app.services.llm.schemas import (
     ClassifyResult,
@@ -206,6 +208,13 @@ async def _model_for_post(post, key: str) -> str:
         if sm:
             return sm
     return await _model_for(key)
+
+
+async def _response_lang() -> str:
+    """Язык строковых значений ответов моделей: Russian или English."""
+    async with session_scope() as session:
+        v = str(await get_setting(session, Keys.LLM_RESPONSE_LANG) or "ru").strip().lower()
+    return "Russian" if v in ("ru", "rus", "russian") else "English"
 
 
 async def _response_lang() -> str:
@@ -552,7 +561,9 @@ async def rewrite_post(post_id: int) -> None:
 
     model = await _model_for(Keys.REWRITE_MODEL)
     providers = await _providers_for(Keys.REWRITE_PROVIDERS)
-    system_prompt = REWRITE_SYSTEM_TEMPLATE.format(style_instructions=style_instructions)
+    system_prompt = REWRITE_SYSTEM_TEMPLATE.format(
+        style_instructions=style_instructions,
+        language_rules=LANGUAGE_RULES.format(response_lang=await _response_lang()))
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": REWRITE_USER.format(text=original_text)},
@@ -701,7 +712,8 @@ async def revise_draft(post_id: int, comment: str) -> tuple[bool, str]:
     model = await _model_for(Keys.REVISION_MODEL)
     providers = await _providers_for(Keys.REVISION_PROVIDERS)
     messages = [
-        {"role": "system", "content": REVISE_SYSTEM},
+        {"role": "system", "content": REVISE_SYSTEM.format(
+            language_rules=LANGUAGE_RULES.format(response_lang=await _response_lang()))},
         {"role": "user", "content": REVISE_USER.format(draft=draft[:TEXT_LIMIT], comment=comment[:2000])},
     ]
     resp, result, call_status, error_text = await _call_and_parse(
@@ -824,10 +836,13 @@ async def _aggregate_filter(post_id: int, channel) -> tuple[bool | None, float, 
     reject = (channel.aggregate_reject or "").strip() or reject_default
     model = await _model_for_post(post, Keys.CLASSIFY_MODEL)
     providers = await _providers_for(Keys.CLASSIFY_PROVIDERS)
+    lang = await _response_lang()
     messages = [
         {"role": "system", "content": AGGREGATE_SYSTEM.format(
             channel_title=(channel.title or channel.username or "канал"),
-            topic=topic, accept=accept, reject=reject)},
+            topic=topic, accept=accept, reject=reject,
+            response_lang=lang,
+            language_rules=LANGUAGE_RULES.format(response_lang=lang))},
         {"role": "user", "content": AGGREGATE_USER.format(text=text)},
     ]
     model, resp, result, call_status, error_text = await _call_with_fallback(
@@ -1121,7 +1136,8 @@ def _finalize_clean(kept: list, text: str):
 async def _clean_plan_call(post_id: int, listing: str, model: str, providers, label: str):
     """Один вызов модели очистки: план (номера строк + дословный текст)."""
     messages = [
-        {"role": "system", "content": CLEAN_SYSTEM},
+        {"role": "system",
+         "content": with_language_rules(CLEAN_SYSTEM, await _response_lang())},
         {"role": "user", "content": CLEAN_USER.format(listing=listing[:TEXT_LIMIT])},
     ]
     resp, result, call_status, error_text = await _call_and_parse(
@@ -1295,7 +1311,8 @@ async def _run_double_check(post_id: int) -> tuple[bool, str]:
     messages = [
         {"role": "system", "content": build_double_check_prompt(
             title, relevance, online, strictness, media_hint=media_hint,
-            channel_note=channel_note)},
+            channel_note=channel_note,
+            response_lang=await _response_lang())},
         {"role": "user", "content": DOUBLE_CHECK_USER.format(
             channel_description=desc,
             relevance=relevance if relevance is not None else "—",
