@@ -112,6 +112,7 @@ class Keys:
     EDITORIAL_BROWSE_ENABLED = "editorial.browse_enabled"
     AGGREGATE_ACCEPT_DEFAULT = "aggregate.accept_default"
     AGGREGATE_REJECT_DEFAULT = "aggregate.reject_default"
+    AGGREGATE_MAX_TOKENS = "llm.aggregate_max_tokens"
     PREFILTER_MIN_TEXT_LEN = "prefilter.min_text_len"
     PREFILTER_BLACKLIST_WORDS = "prefilter.blacklist_words"
     PREFILTER_SELFPROMO_PATTERNS = "prefilter.selfpromo_patterns"
@@ -193,6 +194,7 @@ _ENV_DEFAULTS: dict[str, Any] = {
     Keys.EDITORIAL_BROWSE_ENABLED: settings.editorial_browse_enabled,
     Keys.AGGREGATE_ACCEPT_DEFAULT: settings.aggregate_accept_default,
     Keys.AGGREGATE_REJECT_DEFAULT: settings.aggregate_reject_default,
+    Keys.AGGREGATE_MAX_TOKENS: settings.llm_aggregate_max_tokens,
     Keys.PREFILTER_MIN_TEXT_LEN: settings.prefilter_min_text_len,
     Keys.PREFILTER_BLACKLIST_WORDS: settings.prefilter_blacklist_words,
     Keys.PREFILTER_SELFPROMO_PATTERNS: settings.prefilter_selfpromo_patterns,

@@ -918,6 +918,7 @@ async def _aggregate_filter(post_id: int, channel) -> tuple[bool | None, float, 
         text = (post.original_text or "")[:TEXT_LIMIT]
         accept_default = str(await get_setting(session, Keys.AGGREGATE_ACCEPT_DEFAULT))
         reject_default = str(await get_setting(session, Keys.AGGREGATE_REJECT_DEFAULT))
+        agg_max_tokens = int(await get_setting(session, Keys.AGGREGATE_MAX_TOKENS))
     topic = (channel.description or "").strip() or "тематика канала"
     accept = (channel.aggregate_accept or "").strip() or accept_default
     reject = (channel.aggregate_reject or "").strip() or reject_default
@@ -937,7 +938,7 @@ async def _aggregate_filter(post_id: int, channel) -> tuple[bool | None, float, 
         {"role": "user", "content": AGGREGATE_USER.format(text=text)},
     ]
     model, resp, result, call_status, error_text = await _call_with_fallback(
-        messages, model, 600, 0.1, ClassifyResult, providers, settings.llm_reasoning_small)
+        messages, model, agg_max_tokens, 0.1, ClassifyResult, providers, settings.llm_reasoning_small)
     async with session_scope() as session:
         session.add(_make_call_row(post_id, LLMStage.CLASSIFY, model, AGGREGATE_VERSION, messages,
                                    resp, asdict(result) if result else None, call_status, error_text))

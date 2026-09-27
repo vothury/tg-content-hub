@@ -87,6 +87,7 @@ class Settings(BaseSettings):
     llm_reasoning_rewrite: int = 2000      # рерайт под стиль / правка ИИ
     llm_reasoning_online_check: int = 2500 # двойная проверка с фактчекингом в интернете
     llm_reasoning_small: int = 300         # чистка, перевод, подтверждение дубля
+    llm_aggregate_max_tokens: int = 1500   # бюджет финального ответа фильтра агрегатора
     publish_dup_recap_window_hours: int = 24
     llm_double_check_max_tokens: int = 800 # токены финального ответа двойной проверки (поверх reasoning)
     clean_fallback_model: str = ""   # очистка подписей, 2-я попытка; пусто = модель двойной проверки

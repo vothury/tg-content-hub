@@ -164,6 +164,8 @@ EDITABLE = [
     # --- Агрегатор ---
     {"key": _k("AGGREGATE_ACCEPT_DEFAULT", "aggregate.accept_default"), "label": "Агрегатор: одобрять (дефолт)", "attr": "aggregate_accept_default", "type": "text",
      "hint": "Что считать релевантным для технических каналов, если у канала не задан свой aggregate_accept."},
+    {"key": _k("AGGREGATE_MAX_TOKENS", "llm.aggregate_max_tokens"), "label": "Агрегатор: max_tokens ответа", "attr": "llm_aggregate_max_tokens", "type": "number",
+     "hint": "Бюджет токенов на финальный JSON тематического фильтра. Мало — JSON обрезается лимитом и пост ротится на запасные модели; 1000 достаточно с запасом. Итоговый лимит = это значение + бюджет reasoning (мелкие задачи)."},
     {"key": _k("AGGREGATE_REJECT_DEFAULT", "aggregate.reject_default"), "label": "Агрегатор: отклонять (дефолт)", "attr": "aggregate_reject_default", "type": "text",
      "hint": "Что отклонять для технических каналов, если у канала не задан свой aggregate_reject."},
     # --- Reader / автопилот ---
