@@ -31,7 +31,7 @@ def with_language_rules(text: str, response_lang: str = "Russian") -> str:
 # Классификация
 # ---------------------------------------------------------------------------
 
-CLASSIFY_VERSION = "classify-v14"
+CLASSIFY_VERSION = "classify-v15"
 
 CRITERIA = """CATEGORIES — pick exactly one for "category":
 - "ads" — the post's goal is to SELL or drive purchase/visit: promo codes, discounts, "buy", "hurry", bets, affiliate links, "our partner", purchase/ticket links with a call to action, prices paired with a buy call, third-party channel/bot self-advertising, AND EVENT ANNOUNCEMENTS with registration/participation (webinar, live stream, workshop, conference, offline/online meetup): "Регистрация по ссылке".
@@ -126,10 +126,7 @@ For collections: "ПОДБОРКА | type | ~N | gist" (keep the literal token �
 For trivial posts (emoji, one word) — empty string.
 Do NOT list all elements of lists, do NOT add sources, quotes, emoji or explanations.
 CANONICAL LANGUAGE/SCRIPT: write canonical in the SAME language AND the SAME script as the source text. Cyrillic source → Cyrillic canonical: names, titles and the action verb exactly as they appear in the source (Russian words, titles in «…»). Transliteration to Latin is FORBIDDEN. Latin source → Latin canonical.
-IDENTITY CHECK: establish exactly WHO or WHAT the post is about, from the source text only.
-- NEVER substitute a similar-sounding or more famous name: "Дав Кэмерон"/"Dove Cameron" is NOT "Cameron Diaz"; "Дав Кэмерон" stays "Дав Кэмерон" in canonical and in any reasoning that affects the verdict.
-- If you do not confidently recognize the person, film or entity, do NOT guess who it "probably" is: cap the score at 5 and add a risk entry "entity not recognized: <name exactly as in source>".
-- Transliteration variants of the same name (Дав Кэмерон / Dove Cameron) are the same person; keep the source spelling in canonical.
+IDENTITY: names in "canonical" and in the verdict must appear verbatim in the source text; NEVER substitute a similar-sounding or more famous name ("Дав Кэмерон"/"Dove Cameron" is NOT "Cameron Diaz"). Transliteration variants of the same name are the same person; keep the source spelling. Scoring policy for unknown entities and for archive/photo captions is set per source/channel via owner instructions.
 
 {requirements}
 
