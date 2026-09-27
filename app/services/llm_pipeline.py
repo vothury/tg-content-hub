@@ -203,7 +203,7 @@ async def _get_status(post_id: int) -> PostStatus | None:
 
 async def _model_for(key: str) -> str:
     async with session_scope() as session:
-        return str(await get_setting(session, key) or "").strip().lstrip("~")
+        return str(await get_setting(session, key))
 
 
 async def _model_for_post(post, key: str) -> str:
@@ -795,7 +795,7 @@ async def revise_draft(post_id: int, comment: str) -> tuple[bool, str]:
     return True, f"правка внесена — черновик v{post.draft_version}"
 
 
-_MODEL_SLUG_RE = re.compile(r"^[\w.\-]+/[\w.\-]+(?::[\w.\-]+)?$")
+_MODEL_SLUG_RE = re.compile(r"^~?[\w.\-]+/[\w.\-]+(?::[\w.\-]+)?$")
 
 
 async def _fallback_models() -> list:
@@ -806,7 +806,7 @@ async def _fallback_models() -> list:
         raw = [x.strip() for x in raw.split(",") if x.strip()]
     out = []
     for x in (raw or []):
-        s = str(x).strip().lstrip("~")   # ~ — маршрутный маркер reader'а, не часть slug'а
+        s = str(x).strip()
         if not s:
             continue
         if _MODEL_SLUG_RE.match(s):
@@ -1323,7 +1323,7 @@ async def _run_double_check(post_id: int) -> tuple[bool, str]:
         base = (await get_setting(session, Keys.DOUBLE_CHECK_MODEL)) \
             or settings.effective_revision_model
         if online:
-            chosen = (str(await get_setting(session, Keys.DOUBLE_CHECK_ONLINE_MODEL) or "").strip().lstrip("~") or base)
+            chosen = (await get_setting(session, Keys.DOUBLE_CHECK_ONLINE_MODEL)) or base
             model = chosen + ":online"
             providers = await _providers_for(Keys.DOUBLE_CHECK_ONLINE_PROVIDERS)
         else:

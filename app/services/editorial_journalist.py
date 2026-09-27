@@ -71,7 +71,7 @@ async def _log_call(stage, model, messages, resp, status, error) -> None:
         await session.commit()
 
 
-_MODEL_SLUG_RE = re.compile(r"^[\w.\-]+/[\w.\-]+(?::[\w.\-]+)?$")
+_MODEL_SLUG_RE = re.compile(r"^~?[\w.\-]+/[\w.\-]+(?::[\w.\-]+)?$")
 
 
 async def _fallback_models() -> list:
