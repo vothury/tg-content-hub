@@ -51,6 +51,8 @@ EDITABLE = [
     # --- Модели и провайдеры стадий ---
     {"key": _k("CLASSIFY_MODEL", "llm.classify_model"), "label": "Модель классификации", "attr": "classify_model", "type": "text"},
     {"key": _k("CLASSIFY_PROVIDERS", "llm.classify_providers"), "label": "Провайдеры классификации (через запятую)", "attr": "classify_providers", "type": "providers"},
+    {"key": _k("AGGREGATE_MODEL", "llm.aggregate_model"), "label": "Модель агрегатора (технические каналы)", "attr": "aggregate_model", "type": "text",
+     "hint": "Отдельная модель или список для фильтра агрегаторов; пусто = модель классификации. Сюда ставят дешёвое/пул: openrouter/free."},
     {"key": _k("REWRITE_MODEL", "llm.rewrite_model"), "label": "Модель рерайта", "attr": "rewrite_model", "type": "text"},
     {"key": _k("REWRITE_PROVIDERS", "llm.rewrite_providers"), "label": "Провайдеры рерайта (через запятую)", "attr": "rewrite_providers", "type": "providers"},
     {"key": _k("REVISION_MODEL", "llm.revision_model"), "label": "Модель правки", "attr": "revision_model", "type": "text"},

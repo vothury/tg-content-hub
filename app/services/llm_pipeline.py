@@ -864,7 +864,11 @@ async def _aggregate_filter(post_id: int, channel) -> tuple[bool | None, float, 
     topic = (channel.description or "").strip() or "тематика канала"
     accept = (channel.aggregate_accept or "").strip() or accept_default
     reject = (channel.aggregate_reject or "").strip() or reject_default
-    model = await _model_for_post(post, Keys.CLASSIFY_MODEL)
+    ch_model = (getattr(channel, "classify_model", "") or "").strip() if channel is not None else ""
+    if ch_model and not (post is not None and getattr(post, "sensitive", False)):
+        model = ch_model
+    else:
+        model = await _model_for_post(post, Keys.AGGREGATE_MODEL) or await _model_for_post(post, Keys.CLASSIFY_MODEL)
     providers = await _providers_for(Keys.CLASSIFY_PROVIDERS)
     lang = await _response_lang()
     messages = [

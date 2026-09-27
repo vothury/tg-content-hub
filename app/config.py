@@ -81,6 +81,7 @@ class Settings(BaseSettings):
     # LLM (Этап 3)
     openrouter_request_timeout_sec: int = 90
     llm_classify_max_tokens: int = 8000
+    llm_aggregate_model: str = ""   # пусто = использовать модель классификации
     llm_rewrite_max_tokens: int = 15000
     llm_reasoning_max_tokens: int = 1000   # бюджет reasoning для classify/double-check
     llm_reasoning_rewrite: int = 2000      # рерайт под стиль / правка ИИ

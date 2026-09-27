@@ -64,6 +64,7 @@ def repair_list(value, depth: int = 0) -> list:
 class Keys:
     PREFILTER_MODEL = "llm.prefilter_model"
     CLASSIFY_MODEL = "llm.classify_model"
+    AGGREGATE_MODEL = "llm.aggregate_model"
     REWRITE_MODEL = "llm.rewrite_model"
     REVISION_MODEL = "llm.revision_model"
     CLASSIFY_PROVIDERS = "llm.classify_providers"
@@ -144,6 +145,7 @@ class Keys:
 _ENV_DEFAULTS: dict[str, Any] = {
     Keys.PREFILTER_MODEL: settings.prefilter_model,
     Keys.CLASSIFY_MODEL: settings.classify_model,
+    Keys.AGGREGATE_MODEL: settings.llm_aggregate_model,
     Keys.REWRITE_MODEL: settings.rewrite_model,
     Keys.REVISION_MODEL: settings.effective_revision_model,
     Keys.CLASSIFY_PROVIDERS: settings.classify_providers,
