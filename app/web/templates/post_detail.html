@@ -228,8 +228,9 @@
 <div class="section-title">События</div>
 <div class="list">
   {% for e in events %}
-  <div class="card"><span class="badge">{{ e.action }}</span>
-    <span class="sub">{{ e.from_status or '' }} → {{ e.to_status or '' }}</span></div>
+<div class="card"><span class="badge">{{ e.action }}</span>
+    <span class="sub">{{ e.from_status or '' }} → {{ e.to_status or '' }}</span>
+    {% if ev_model.get(e.id) %}<span class="sub">· 🤖 {{ ev_model[e.id] }}</span>{% endif %}</div>
     {% if e.details and e.action in ('deduplicated', 'dedup_cleared', 'double_check_attempt', 'double_check_recovered', 'double_check_review', 'llm_failed', 'llm_retry', 'revision_failed', 'autopilot_sig_guard', 'technical_approved') %}<div class="sub">{{ e.details }}</div>{% endif %}
   {% else %}<div class="card">Событий нет</div>{% endfor %}
 </div>

@@ -89,11 +89,42 @@ async def post_detail(request: Request, post_id: int, msg: str = ""):
         calls = (await session.execute(
             select(LLMCall).where(LLMCall.post_id == post_id)
             .order_by(LLMCall.id.desc()).limit(10))).scalars().all()
+        map_rows = (await session.execute(
+            select(LLMCall.id, LLMCall.stage, LLMCall.model,
+                   LLMCall.prompt_version, LLMCall.created_at)
+            .where(LLMCall.post_id == post_id)
+            .order_by(LLMCall.id.desc()).limit(40))).all()
         fb_events = (await session.execute(
             select(PostEvent.action, PostEvent.details).where(
                 PostEvent.post_id == post_id,
                 PostEvent.action.in_(["clean_fallback_used", "clean_verify_failed"]))
             .order_by(PostEvent.id.desc()))).all()
+    _STAGE_BY_ACTION = {
+        "classified": "classify", "llm_rejected": "classify",
+        "canonical_lang_retry": "classify", "canonical_lang_mismatch": "classify",
+        "aggregate_rejected": "classify",
+        "double_check_attempt": "revision", "double_check_recovered": "revision",
+        "revised": "revision",
+        "clean_signatures": "clean", "clean_fallback_used": "clean",
+        "sent_to_review": "rewrite",
+    }
+    ev_model: dict = {}
+    for e in events:
+        st = _STAGE_BY_ACTION.get(e.action)
+        if not st:
+            continue
+        best = None
+        for cid, cstage, cmodel, cver, cat in map_rows:
+            if cstage.value != st:
+                continue
+            dt = (e.created_at - cat).total_seconds()
+            if -15 <= dt <= 180 and (best is None or abs(dt) < abs(best[0])):
+                best = (dt, cid, cmodel, cver, cat)
+        if best is not None:
+            _, cid, cmodel, cver, cat = best
+            when = cat if cat.tzinfo else cat.replace(tzinfo=timezone.utc)
+            ev_model[e.id] = (f"{cmodel}" + (f" · {cver}" if cver else "") +
+                              f" · {when.astimezone(owner_tz()).strftime('%d.%m %H:%M:%S')}")
     delete_armed = await security.is_hard_delete_armed()
     pub_in_flight = any(j.state in (PublishJobState.QUEUED, PublishJobState.SCHEDULED,
                                     PublishJobState.IN_PROGRESS) for j in jobs_rows)
@@ -118,6 +149,7 @@ async def post_detail(request: Request, post_id: int, msg: str = ""):
         "media": media,
         "versions": versions,
         "events": events,
+        "ev_model": ev_model,
         "channels": channels,
         "jobs": jobs,
         "channel_obj": channel,
