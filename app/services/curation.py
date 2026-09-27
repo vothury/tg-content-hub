@@ -25,7 +25,7 @@ from app.services.text import html_to_text, make_text_hash, normalize_text
 
 log = logging.getLogger("curation")
 
-_TOKEN_RE = re.compile(r"@?[a-zA-Z0-9_]{4,}")
+_TOKEN_RE = re.compile(r"@?[a-zA-Z0-9_]{1,}")
 
 
 async def _enabled() -> bool:

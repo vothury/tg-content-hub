@@ -1,0 +1,7 @@
+.git
+media
+__pycache__
+*.pyc
+.env
+model_prices_backup.csv
+model_price_alerts_backup.csv
