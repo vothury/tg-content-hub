@@ -112,6 +112,8 @@ class Settings(BaseSettings):
     # Курирование: приём пересылок с указанием целевых каналов
     curation_enabled: int = 1
     curation_inbox_channels: list = []   # например: go_tests
+    # Алиасы целевых каналов
+    curation_target_aliases: str = ""   # "testimfilm=tm, testimfoto=tf" — короткие алиасы целей
     # Чувствительная лексика: слова, из-за которых провайдеры обрывают рассуждения
     prefilter_sensitive_words: list = ["порно"]
     llm_sensitive_model: str = ""   # пусто = чувствительные посты только вручную; иначе — модель без обрывов

@@ -49,13 +49,45 @@ async def _target_usernames() -> dict:
     return {(u or "").strip().lower(): i for i, u in rows if u}
 
 
-def parse_targets(caption, known: set) -> list:
-    """Целевые каналы из подписи пересылки; порядок сохранён, дубли убраны."""
+_ALIASES_CACHE: tuple | None = None
+
+
+async def _cached_alias_pairs() -> list:
+    """Пары (a, b) из настройки curation.target_aliases; кэш 60 сек."""
+    global _ALIASES_CACHE
+    import time as _time
+    now = _time.monotonic()
+    if _ALIASES_CACHE is not None and now - _ALIASES_CACHE[0] < 60:
+        return _ALIASES_CACHE[1]
+    async with session_scope() as session:
+        raw = str(await get_setting(session, Keys.CURATION_TARGET_ALIASES) or "")
+    pairs = []
+    for chunk in re.split(r"[,;\n]+", raw):
+        parts = [p.strip().lstrip("@").lower()
+                 for p in re.split(r"[\s=:\-]+", chunk) if p.strip()]
+        if len(parts) == 2 and parts[0] != parts[1]:
+            pairs.append((parts[0], parts[1]))
+    _ALIASES_CACHE = (now, pairs)
+    return pairs
+
+
+async def parse_targets(caption, known: set) -> list:
+    """Целевые каналы из подписи пересылки; порядок сохранён, дубли убраны.
+    Понимает короткие алиасы из настройки curation.target_aliases
+    («testimfilm=tm, testimfoto=tf»): в подписи допустим и алиас, и полное имя.
+    Токен, совпадающий с реальным именем канала, всегда важнее алиаса."""
     if not caption:
         return []
+    amap = {}
+    for a, b in await _cached_alias_pairs():
+        if a in known and b not in known:
+            amap[b] = a
+        elif b in known and a not in known:
+            amap[a] = b
     out = []
     for tok in _TOKEN_RE.findall(caption):
         n = tok.lstrip("@").lower()
+        n = amap.get(n, n)
         if n in known and n not in out:
             out.append(n)
     return out
@@ -99,7 +131,7 @@ async def claims(msg) -> bool:
     if _has_media(msg):
         return False
     caption = getattr(msg, "message", None) or getattr(msg, "text", None)
-    return bool(parse_targets(caption, set(await _cached_targets())))
+    return bool(await parse_targets(caption, set(await _cached_targets())))
 
 
 async def _pending_get(inbox: str):
@@ -207,7 +239,7 @@ async def _process_one_inbox(client, R, inbox: str, targets: dict) -> None:
     for msg in messages:
         fwd = getattr(msg, "forward", None) or getattr(msg, "fwd_from", None)
         caption = getattr(msg, "message", None) or getattr(msg, "text", None)
-        own = parse_targets(caption, set(targets))
+        own = await parse_targets(caption, set(targets))
 
         # Декларация: текстовое сообщение без медиа, состоящее из имён целевых каналов.
         # Запоминаем: следующая пересылка предназначена для этих каналов.

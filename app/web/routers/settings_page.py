@@ -128,6 +128,8 @@ EDITABLE = [
     # --- Курирование ---
     {"key": _k("CURATION_ENABLED", "curation.enabled"), "label": "Курирование: включено", "attr": "curation_enabled", "type": "number",
      "hint": "1 = принимать пересылки из каналов-приёмников с подписью-списком целевых каналов."},
+    {"key": _k("CURATION_TARGET_ALIASES", "curation.target_aliases"), "label": "Курирование: алиасы целевых каналов", "attr": "curation_target_aliases", "type": "text",
+     "hint": "Пары «канал=алиас» или «канал - алиас» через запятую (разделители пары: =, :, - или пробел; разделители пар: запятая, ;, перенос)."},
     {"key": _k("CURATION_INBOX_CHANNELS", "curation.inbox_channels"), "label": "Курирование: каналы-приёмники (через запятую)", "attr": "curation_inbox_channels", "type": "list",
      "hint": "Ваши каналы, куда вы пересылаете понравившиеся посты (например go_tests). Обрабатываются ТОЛЬКО они."},
     # --- Виртуальная редакция ---
