@@ -592,6 +592,10 @@ async def _send_to_channel(bot: Bot, chat_id: int, post: Post,
     skipped: list = []
     for m in media:
         if not m["downloaded"] or not m["local_path"]:
+            # Медиа нет на диске (size_limit при загрузке, сбой скачивания, удалено
+            # после публикации клона): фиксируем причину — тихая публикация текстом недопустима.
+            skipped.append(f"{m.get('original_name') or m['media_type'].value}: "
+                           f"не скачано ({(m.get('download_error') or 'нет файла')})")
             continue
         path = root / m["local_path"]
         if not path.exists():
@@ -654,6 +658,14 @@ async def _send_to_channel(bot: Bot, chat_id: int, post: Post,
 
     if skipped:
         log.warning("пост %s: медиа пропущены при публикации: %s", post.id, ", ".join(skipped))
+        await _post_event(post.id, "published_without_media",
+                          {"skipped": skipped, "skip_oversized": bool(skip_on)})
+    if not files and media and not skip_on:
+        # У поста было медиа, но ни одно не дошло до диска: при выключенном пропуске
+        # oversized публикация текстом запрещена — уводим владельцу в ревью
+        # (тот же путь, что у OversizedMedia: drop + oversize_to_review + уведомление).
+        raise OversizedMedia("медиа не скачаны (лимит размера/сбой загрузки), "
+                             "пропуск oversized выключен")
     try:
         if files:
             sent = await bot.send_media_group(chat_id, media=files)
@@ -679,7 +691,8 @@ async def _select_media(post_id: int) -> list[dict]:
         ).scalars().all()
         return [
             {"media_type": r.media_type, "local_path": r.local_path,
-             "downloaded": r.downloaded, "size_bytes": r.size_bytes}
+             "downloaded": r.downloaded, "size_bytes": r.size_bytes,
+             "download_error": r.download_error, "original_name": r.original_name}
             for r in rows
         ]
 
