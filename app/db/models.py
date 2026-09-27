@@ -81,6 +81,11 @@ class Source(Base):
     # Персональные инструкции модели классификации для постов этого источника
     llm_instructions: Mapped[str | None] = mapped_column(Text)
 
+    # Пер-канальная маршрутизация моделей (пусто = глобальные llm.classify_model / llm.classify_providers).
+    # Задаётся в sources.yaml; значение classify_model — slug или список через запятую.
+    classify_model: Mapped[str | None] = mapped_column(String(255))
+    classify_providers: Mapped[dict | None] = mapped_column(JSONB)
+
 class StyleProfile(Base):
     """Стилевой профиль целевого канала: промпты, примеры, режим сохранения тона."""
 

@@ -98,6 +98,8 @@ def parse_sources_text(text: str):
             "aggregate_accept": str(t.get("aggregate_accept") or "").strip() or None,
             "aggregate_reject": str(t.get("aggregate_reject") or "").strip() or None,
             "llm_instructions": str(t.get("llm_instructions") or "").strip() or None,
+            "classify_model": str(t.get("classify_model") or "").strip() or None,
+            "classify_providers": t.get("classify_providers") or None,
             "style": str(t.get("style") or "").strip() or None,
             "autopilot": t.get("autopilot"),
             "autopilot_min_score": t.get("autopilot_min_score"),
@@ -244,6 +246,8 @@ async def apply_parsed(parsed) -> dict:
                                           aggregate_accept=cfg["aggregate_accept"],
                                           aggregate_reject=cfg["aggregate_reject"],
                                           llm_instructions=cfg["llm_instructions"],
+                                          classify_model=cfg["classify_model"],
+                                          classify_providers=cfg["classify_providers"],
                                           autopilot=bool(cfg["autopilot"]),
                                           autopilot_min_score=cfg["autopilot_min_score"],
                                           review_if_uncertain=True if cfg["review_if_uncertain"] is None else bool(cfg["review_if_uncertain"]),
@@ -286,6 +290,12 @@ async def apply_parsed(parsed) -> dict:
             if ch.aggregate_reject != ar: ch.aggregate_reject = ar; changed = True
             li = cfg["llm_instructions"]
             if ch.llm_instructions != li: ch.llm_instructions = li; changed = True
+            if ch.classify_model != cfg["classify_model"]:
+                ch.classify_model = cfg["classify_model"]
+                changed = True
+            if ch.classify_providers != cfg["classify_providers"]:
+                ch.classify_providers = cfg["classify_providers"]
+                changed = True
             if ch.style_profile_id != style_id: ch.style_profile_id = style_id; changed = True
             if changed: stats["targets"][1] += 1
             dco = bool(cfg["double_check_online"])

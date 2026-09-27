@@ -51,6 +51,7 @@ targets:
     double_check_fact_strictness: 5      # важность точности фактов 1-10
     daily_limit: 30
     min_interval_min: 30
+    classify_model: "nvidia/nemotron-3-super-120b-a12b:free, google/gemma-4-26b-a4b-it:free, openrouter/free" # провайдеры добавляются в скобках
     llm_instructions: >
       Юмор, мемы, ироничные и шуточные подписи, развлекательные видео ПО ТЕМЕ КИНО —
       норма для этого канала. НЕ отклоняй их за «несерьёзность», «лёгкость», «это мем»,
@@ -79,6 +80,7 @@ targets:
     daily_limit: 30
     min_interval_min: 30
     # стиль не указан -> профиль default
+    classify_model: "nvidia/nemotron-3-super-120b-a12b:free, google/gemma-4-26b-a4b-it:free, openrouter/free"
     llm_instructions: >
       Это фотоканал: пост «медиа + короткая подпись (имя, дата, место)» — полноценный формат;
       не требуй новостей и не занижай оценку за краткость подписи.
@@ -95,6 +97,7 @@ targets:
     aggregate_mode: repost   # credit | repost | none
     autopilot_sig_guard: false   # агрегатору предохранитель не нужен
     aggregate_min_score: 5
+    classify_model: "openrouter/free"
     aggregate_accept: >
       проекты и ЖК Москвы и ближнего Подмосковья; старты продаж, цены и спрос на первичке;
       ипотека, господдержка, ставка ЦБ и доходы населения; ввод в эксплуатацию и разрешения

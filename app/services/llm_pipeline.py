@@ -411,7 +411,11 @@ async def classify_post(post_id: int) -> None:
 
     async with session_scope() as session:
         verbose = bool(await get_setting(session, Keys.CLASSIFY_VERBOSE))
-    model = await _model_for_post(post, Keys.CLASSIFY_MODEL)
+    ch_model = (getattr(channel, "classify_model", "") or "").strip() if channel is not None else ""
+    if ch_model and not (post is not None and getattr(post, "sensitive", False)):
+        model = ch_model
+    else:
+        model = await _model_for_post(post, Keys.CLASSIFY_MODEL)
     providers = await _providers_for(Keys.CLASSIFY_PROVIDERS)
     system_prompt = build_classify_prompt(
         channel_title=channel.title if channel is not None else None,
