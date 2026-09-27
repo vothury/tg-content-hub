@@ -369,7 +369,7 @@ class LLMCall(Base):
     post_id: Mapped[int | None] = mapped_column(ForeignKey("posts.id", ondelete="SET NULL"), index=True)
     stage: Mapped[LLMStage] = mapped_column(_enum(LLMStage, "llm_stage"))
     provider: Mapped[str] = mapped_column(String(32), default="openrouter")
-    model: Mapped[str] = mapped_column(String(128))
+    model: Mapped[str] = mapped_column(String(512))
     prompt_version: Mapped[str | None] = mapped_column(String(32))
     request: Mapped[dict | None] = mapped_column(JSONB)
     response: Mapped[dict | None] = mapped_column(JSONB)

@@ -19,6 +19,23 @@ def extract_json(content: str) -> dict:
         if text.startswith("json"):
             text = text[4:].strip()
     candidates = [text]
+    start = text.find("{")
+    if start != -1:
+        depth, end = 0, -1
+        for i in range(start, len(text)):
+            ch = text[i]
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    end = i
+                    break
+        if end > start:
+            candidates.append(text[start:end + 1])   # балансный срез: JSON до первой полной скобки
+        end2 = text.rfind("}")
+        if end2 > start:
+            candidates.append(text[start:end2 + 1])  # прежний срез остаётся запасным кандидатом
     start, end = text.find("{"), text.rfind("}")
     if start != -1 and end > start:
         candidates.append(text[start:end + 1])

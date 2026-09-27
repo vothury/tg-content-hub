@@ -330,6 +330,7 @@ async def _profile_for_post(session, post) -> StyleProfile:
 
 
 def _make_call_row(post_id, stage, model, prompt_version, messages, resp, parsed, status, error) -> LLMCall:
+    model = (model or "")[:512]
     return LLMCall(
         post_id=post_id,
         stage=stage,
