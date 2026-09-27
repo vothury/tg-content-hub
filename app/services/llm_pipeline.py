@@ -801,6 +801,53 @@ async def revise_draft(post_id: int, comment: str) -> tuple[bool, str]:
 
 _MODEL_SLUG_RE = re.compile(r"^~?[\w.\-]+/[\w.\-]+(?::[\w.\-]+)?$")
 
+_MODEL_SPEC_RE = re.compile(r"^(?P<slug>[^\s(]+)\s*(?:\((?P<provs>[^)]*)\))?\s*$")
+
+
+def _split_model_list(s: str) -> list:
+    """Режет список моделей по запятым ВНЕ круглых скобок (в скобках — провайдеры)."""
+    out, buf, depth = [], [], 0
+    for ch in s or "":
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth = max(0, depth - 1)
+        if ch == "," and depth == 0:
+            out.append("".join(buf))
+            buf = []
+        else:
+            buf.append(ch)
+    out.append("".join(buf))
+    return [x.strip() for x in out if x.strip()]
+
+
+def _parse_model_spec(entry: str) -> tuple:
+    """'slug (p1/q1, p2/q2)' -> (slug, provider-dict | None).
+
+    provider-dict — предпочтения OpenRouter для этого hop'а: order + quantizations,
+    allow_fallbacks=True (мягкий пиннинг: при отсутствии ёмкости у указанных
+    провайдеров вызов не ломается, а уходит на другого провайдера модели).
+    """
+    m = _MODEL_SPEC_RE.match((entry or "").strip())
+    if not m:
+        return (entry or "").strip(), None
+    slug = m.group("slug")
+    provs = [p.strip() for p in (m.group("provs") or "").split(",") if p.strip()]
+    if not provs:
+        return slug, None
+    order, quants = [], []
+    for p in provs:
+        tag, _, q = p.partition("/")
+        tag = tag.strip()
+        if tag and tag not in order:
+            order.append(tag)
+        q = q.strip()
+        if q and q not in quants:
+            quants.append(q)
+    spec = {"order": order, "allow_fallbacks": True}
+    if quants:
+        spec["quantizations"] = quants
+    return slug, spec
 
 async def _fallback_models() -> list:
     """Запасные модели; некорректные значения (мусор после ручных правок) отбрасываются."""
@@ -813,8 +860,9 @@ async def _fallback_models() -> list:
         s = str(x).strip()
         if not s:
             continue
-        if _MODEL_SLUG_RE.match(s):
-            out.append(s)
+        slug, _spec = _parse_model_spec(s)
+        if _MODEL_SLUG_RE.match(slug):
+            out.append(s)   # храним вместе со скобками: разбор — в _call_with_fallback
         else:
             log.warning("llm.fallback_models: пропущено некорректное значение %r", s)
     return out
@@ -822,20 +870,25 @@ async def _fallback_models() -> list:
 
 async def _call_with_fallback(messages, model, max_tokens, temperature, schema,
                               providers, reasoning_max_tokens):
-    """Вызов с ротацией: основная модель + llm_fallback_models.
-
-    Ответ модели модерации и непроходимый JSON считаются сбоем маршрутизации —
-    пробуем следующую модель. Возвращает (использованная модель, resp, result, status, error).
-    """
-    heads = [x.strip() for x in str(model).split(",") if x.strip()]
-    chain = heads + [m for m in await _fallback_models() if m not in heads]
-    used, resp, result = model, None, None
+    """Вызов с ротацией: список моделей (у каждой может быть пиннинг провайдеров
+    в скобках) + llm_fallback_models. Ответ модели модерации и непроходимый JSON
+    считаются сбоем маршрутизации — пробуем следующую модель.
+    Возвращает (использованная модель, resp, result, status, error)."""
+    entries = _split_model_list(str(model)) + await _fallback_models()
+    chain, known = [], set()
+    for e in entries:
+        slug, spec = _parse_model_spec(e)
+        if slug and slug not in known:
+            chain.append((slug, spec))
+            known.add(slug)
+    used, resp, result = (chain[0][0] if chain else str(model)), None, None
     call_status, error_text = LLMCallStatus.ERROR, "нет ответа"
-    for m in chain:
+    for m, spec in chain:
         used = m
         resp, result, call_status, error_text = await _call_and_parse(
             messages, m, max_tokens, temperature=temperature, schema=schema,
-            provider=providers, reasoning_max_tokens=reasoning_max_tokens)
+            provider=spec if spec is not None else providers,
+            reasoning_max_tokens=reasoning_max_tokens)
         if resp is not None and resp.cost_usd:
             await guards.add_llm_cost(resp.cost_usd)
         if call_status is not LLMCallStatus.OK:
@@ -850,9 +903,9 @@ async def _call_with_fallback(messages, model, max_tokens, temperature, schema,
             continue
         if result is not None and call_status is LLMCallStatus.OK:
             break
-    if used != chain[0]:
-        log.info("llm: ротация модели %s -> %s (причина у исходной видна в предупреждениях выше)",
-                 chain[0], used)
+    if chain and used != chain[0][0]:
+        log.info("llm: ротация модели %s -> %s (причина у исходной — в предупреждениях выше)",
+                 chain[0][0], used)
     return used, resp, result, call_status, error_text
 
 

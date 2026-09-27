@@ -81,11 +81,6 @@ class Source(Base):
     # Персональные инструкции модели классификации для постов этого источника
     llm_instructions: Mapped[str | None] = mapped_column(Text)
 
-    # Пер-канальная маршрутизация моделей (пусто = глобальные llm.classify_model / llm.classify_providers).
-    # Задаётся в sources.yaml; значение classify_model — slug или список через запятую.
-    classify_model: Mapped[str | None] = mapped_column(String(255))
-    classify_providers: Mapped[dict | None] = mapped_column(JSONB)
-
 class StyleProfile(Base):
     """Стилевой профиль целевого канала: промпты, примеры, режим сохранения тона."""
 
@@ -144,6 +139,10 @@ class TargetChannel(Base):
     aggregate_reject: Mapped[str | None] = mapped_column(Text)
     # Персональные инструкции моделям (классификация и двойная проверка) для этого канала
     llm_instructions: Mapped[str | None] = mapped_column(Text)
+    # Пер-канальная маршрутизация моделей классификации/агрегатора из sources.yaml.
+    # Slug или список через запятую; у каждой модели можно указать провайдеров в скобках:
+    # "openai/gpt-oss-20b (akashml/fp4, darkbloom/fp8), openrouter/free". Пусто = глобальная настройка.
+    classify_model: Mapped[str | None] = mapped_column(String(512))
     # Автопилот (Этап 7): публикация без ручного ревью при уверенности модели
     autopilot: Mapped[bool] = mapped_column(default=False)
     autopilot_min_score: Mapped[int | None] = mapped_column(Integer)
