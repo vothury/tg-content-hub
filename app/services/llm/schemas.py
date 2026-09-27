@@ -11,26 +11,26 @@ class LLMParseError(Exception):
 
 
 def extract_json(content: str) -> dict:
-    """Извлекает JSON-объект из ответа модели, включая обёртки вида ```json."""
+    """Извлекает JSON-объект из ответа модели: ```json```-обёртки, срез по фигурным
+    скобкам, а при отказе — ремонт (голые значения/ключи, «ёлочки», висячие запятые)."""
     text = (content or "").strip()
     if text.startswith("```"):
         text = text.strip("`").strip()
         if text.startswith("json"):
             text = text[4:].strip()
-    try:
-        data = json.loads(text)
-        if isinstance(data, dict):
-            return data
-    except json.JSONDecodeError:
-        pass
+    candidates = [text]
     start, end = text.find("{"), text.rfind("}")
     if start != -1 and end > start:
+        candidates.append(text[start:end + 1])
+    candidates += [_repair_json_text(c) for c in list(candidates)]
+    candidates += [c.replace("'", '"') for c in candidates[1:3]]
+    for cand in candidates:
         try:
-            data = json.loads(text[start : end + 1])
+            data = json.loads(cand)
             if isinstance(data, dict):
                 return data
         except json.JSONDecodeError:
-            pass
+            continue
     raise LLMParseError(f"не удалось извлечь JSON из ответа: {content[:300]!r}")
 
 
@@ -47,6 +47,65 @@ def _strip_code_fence(content: str) -> str:
         if s.endswith("```"):
             s = s[:-3]
     return s.strip()
+
+
+_JSON_KEY_LINE_RE = re.compile(
+    r'^(?:"(?P<qkey>[^"]+)"|(?P<bkey>[A-Za-z_][A-Za-z0-9_]*))\s*:\s*(?P<val>.*?)(?P<comma>,?)$')
+
+
+def _quote_if_bare(val: str) -> str:
+    """Если значение не число/bool/null/уже в кавычках/скобках — обернуть в двойные кавычки."""
+    v = val.strip()
+    if v == "":
+        return '""'
+    if v[0] in '"[{':
+        return v
+    if v in ("true", "false", "null"):
+        return v
+    if re.match(r'^-?\d+(\.\d+)?([eE][+-]?\d+)?$', v):
+        return v
+    return '"' + v.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _merge_broken_strings(lines: list) -> list:
+    """Склеивает строки, где строковое значение разорвано переводом строки
+    (перевод заменяется на экранированный \\n, чтобы json.loads принял)."""
+    out, buf, open_str = [], [], False
+    for ln in lines:
+        quotes = len(re.findall(r'(?<!\\)"', ln))
+        if open_str:
+            buf.append(ln)
+            if quotes % 2 == 1:
+                open_str = False
+                out.append("\\n".join(buf))
+                buf = []
+        else:
+            buf.append(ln)
+            if quotes % 2 == 1:
+                open_str = True
+            else:
+                out.append(buf[0])
+                buf = []
+    if buf:
+        out.append("\\n".join(buf))
+    return out
+
+
+def _repair_json_text(s: str) -> str:
+    """Чинит типовые огрехи слабых моделей: голые значения и ключи без кавычек,
+    значения в «ёлочках», висячие запятые; переводы строк внутри строк экранируются."""
+    s = re.sub(r"(:\s*)«([^»\n]*)»\s*(,?)\s*$", r'\1"\2"\3', s, flags=re.M)
+    out = []
+    for ln in _merge_broken_strings(s.split("\n")):
+        t = ln.strip()
+        m = _JSON_KEY_LINE_RE.match(t)
+        if m and not t.endswith(("{", "[")):
+            key = m.group("qkey") or m.group("bkey")
+            out.append(f'"{key}": {_quote_if_bare(m.group("val"))}{m.group("comma")}')
+        else:
+            out.append(t)
+    fixed = "\n".join(out)
+    return re.sub(r",(\s*[}\]])", r"\1", fixed)   # висячие запятые перед } / ]
 
 
 _SAFETY_REPLY_RE = re.compile(r"^\s*(user\s*)?safety\s*[:\-]", re.I)
@@ -66,20 +125,21 @@ def is_provider_safety_reply(content: str) -> bool:
 
 
 def _loads_lenient(content: str):
-    """json.loads с починкой частых огрехов модели:
-    значения в «ёлочках», trailing commas, одинарные кавычки, текст вокруг JSON."""
+    """json.loads с починкой частых огрехов модели (через _repair_json_text)."""
     s = _strip_code_fence(content)
     try:
         return json.loads(s)
     except Exception:  # noqa: BLE001
         pass
-    fixed = re.sub(r"(:\s*)«([^»\n]*)»", r'\1"\2"', s)
-    fixed = re.sub(r",(\s*[}\]])", r"\1", fixed)
-    fixed = fixed.replace("'", '"')
-    l, r = fixed.find("{"), fixed.rfind("}")
-    if l != -1 and r > l:
-        fixed = fixed[l : r + 1]
-    return json.loads(fixed)
+    l, r = s.find("{"), s.rfind("}")
+    sliced = s[l:r + 1] if l != -1 and r > l else s
+    for cand in (sliced, _repair_json_text(sliced), _repair_json_text(s),
+                 _repair_json_text(sliced).replace("'", '"')):
+        try:
+            return json.loads(cand)
+        except Exception:  # noqa: BLE001
+            continue
+    raise LLMParseError(f"не удалось извлечь JSON из ответа: {content[:300]!r}")
 
 
 @dataclass
