@@ -217,13 +217,31 @@
   {% else %}<div class="card">Версий нет</div>{% endfor %}
 </div>
 
-<div class="section-title">Файлы медиа</div>
-<div class="list">
-  {% for m in media %}
-  <div class="card"><span class="badge">{{ m.media_type.value }}</span>
-    <span class="sub">{{ m.original_name or m.local_path or m.preview_path or m.download_error or '—' }}</span></div>
-  {% else %}<div class="card">Медиа нет</div>{% endfor %}
-</div>
+ <div class="section-title">Файлы медиа</div>
+ <div class="list">
+   {% for m in media %}
+   <div class="card"><span class="badge">{{ m.media_type.value }}</span>
+     <span class="sub">{{ m.original_name or m.local_path or m.preview_path or m.download_error or '—' }}</span>
+     {% if m.preview_path %}
+     <div style="margin-top:6px">
+       <a href="/media/{{ m.local_path or m.preview_path }}" target="_blank" rel="noopener">
+         <img src="/media/{{ m.preview_path }}" alt="превью {{ m.media_type.value }}" loading="lazy"
+              style="max-width:220px;max-height:220px;border-radius:8px;object-fit:cover">
+       </a>
+     </div>
+     {% elif m.local_path and m.media_type.value == 'photo' %}
+     <div style="margin-top:6px">
+       <a href="/media/{{ m.local_path }}" target="_blank" rel="noopener">
+         <img src="/media/{{ m.local_path }}" alt="фото" loading="lazy"
+              style="max-width:220px;max-height:220px;border-radius:8px;object-fit:cover">
+       </a>
+     </div>
+     {% else %}
+     <div class="sub">{{ 'файл удалён после публикации, превью не было создано' if not m.local_path else 'превью недоступно' }}</div>
+     {% endif %}
+   </div>
+   {% else %}<div class="card">Медиа нет</div>{% endfor %}
+ </div>
 
 <div class="section-title">События</div>
 <div class="list">
