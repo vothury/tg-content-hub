@@ -20,8 +20,11 @@ import argparse
 import asyncio
 import json
 import logging
+import sys
 from datetime import timezone
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # корень репо: импорт app.*
 
 from telethon import TelegramClient
 from telethon.errors import FloodWaitError
@@ -55,7 +58,7 @@ def _load_state(state_path: Path) -> dict:
 
 
 async def _fetch_history(client, entity, raw_path: Path, state: dict,
-                         tg_sleep: float) -> int:
+                         tg_sleep: float, limit: int = 0) -> int:
     """Фаза 1: история батчами по 100, пауза и FloodWait-бэк-офф, курсор в state."""
     added = 0
     cursor = state.get("cursor")
@@ -66,6 +69,8 @@ async def _fetch_history(client, entity, raw_path: Path, state: dict,
                 seen.add(json.loads(ln)["id"])
     with raw_path.open("a", encoding="utf-8") as fh:
         while True:
+            if limit and added >= limit:
+                break
             kwargs = {"limit": 100}
             if cursor:
                 kwargs["max_id"] = cursor
@@ -78,6 +83,8 @@ async def _fetch_history(client, entity, raw_path: Path, state: dict,
                 continue
             if not msgs:
                 break
+            if limit:
+                msgs = msgs[:max(0, limit - added)]
             for m in msgs:
                 if m.id in seen:
                     continue
@@ -137,6 +144,10 @@ async def main() -> None:
     ap.add_argument("--tg-sleep", type=float, default=1.5, help="пауза между запросами истории, сек")
     ap.add_argument("--model", default="", help="пусто = глобальная цепочка llm.classify_model")
     ap.add_argument("--out", default="backlog_scan.md")
+    ap.add_argument("--limit", type=int, default=0,
+                    help="тест: тянуть не больше N сообщений истории (0 = всю)")
+    ap.add_argument("--max-batches", type=int, default=0,
+                    help="тест: оценить не больше M батчей (0 = все)")
     args = ap.parse_args()
 
     out_path, raw_path, state_path = _paths(args.out)
@@ -149,7 +160,8 @@ async def main() -> None:
         raise SystemExit("сессия не авторизована")
     try:
         entity = await client.get_entity(args.source)
-        added = await _fetch_history(client, entity, raw_path, state, args.tg_sleep)
+        added = await _fetch_history(client, entity, raw_path, state, args.tg_sleep,
+                                     limit=args.limit)
         log.info("фаза 1 завершена: новых сообщений %d", added)
 
         async with session_scope() as s:
@@ -171,6 +183,8 @@ async def main() -> None:
         done_batches = int(state.get("done_batches", 0))
         cost_total = float(state.get("cost", 0.0))
         total = (len(entries) + args.batch - 1) // args.batch
+        if args.max_batches:
+            total = min(total, args.max_batches)
         for bi in range(done_batches, total):
             chunk = entries[bi * args.batch:(bi + 1) * args.batch]
             listing = "\n".join(
