@@ -9,6 +9,13 @@
 """
 from __future__ import annotations
 
+DEDUP_OFF_NOTE = (
+    "DEDUP DISABLED FOR THIS CHANNEL: duplicates are acceptable here (they signal interest). "
+    "ALWAYS return \"canonical\": \"\" and do NOT spend reasoning on duplicate anchors, "
+    "fact-anchor sets or cross-post comparison; judge only topic fit and quality. "
+    "The FINAL SELF-CHECK items about \"canonical\" do not apply."
+)
+
 LANGUAGE_RULES = (
     "LANGUAGE RULES: think and reason in English, briefly; if you catch yourself "
     "repeating the same phrase or structure twice, stop reasoning and answer immediately; "
@@ -22,6 +29,7 @@ LANGUAGE_RULES = (
     "the source text; any verbatim quoted line must be copied exactly from the source. "
     "Return ONLY valid JSON with English keys, no markdown fences."
 )
+
 _RULES_RU = LANGUAGE_RULES.format(response_lang="Russian")
 
 
@@ -34,7 +42,7 @@ def with_language_rules(text: str, response_lang: str = "Russian") -> str:
 # Классификация
 # ---------------------------------------------------------------------------
 
-CLASSIFY_VERSION = "classify-v15"
+CLASSIFY_VERSION = "classify-v16"
 
 CRITERIA = """CATEGORIES — pick exactly one for "category":
 - "ads" — the post's goal is to SELL or drive purchase/visit: promo codes, discounts, "buy", "hurry", bets, affiliate links, "our partner", purchase/ticket links with a call to action, prices paired with a buy call, third-party channel/bot self-advertising, AND EVENT ANNOUNCEMENTS with registration/participation (webinar, live stream, workshop, conference, offline/online meetup): "Регистрация по ссылке".
@@ -147,6 +155,7 @@ Answer strictly JSON with no text outside it:
   "risks": ["..."]
 }}
 
+{dedup_note}
 FINAL SELF-CHECK before answering (silently): (1) the script of "canonical" equals the script of the source text (no transliteration); (2) every name in "canonical" appears verbatim in the source text (no substituted celebrities); (3) there is no text outside the JSON."""
 
 CLASSIFY_USER = """Candidate post from the source:
@@ -162,7 +171,8 @@ def build_classify_prompt(channel_title: str | None, channel_description: str | 
                           source_username: str | None = None,
                           source_title: str | None = None,
                           channel_note: str | None = None,
-                          response_lang: str = "Russian") -> str:
+                          response_lang: str = "Russian",
+                          dedup_enabled: bool = True) -> str:
     if relevance is None or 4 <= relevance <= 7:
         mode = RELEVANCE_MID
     elif relevance >= 8:
@@ -197,6 +207,7 @@ def build_classify_prompt(channel_title: str | None, channel_description: str | 
         source_identity=identity,
         channel_note=cnote,
         language_rules=LANGUAGE_RULES.format(response_lang=response_lang),
+        dedup_note=DEDUP_OFF_NOTE if not dedup_enabled else "",
     )
 
 
@@ -434,7 +445,7 @@ Post B:
 # Агрегатор (технический канал)
 # ---------------------------------------------------------------------------
 
-AGGREGATE_VERSION = "aggregate-v6"
+AGGREGATE_VERSION = "aggregate-v7"
 
 AGGREGATE_SYSTEM = """You are the topic filter of a TECHNICAL aggregator channel "{channel_title}".
 The aggregator is RAW MATERIAL for an analytical newsroom, not a finished feed: broad coverage matters; the final value decision is made by the chief editor.
@@ -461,7 +472,7 @@ SCORING RULES:
 - A post formally near the topic but containing no fact/news (announcement without substance, retelling without data) — reject (category "water").
 
 """ + _RULES_RU + """
-
+{dedup_note}
 Answer strictly this JSON with no text outside it:
 {{"canonical": "", "suitable": true | false, "score": <0-10>, "category": "ok|ads|self_promo|water|off_topic", "reason": "<5-12 words in Russian: why approved or rejected>", "risks": []}}"""
 

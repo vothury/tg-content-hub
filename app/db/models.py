@@ -143,6 +143,9 @@ class TargetChannel(Base):
     # Slug или список через запятую; у каждой модели можно указать провайдеров в скобках:
     # "openai/gpt-oss-20b (akashml/fp4, darkbloom/fp8), openrouter/free". Пусто = глобальная настройка.
     classify_model: Mapped[str | None] = mapped_column(String(512))
+    # Семантический дедуп канала: off = дубли не подавляются (сигнал интереса к теме),
+    # canonical не строится — модель не тратит рассуждения на якоря и сравнения.
+    dedup_enabled: Mapped[bool] = mapped_column(default=True)
     # Автопилот (Этап 7): публикация без ручного ревью при уверенности модели
     autopilot: Mapped[bool] = mapped_column(default=False)
     autopilot_min_score: Mapped[int | None] = mapped_column(Integer)

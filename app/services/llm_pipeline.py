@@ -49,6 +49,7 @@ from app.services.llm.prompts import (
     AGGREGATE_VERSION,
     CLASSIFY_USER,
     CLASSIFY_VERSION,
+    DEDUP_OFF_NOTE
     REWRITE_SYSTEM_TEMPLATE,
     REWRITE_USER,
     REWRITE_VERSION,
@@ -409,6 +410,7 @@ async def classify_post(post_id: int) -> None:
         await session.commit()
 
     media_hint = await _media_hint(post_id)
+    dedup_on = True if channel is None else bool(getattr(channel, "dedup_enabled", True))
 
     async with session_scope() as session:
         verbose = bool(await get_setting(session, Keys.CLASSIFY_VERBOSE))
@@ -429,6 +431,7 @@ async def classify_post(post_id: int) -> None:
         source_title=source.title if source is not None else None,
         channel_note=channel.llm_instructions if channel is not None else None,
         response_lang=await _response_lang(),
+        dedup_enabled=dedup_on,
     )
     messages = [
         {"role": "system", "content": system_prompt},
@@ -485,6 +488,8 @@ async def classify_post(post_id: int) -> None:
         translated, translate_resp = await _translate_to_russian(result.reason, model, providers)
         if translated:
             result.reason = translated
+    if not dedup_on and result is not None:
+        result.canonical = ""   # дедуп выключен: канон не нужен совсем
     if result is not None and result.canonical:
         result.canonical = _norm_canonical(result.canonical)
     if translate_resp is not None and translate_resp.cost_usd:
@@ -541,7 +546,8 @@ async def classify_post(post_id: int) -> None:
             log.info("пост %s: классификация -> UNSUITABLE (%s)", post_id, (result.reason or "")[:120])
         await session.commit()
 
-    await run_semantic_dedup(post_id)
+    if dedup_on:
+        await run_semantic_dedup(post_id)
         
 
 async def rewrite_post(post_id: int) -> None:
@@ -935,7 +941,8 @@ async def _aggregate_filter(post_id: int, channel) -> tuple[bool | None, float, 
             channel_title=(channel.title or channel.username or "канал"),
             topic=topic, accept=accept, reject=reject,
             response_lang=lang,
-            language_rules=LANGUAGE_RULES.format(response_lang=lang))},
+            language_rules=LANGUAGE_RULES.format(response_lang=lang),
+            dedup_note="" if bool(getattr(channel, "dedup_enabled", True)) else DEDUP_OFF_NOTE)},
         {"role": "user", "content": AGGREGATE_USER.format(text=text)},
     ]
     model, resp, result, call_status, error_text = await _call_with_fallback(

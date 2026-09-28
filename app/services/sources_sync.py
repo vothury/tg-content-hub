@@ -99,6 +99,7 @@ def parse_sources_text(text: str):
             "aggregate_reject": str(t.get("aggregate_reject") or "").strip() or None,
             "llm_instructions": str(t.get("llm_instructions") or "").strip() or None,
             "classify_model": str(t.get("classify_model") or "").strip() or None,
+            "dedup": True if t.get("dedup") is None else bool(t.get("dedup")),
             "style": str(t.get("style") or "").strip() or None,
             "autopilot": t.get("autopilot"),
             "autopilot_min_score": t.get("autopilot_min_score"),
@@ -246,6 +247,7 @@ async def apply_parsed(parsed) -> dict:
                                           aggregate_reject=cfg["aggregate_reject"],
                                           llm_instructions=cfg["llm_instructions"],
                                           classify_model=cfg["classify_model"],
+                                          dedup_enabled=bool(cfg["dedup"]),
                                           autopilot=bool(cfg["autopilot"]),
                                           autopilot_min_score=cfg["autopilot_min_score"],
                                           review_if_uncertain=True if cfg["review_if_uncertain"] is None else bool(cfg["review_if_uncertain"]),
@@ -291,6 +293,8 @@ async def apply_parsed(parsed) -> dict:
             if ch.classify_model != cfg["classify_model"]:
                 ch.classify_model = cfg["classify_model"]
                 changed = True
+            de = bool(cfg["dedup"])
+            if ch.dedup_enabled != de: ch.dedup_enabled = de; changed = True
             if ch.style_profile_id != style_id: ch.style_profile_id = style_id; changed = True
             if changed: stats["targets"][1] += 1
             dco = bool(cfg["double_check_online"])
