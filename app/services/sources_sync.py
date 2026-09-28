@@ -296,14 +296,12 @@ async def apply_parsed(parsed) -> dict:
             de = bool(cfg["dedup"])
             if ch.dedup_enabled != de: ch.dedup_enabled = de; changed = True
             if ch.style_profile_id != style_id: ch.style_profile_id = style_id; changed = True
-            if changed: stats["targets"][1] += 1
             dco = bool(cfg["double_check_online"])
             if ch.double_check_online != dco: ch.double_check_online = dco; changed = True
             if cfg["double_check_fact_strictness"] and ch.double_check_fact_strictness != cfg["double_check_fact_strictness"]: ch.double_check_fact_strictness = cfg["double_check_fact_strictness"]; changed = True
+            if changed: stats["targets"][1] += 1
         await session.flush()
         target_ids = {c.username: c.id for c in (await session.execute(select(TargetChannel))).scalars().all()}
-
-
 
         keep = set()
         id2uname = {c.id: c.username for c in (
@@ -349,6 +347,7 @@ async def apply_parsed(parsed) -> dict:
             if src.id not in keep and src.enabled:
                 src.enabled = False; stats["disabled"] += 1
         await session.commit()
+    return stats
 
 
 async def sync_sources(path=DEFAULT_PATH):
