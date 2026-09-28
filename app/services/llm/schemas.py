@@ -306,3 +306,33 @@ class CleanPlanResult:
                 items.append({"i": int(x), "text": ""})  # только номер -> не проверяемо
         warns = [str(w) for w in (data.get("warnings") or [])] if isinstance(data, dict) else []
         return cls(remove=items, warnings=warns)
+
+
+@dataclass
+class BacklogScanResult:
+    items: list = field(default_factory=list)
+
+    @classmethod
+    def from_response(cls, content: str) -> "BacklogScanResult":
+        data = extract_json(content)
+        raw = data.get("items") if isinstance(data, dict) else data
+        if not isinstance(raw, list):
+            raise LLMParseError("ожидался список items")
+        items = []
+        for x in raw:
+            if not isinstance(x, dict):
+                continue
+            try:
+                i = int(x.get("i"))
+            except (TypeError, ValueError):
+                continue
+            try:
+                score = float(x.get("score") or 0)
+            except (TypeError, ValueError):
+                score = 0.0
+            items.append({"i": i, "keep": bool(x.get("keep")),
+                          "score": max(0.0, min(10.0, score)),
+                          "caption": str(x.get("caption") or "").strip()})
+        if not items:
+            raise LLMParseError("пустой список items")
+        return cls(items=items)

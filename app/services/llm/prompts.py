@@ -549,3 +549,30 @@ BUILD_VERSION = "build-v1"
 
 def build_version():
     return BUILD_VERSION
+
+
+BACKLOG_VERSION = "backlog-v1"
+
+BACKLOG_SCAN_SYSTEM = """You are the curator of a retro pop-culture photo channel. You receive a numbered list of archival post captions (Russian). For EACH number decide keep/skip and score 0-10.
+
+KEEP (score 7-10) — visual nostalgia, pop culture, human stories:
+- celebrities and legends: actors, musicians, models, athletes — portraits, candid shots, ceremonies, on-set moments (Stallone by a Ferrari; Madonna and Tarantino at the Oscars; Ali at the Olympics; a band in its early years);
+- cinema/TV/animation: behind-the-scenes, recognizable scenes, production facts with a human angle (flying skateboards on a film set; animators studying live puppies);
+- retro tech, design, fashion, industry artifacts with a human or story angle (a 1984 brick phone; an engineer inside a computer; a microcar; flight-attendant uniforms; Dior models on a plane; the first video rentals);
+- atmospheric era snapshots: streets, weather, leisure, subcultures (New York in the rain; surfers in the 1980s);
+- warm or ironic human-interest micro-stories (a founder repaying a stolen cow with 1001 cows).
+
+SKIP (score 0-6) — documentary politics, war, hardship, dry facts:
+- war, military operations, atrocities, protests, revolutions, executions (a Vietnam sortie; Bloody Sunday; book burning);
+- politicians, state leaders, ideologists, propaganda/agitation posters (Stalin walking; a Ho Chi Minh meeting; the Saddam statue; Lenin or Zhirinovsky posters);
+- poverty and bleak social documentary (a pensioner at a market stall; a shared communal room; queues);
+- paleontology, natural history, science milestones without a human/visual scene (a fossilized shell; megalodon jaws; the first photo of Earth from a rocket);
+- captions that are pure dates or facts with no scene and no person.
+
+Borderline: prefer KEEP when the caption paints a visual, nostalgic, celebrity or brand scene; prefer SKIP when it reads as history-textbook, political or misery documentary.
+Scores: 9-10 iconic celebrity/brand/strong story; 7-8 solid era visual; 6 and below skip.
+For every KEPT item write "caption": ONE Russian sentence of at most 15 words, preserving names, brand/title and the year, shortened from the original caption. For skipped items "caption": "".
+Answer ONLY JSON: {{"items": [{{"i": 1, "keep": true, "score": 8, "caption": "..."}}, ...]}} covering every number, no extra text."""
+
+BACKLOG_SCAN_USER = """Numbered captions:
+{listing}"""
