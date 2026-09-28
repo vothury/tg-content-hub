@@ -224,13 +224,6 @@ async def _response_lang() -> str:
     return "Russian" if v in ("ru", "rus", "russian") else "English"
 
 
-async def _response_lang() -> str:
-    """Язык строковых значений ответов моделей: Russian или English."""
-    async with session_scope() as session:
-        v = str(await get_setting(session, Keys.LLM_RESPONSE_LANG) or "ru").strip().lower()
-    return "Russian" if v in ("ru", "rus", "russian") else "English"
-
-
 async def _media_hint(post_id: int) -> str | None:
     async with session_scope() as session:
         rows = (await session.execute(
@@ -447,6 +440,7 @@ async def classify_post(post_id: int) -> None:
     resp = result = None
     call_status, error_text = LLMCallStatus.OK, None
     rotation_all: list = []
+    chain_model = model   # попытка 2 повторяет полный список, а не хвост попытки 1
     for attempt in (1, 2):
         # Попытка 2: рассуждений нет — весь лимит токенов идёт финальному JSON.
         # Это спасение вердикта, когда рассуждения обрезаны лимитом или модерацией провайдера.
@@ -454,7 +448,7 @@ async def classify_post(post_id: int) -> None:
         if attempt == 2:
             messages.append({"role": "system", "content": _NO_REASONING_DIRECTIVE})
         model, resp, result, call_status, error_text, rotation = await _call_with_fallback(
-            messages, model, settings.llm_classify_max_tokens, 0.2, ClassifyResult,
+            messages, chain_model, settings.llm_classify_max_tokens, 0.2, ClassifyResult,
             None, reason_budget,
         )
         rotation_all.extend(rotation)
@@ -690,7 +684,7 @@ async def advance_post(post_id: int) -> None:
             src_row = await session.get(Source, post_row.source_id) if post_row is not None else None
         if src_row is not None and src_row.editorial_only:
             return  # сырьё виртуальной редакции: copy-конвейер не трогаем
-            
+
         if post_row is not None and post_row.needs_media_refresh:
             log.info("пост %s: ожидает перескачивания медиа — обработка отложена до refresh",
                      post_id)
@@ -890,7 +884,7 @@ async def _call_with_fallback(messages, model, max_tokens, temperature, schema,
     """Вызов с ротацией: список моделей (у каждой может быть пиннинг провайдеров
     в скобках) + llm_fallback_models. Ответ модели модерации и непроходимый JSON
     считаются сбоем маршрутизации — пробуем следующую модель.
-    Возвращает (использованная модель, resp, result, status, error)."""
+        Возвращает (использованная модель, resp, result, status, error, rotation)."""
     entries = _split_model_list(str(model)) + await _fallback_models()
     chain, known = [], set()
     for e in entries:
