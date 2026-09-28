@@ -330,16 +330,23 @@ async def _profile_for_post(session, post) -> StyleProfile:
     return await _get_default_profile(session)
 
 
-def _make_call_row(post_id, stage, model, prompt_version, messages, resp, parsed, status, error) -> LLMCall:
+def _make_call_row(post_id, stage, model, version, messages, resp, parsed, status, error,
+                   rotation=None):
     model = (model or "")[:512]
+    response = None
+    if resp is not None:
+        response = {"content": resp.content, "parsed": parsed,
+                    "provider": resp.provider, "model": resp.model}
+        if rotation:
+            response["rotation"] = rotation
     return LLMCall(
         post_id=post_id,
         stage=stage,
-        provider="openrouter",
+        provider=resp.provider if resp is not None else "openrouter",
         model=model,
-        prompt_version=prompt_version,
+        prompt_version=version,
         request={"messages": messages},
-        response={"content": resp.content, "parsed": parsed, "provider": resp.provider, "model": resp.model} if resp is not None else None,
+        response=response,
         status=status,
         error=error,
         input_tokens=resp.input_tokens if resp is not None else None,
@@ -439,16 +446,18 @@ async def classify_post(post_id: int) -> None:
     ]
     resp = result = None
     call_status, error_text = LLMCallStatus.OK, None
+    rotation_all: list = []
     for attempt in (1, 2):
         # Попытка 2: рассуждений нет — весь лимит токенов идёт финальному JSON.
         # Это спасение вердикта, когда рассуждения обрезаны лимитом или модерацией провайдера.
         reason_budget = settings.llm_reasoning_max_tokens if attempt == 1 else 0
         if attempt == 2:
             messages.append({"role": "system", "content": _NO_REASONING_DIRECTIVE})
-        model, resp, result, call_status, error_text = await _call_with_fallback(
+        model, resp, result, call_status, error_text, rotation = await _call_with_fallback(
             messages, model, settings.llm_classify_max_tokens, 0.2, ClassifyResult,
             None, reason_budget,
         )
+        rotation_all.extend(rotation)
         if result is not None and call_status is LLMCallStatus.OK:
             # Слабая модель могла транслитерировать канон: один повтор с напоминанием
             if _canonical_script_mismatch(original_text, result.canonical or "") and attempt == 1:
@@ -499,10 +508,11 @@ async def classify_post(post_id: int) -> None:
         session.add(_make_call_row(
             post_id, LLMStage.CLASSIFY, model, CLASSIFY_VERSION, messages,
             resp, asdict(result) if result is not None else None, call_status, error_text,
+            rotation=rotation_all,
         ))
         if translate_resp is not None:
             session.add(LLMCall(
-                post_id=post_id, stage=LLMStage.CLASSIFY, provider="openrouter", model=model,
+                post_id=post_id, stage=LLMStage.CLASSIFY, provider=resp.provider, model=model,
                 prompt_version="translate-v1", request=None,
                 response={"content": translate_resp.content}, status=LLMCallStatus.OK,
                 input_tokens=translate_resp.input_tokens, output_tokens=translate_resp.output_tokens,
@@ -890,6 +900,7 @@ async def _call_with_fallback(messages, model, max_tokens, temperature, schema,
             known.add(slug)
     used, resp, result = (chain[0][0] if chain else str(model)), None, None
     call_status, error_text = LLMCallStatus.ERROR, "нет ответа"
+    rotation: list = []
     for m, spec in chain:
         used = m
         resp, result, call_status, error_text = await _call_and_parse(
@@ -899,6 +910,9 @@ async def _call_with_fallback(messages, model, max_tokens, temperature, schema,
         if resp is not None and resp.cost_usd:
             await guards.add_llm_cost(resp.cost_usd)
         if call_status is not LLMCallStatus.OK:
+            rotation.append({"model": m,
+                             "status": call_status.value if call_status else None,
+                             "error": (error_text or "")[:100]})
             log.warning("llm: %s — сбой вызова (%s): %s — пробуем следующую модель",
                         m, call_status.value if call_status else None,
                         (error_text or "")[:160])
@@ -906,6 +920,8 @@ async def _call_with_fallback(messages, model, max_tokens, temperature, schema,
             result = None
             call_status = LLMCallStatus.PARSE_ERROR
             error_text = f"модель {m} вернула ответ модерации: {resp.content[:60]!r}"
+            rotation.append({"model": m, "status": "safety",
+                             "error": resp.content[:60]})
             log.warning("llm: %s — ответ модели модерации вместо JSON, пробуем следующую", m)
             continue
         if result is not None and call_status is LLMCallStatus.OK:
@@ -913,7 +929,7 @@ async def _call_with_fallback(messages, model, max_tokens, temperature, schema,
     if chain and used != chain[0][0]:
         log.info("llm: ротация модели %s -> %s (причина у исходной — в предупреждениях выше)",
                  chain[0][0], used)
-    return used, resp, result, call_status, error_text
+    return used, resp, result, call_status, error_text, rotation
 
 
 async def _aggregate_filter(post_id: int, channel) -> tuple[bool | None, float, str]:
@@ -945,11 +961,12 @@ async def _aggregate_filter(post_id: int, channel) -> tuple[bool | None, float, 
             dedup_note="" if bool(getattr(channel, "dedup_enabled", True)) else DEDUP_OFF_NOTE)},
         {"role": "user", "content": AGGREGATE_USER.format(text=text)},
     ]
-    model, resp, result, call_status, error_text = await _call_with_fallback(
+    model, resp, result, call_status, error_text, rotation = await _call_with_fallback(
         messages, model, agg_max_tokens, 0.1, ClassifyResult, providers, settings.llm_reasoning_small)
     async with session_scope() as session:
         session.add(_make_call_row(post_id, LLMStage.CLASSIFY, model, AGGREGATE_VERSION, messages,
-                                   resp, asdict(result) if result else None, call_status, error_text))
+                                   resp, asdict(result) if result else None, call_status, error_text,
+                                   rotation=rotation))
         await session.commit()
     if result is None:
         # None = вердикта нет (технический сбой). Это НЕ «не подходит».

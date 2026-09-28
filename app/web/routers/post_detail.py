@@ -91,7 +91,7 @@ async def post_detail(request: Request, post_id: int, msg: str = ""):
             .order_by(LLMCall.id.desc()).limit(10))).scalars().all()
         map_rows = (await session.execute(
             select(LLMCall.id, LLMCall.stage, LLMCall.model,
-                   LLMCall.prompt_version, LLMCall.created_at)
+                   LLMCall.prompt_version, LLMCall.created_at, LLMCall.response)
             .where(LLMCall.post_id == post_id)
             .order_by(LLMCall.id.desc()).limit(40))).all()
         fb_events = (await session.execute(
@@ -114,16 +114,26 @@ async def post_detail(request: Request, post_id: int, msg: str = ""):
         if not st:
             continue
         best = None
-        for cid, cstage, cmodel, cver, cat in map_rows:
+        for cid, cstage, cmodel, cver, cat, cresp in map_rows:
             if cstage.value != st:
                 continue
             dt = (e.created_at - cat).total_seconds()
             if -15 <= dt <= 180 and (best is None or abs(dt) < abs(best[0])):
-                best = (dt, cid, cmodel, cver, cat)
+                best = (dt, cid, cmodel, cver, cat, cresp)
         if best is not None:
-            _, cid, cmodel, cver, cat = best
+            _, cid, cmodel, cver, cat, cresp = best
             when = cat if cat.tzinfo else cat.replace(tzinfo=timezone.utc)
-            ev_model[e.id] = (f"{cmodel}" + (f" · {cver}" if cver else "") +
+            cresp = cresp or {}
+            routed = str(cresp.get("model") or "")
+            parts = [cmodel]
+            if routed and routed != cmodel:
+                parts.append(f"→ фактически {routed}")
+            failed = cresp.get("rotation") or []
+            if failed:
+                parts.append("· перебор: " + "; ".join(
+                    f"{a.get('model')} ({a.get('status') or ''}: {(a.get('error') or '')[:50]})"
+                    for a in failed))
+            ev_model[e.id] = (" ".join(parts) + (f" · {cver}" if cver else "") +
                               f" · {when.astimezone(owner_tz()).strftime('%d.%m %H:%M:%S')}")
     delete_armed = await security.is_hard_delete_armed()
     pub_in_flight = any(j.state in (PublishJobState.QUEUED, PublishJobState.SCHEDULED,
