@@ -3,6 +3,7 @@ from __future__ import annotations  # ИСПРАВЛЕНО: __future__
 
 import hashlib
 import logging
+import re
 import xml.etree.ElementTree as ET  # ДОБАВЛЕНО
 from datetime import datetime, timedelta, timezone
 from html.parser import HTMLParser
