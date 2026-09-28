@@ -23,6 +23,17 @@ log = logging.getLogger("dedup")
 MEDIA_TEXT_FLOOR = 0.20  # минимальное совпадение канонов, чтобы считать media-матч дублем
 
 
+# Якоря дедупликации — только посты, которые УЖЕ в ленте или гарантированно попадут туда.
+# Черновики и ревью якорями не бывают: неопубликованный пост не должен хоронить тему,
+# принесённую вторым каналом (смысл дедупа — отсутствие повторов ИМЕННО В ЛЕНТЕ).
+DEDUP_ANCHOR_STATUSES = (
+    PostStatus.PUBLISHED,
+    PostStatus.APPROVED,
+    PostStatus.SCHEDULED,
+    PostStatus.PUBLISHING,
+)
+
+
 _FACT_QUOTED = re.compile(r"«([^»]+)»")
 _FACT_NAME = re.compile(r"[А-ЯЁA-Z][а-яёa-z]+(?: [А-ЯЁA-Z][а-яёa-z]+){0,2}")
 _FACT_DATE = re.compile(r"\d{1,2}\.\d{1,2}\.\d{4}|\d{4}-\d{2}-\d{2}|\d{1,2} [а-яё]+ \d{4}")
@@ -158,12 +169,17 @@ async def _confirm_same(a: str, b: str, post_id: int | None = None) -> bool | No
     return None
 
 
-async def run_semantic_dedup(post_id: int) -> bool:
-    """True, если пост помечен DEDUPLICATED (первый пост выигрывает)."""
+async def run_semantic_dedup(post_id: int,
+                             guard_statuses: tuple = (PostStatus.CANDIDATE,)) -> bool:
+    """True, если пост помечен DEDUPLICATED (первый пост выигрывает).
+
+    guard_statuses — статусы, при которых сверка запускается: CANDIDATE после
+    классификации; APPROVED/SCHEDULED/FAILED — финальная сверка перед публикацией."""
     async with session_scope() as session:
         post = await session.get(Post, post_id)
-        if post is None or post.status is not PostStatus.CANDIDATE:
+        if post is None or post.status not in guard_statuses:
             return False
+        prev_status = post.status.value
         window = int(await get_setting(session, Keys.DEDUP_WINDOW_DAYS))
         ph_max = int(await get_setting(session, Keys.DEDUP_PHASH_MAX_DISTANCE))
         min_len = int(await get_setting(session, Keys.DEDUP_CANONICAL_MIN_LEN))
@@ -179,7 +195,7 @@ async def run_semantic_dedup(post_id: int) -> bool:
             .where(Post.id != post_id,
                    Post.target_channel_id == post.target_channel_id,
                    Post.created_at >= since,
-                   Post.status != PostStatus.DEDUPLICATED)
+                   Post.status.in_(DEDUP_ANCHOR_STATUSES))
             .order_by(Post.id.desc()).limit(max_cmp)
         )).scalars().all()
 
@@ -303,7 +319,7 @@ async def run_semantic_dedup(post_id: int) -> bool:
                 post.dedup_info = {**(post.dedup_info or {}), "recap": post.recap_ids}
                 session.add(PostEvent(
                     post_id=post_id, actor=EventActor.SYSTEM, action="recap_attached",
-                    from_status=PostStatus.CANDIDATE.value, to_status=PostStatus.CANDIDATE.value,
+                    from_status=prev_status, to_status=prev_status,
                     details={"recap": post.recap_ids},
                 ))
                 await session.commit()
@@ -314,7 +330,7 @@ async def run_semantic_dedup(post_id: int) -> bool:
             if confirm_info is not None:
                 session.add(PostEvent(
                     post_id=post_id, actor=EventActor.SYSTEM, action="dedup_cleared",
-                    from_status=PostStatus.CANDIDATE.value, to_status=PostStatus.CANDIDATE.value,
+                    from_status=prev_status, to_status=prev_status,
                     details=confirm_info,
                 ))
             await session.commit()
@@ -323,7 +339,7 @@ async def run_semantic_dedup(post_id: int) -> bool:
         post.status = PostStatus.DEDUPLICATED
         session.add(PostEvent(
             post_id=post_id, actor=EventActor.SYSTEM, action="deduplicated",
-            from_status=PostStatus.CANDIDATE.value, to_status=PostStatus.DEDUPLICATED.value,
+            from_status=prev_status, to_status=PostStatus.DEDUPLICATED.value,
             details={"dup_of": dup_of, "reason": reason, "confirm": confirm_info},
         ))
         await session.commit()

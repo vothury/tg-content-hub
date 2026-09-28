@@ -290,11 +290,21 @@ def _until_next_day() -> timedelta:
 
 async def create_publish_job(post_id: int, mode: PublishMode, scheduled_at: datetime | None = None) -> tuple[bool, str]:
     """Создаёт задачу публикации идемпотентно; для упавших — перезапуск."""
+    # Финальная сверка дублей: якорь мог стать опубликованным/одобренным ПОСЛЕ
+    # классификационной дедупликации этого поста (например, пост днями ждал ревью).
+    from app.services.dedup import run_semantic_dedup
+    await run_semantic_dedup(
+        post_id,
+        guard_statuses=(PostStatus.APPROVED, PostStatus.SCHEDULED, PostStatus.FAILED))
     async with session_scope() as session:
         post = await session.get(Post, post_id)
         if post is None:
             return False, "пост не найден"
         if post.status not in (PostStatus.APPROVED, PostStatus.SCHEDULED, PostStatus.FAILED):
+            if post.status is PostStatus.DEDUPLICATED:
+                dup_of = (post.dedup_info or {}).get("dup_of")
+                return False, (f"дубль поста #{dup_of} из ленты/очереди — публикация отменена"
+                               if dup_of else "дубль опубликованной темы — публикация отменена")
             return False, f"пост не готов к публикации (статус {post.status.value})"
         if post.target_channel_id is None:
             return False, "у поста не выбран целевой канал"
@@ -755,6 +765,10 @@ async def _publish(bot: Bot, job_id: int) -> None:
         channel = await session.get(TargetChannel, channel_id)
     if post is None or channel is None:
         await _finish_failed(bot, job_id, "пост или канал не найдены", attempts, final=True)
+        return
+    if post.status is PostStatus.DEDUPLICATED:
+        await _finish_failed(bot, job_id, "пост помечен дубликатом — публикация отменена",
+                             attempts, final=True)
         return
 
     chat_id = await _resolve_channel_id(bot, channel)
