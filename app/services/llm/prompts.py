@@ -576,3 +576,19 @@ Answer ONLY JSON: {"items": [{"i": 1, "keep": true, "score": 8, "caption": "..."
 
 BACKLOG_SCAN_USER = """Numbered captions:
 {listing}"""
+
+
+BACKLOG_AUDIT_VERSION = "backlog-audit-v1"
+BACKLOG_FACTS_VERSION = "backlog-facts-v1"
+
+BACKLOG_AUDIT_SYSTEM = """You are a media auditor. You receive a numbered list of post captions from a Telegram channel (Russian). Classify EACH item into exactly one category:
+- "profile": core niche of the channel (for real-estate probes: Moscow/region PRIMARY market — residential complexes, developers, prices per m2, mortgages, construction stages, permits, renovation/KRT);
+- "secondary": adjacent real estate (secondary market, rentals, country houses, foreign property);
+- "water": retellings and announcements without facts, numbers or events;
+- "ads": advertising, affiliate integrations, selling services;
+- "other": everything else (politics, unrelated topics).
+Answer ONLY JSON: {{"items": [{{"i": 1, "cat": "profile"}}, ...]}} covering every number, no extra text."""
+
+BACKLOG_FACTS_SYSTEM = """You are a fact-extractor for a real-estate analytics knowledge base. You receive a numbered list of post captions (Russian). For EACH item that contains a concrete primary-market fact (price, event date, sales start, completion, permit, program rate, volume), output the fact; for items without concrete facts output rel=false.
+Fields per item: "i", "rel" (true|false), "obj" (object: ЖК name / developer / district / program / market overall; empty if rel=false), "facts" (1-4 short Russian strings, each = date or period + metric + value, e.g. "03.2024: старт продаж, 280 тыс/м2"; empty if rel=false).
+Answer ONLY JSON: {{"items": [{{"i": 1, "rel": true, "obj": "ЖК X", "facts": ["03.2024: старт продаж, 280 тыс/м2"]}}, ...]}} covering every number, no extra text."""

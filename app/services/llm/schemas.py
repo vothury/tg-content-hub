@@ -336,3 +336,56 @@ class BacklogScanResult:
         if not items:
             raise LLMParseError("пустой список items")
         return cls(items=items)
+
+
+@dataclass
+class BacklogAuditResult:
+    items: list = field(default_factory=list)
+
+    @classmethod
+    def from_response(cls, content: str) -> "BacklogAuditResult":
+        data = extract_json(content)
+        raw = data.get("items") if isinstance(data, dict) else data
+        if not isinstance(raw, list):
+            raise LLMParseError("ожидался список items")
+        items = []
+        for x in raw:
+            if not isinstance(x, dict):
+                continue
+            try:
+                i = int(x.get("i"))
+            except (TypeError, ValueError):
+                continue
+            items.append({"i": i, "cat": str(x.get("cat") or "other").strip().lower()})
+        if not items:
+            raise LLMParseError("пустой список items")
+        return cls(items=items)
+
+
+@dataclass
+class BacklogFactsResult:
+    items: list = field(default_factory=list)
+
+    @classmethod
+    def from_response(cls, content: str) -> "BacklogFactsResult":
+        data = extract_json(content)
+        raw = data.get("items") if isinstance(data, dict) else data
+        if not isinstance(raw, list):
+            raise LLMParseError("ожидался список items")
+        items = []
+        for x in raw:
+            if not isinstance(x, dict):
+                continue
+            try:
+                i = int(x.get("i"))
+            except (TypeError, ValueError):
+                continue
+            facts = x.get("facts") or []
+            if not isinstance(facts, list):
+                facts = [str(facts)]
+            items.append({"i": i, "rel": bool(x.get("rel")),
+                          "obj": str(x.get("obj") or "").strip(),
+                          "facts": [str(f).strip() for f in facts if str(f).strip()][:6]})
+        if not items:
+            raise LLMParseError("пустой список items")
+        return cls(items=items)
