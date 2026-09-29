@@ -20,8 +20,9 @@ import argparse
 import asyncio
 import json
 import logging
+import re
 import sys
-from datetime import timezone
+from datetime import datetime as _dt, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # корень репо: импорт app.*
@@ -226,13 +227,14 @@ async def main() -> None:
         log.info("фаза 2: записей к оценке %d (известных БД пропущено %d)",
                  len(entries), len(known))
         kept: list = state.setdefault("kept", [])
-        done_batches = int(state.get("done_batches", 0))
+        done_ids: set = set(state.setdefault("done_ids", []))
         cost_total = float(state.get("cost", 0.0))
-        total = (len(entries) + args.batch - 1) // args.batch
+        pending = [e for e in entries if e["id"] not in done_ids]
+        total = (len(pending) + args.batch - 1) // args.batch
         if args.max_batches:
             total = min(total, args.max_batches)
-        for bi in range(done_batches, total):
-            chunk = entries[bi * args.batch:(bi + 1) * args.batch]
+        for bi in range(total):
+            chunk = pending[bi * args.batch:(bi + 1) * args.batch]
             listing = "\n".join(
                 f"{n}. {(e['text'] or '')[:300]}" for n, e in enumerate(chunk, 1))
             system = {"taste": BACKLOG_SCAN_SYSTEM,
@@ -259,7 +261,6 @@ async def main() -> None:
                             bi + 1, total, attempt, (error or "")[:120])
                 await asyncio.sleep(30)
             if result is not None:
-            if result is not None:
                 by_i = {n: e for n, e in enumerate(chunk, 1)}
                 for it in result.items:
                     e = by_i.get(it["i"])
@@ -282,7 +283,8 @@ async def main() -> None:
                                      "facts": it["facts"], "views": e.get("views"),
                                      "text": (e["text"] or "")[:200],
                                      "source": args.source, "batch": bi + 1})
-            state["done_batches"] = bi + 1
+            done_ids.update(e["id"] for e in chunk)
+            state["done_ids"] = sorted(done_ids)
             state["cost"] = cost_total
             state["kept"] = kept
             _save_state(state_path, state)
