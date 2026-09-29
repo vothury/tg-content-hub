@@ -66,6 +66,7 @@ services:
       - ./sessions:/app/sessions
       - media:/app/media
       - ./sources.yaml:/app/sources.yaml:ro
+      - ./backlog:/app/backlog          # результаты backlog-скана видны на хосте в ./backlog
     depends_on:
       migrate:
         condition: service_completed_successfully
