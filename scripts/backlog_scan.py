@@ -103,6 +103,8 @@ async def _fetch_history(client, entity, raw_path: Path, state: dict,
                 gid = getattr(m, "grouped_id", None)
                 if not text and gid is None and getattr(m, "media", None) is None:
                     continue  # служебные сообщения
+                rc = getattr(m, "reactions", None)
+                rlist = getattr(rc, "results", None) or (rc if isinstance(rc, list) else [])
                 fh.write(json.dumps({
                     "id": m.id,
                     "date": m.date.astimezone(timezone.utc).isoformat(),
@@ -110,8 +112,7 @@ async def _fetch_history(client, entity, raw_path: Path, state: dict,
                     "grouped_id": gid,
                     "views": getattr(m, "views", None),
                     "forwards": getattr(m, "forwards", None),
-                    "reactions": sum(getattr(r, "count", 0) or 0
-                                     for r in (getattr(m, "reactions", None) or [])),
+                    "reactions": sum(getattr(r, "count", 0) or 0 for r in rlist),
                 }, ensure_ascii=False) + "\n")
                 seen.add(m.id)
                 added += 1
