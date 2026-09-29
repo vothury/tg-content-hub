@@ -572,6 +572,7 @@ SKIP (score 0-6) — documentary politics, war, hardship, dry facts:
 Borderline: prefer KEEP when the caption paints a visual, nostalgic, celebrity or brand scene; prefer SKIP when it reads as history-textbook, political or misery documentary.
 Scores: 9-10 iconic celebrity/brand/strong story; 7-8 solid era visual; 6 and below skip.
 For every KEPT item write "caption": ONE Russian sentence of at most 15 words, preserving names, brand/title and the year, shortened from the original caption. For skipped items "caption": "".
+REASONING PROTOCOL (mandatory): before the JSON output ONE single line of per-item tokens "<i> <score>." (example: "1 8. 2 3. 3 9.") — number then score, nothing else; do NOT repeat caption text, do NOT write sentences or deliberations. Then the JSON.
 Answer ONLY JSON: {"items": [{"i": 1, "keep": true, "score": 8, "caption": "..."}, ...]} covering every number, no extra text."""
 
 BACKLOG_SCAN_USER = """Numbered captions:
@@ -587,8 +588,10 @@ BACKLOG_AUDIT_SYSTEM = """You are a media auditor. You receive a numbered list o
 - "water": retellings and announcements without facts, numbers or events;
 - "ads": advertising, affiliate integrations, selling services;
 - "other": everything else (politics, unrelated topics).
+REASONING PROTOCOL (mandatory): before the JSON output ONE single line of per-item tokens "<i> <cat>." (example: "1 profile. 2 water. 3 ads.") — number then category, nothing else; do NOT repeat caption text, do NOT write sentences or deliberations. Then the JSON.
 Answer ONLY JSON: {{"items": [{{"i": 1, "cat": "profile"}}, ...]}} covering every number, no extra text."""
 
 BACKLOG_FACTS_SYSTEM = """You are a fact-extractor for a real-estate analytics knowledge base. You receive a numbered list of post captions (Russian). For EACH item that contains a concrete primary-market fact (price, event date, sales start, completion, permit, program rate, volume), output the fact; for items without concrete facts output rel=false.
 Fields per item: "i", "rel" (true|false), "obj" (object: ЖК name / developer / district / program / market overall; empty if rel=false), "facts" (1-4 short Russian strings, each = date or period + metric + value, e.g. "03.2024: старт продаж, 280 тыс/м2"; empty if rel=false).
+REASONING PROTOCOL (mandatory): before the JSON output ONE single line of per-item tokens "<i> rel <obj>." or "<i> -." (example: "1 rel ЖК X. 2 -. 3 rel район Y.") — number then rel/minus and object only; do NOT repeat caption text, do NOT write sentences. Then the JSON.
 Answer ONLY JSON: {{"items": [{{"i": 1, "rel": true, "obj": "ЖК X", "facts": ["03.2024: старт продаж, 280 тыс/м2"]}}, ...]}} covering every number, no extra text."""

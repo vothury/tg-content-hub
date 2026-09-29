@@ -880,7 +880,7 @@ async def _fallback_models() -> list:
 
 
 async def _call_with_fallback(messages, model, max_tokens, temperature, schema,
-                              providers, reasoning_max_tokens):
+                              providers, reasoning_max_tokens, exclude=None):
     """Вызов с ротацией: список моделей (у каждой может быть пиннинг провайдеров
     в скобках) + llm_fallback_models. Ответ модели модерации и непроходимый JSON
     считаются сбоем маршрутизации — пробуем следующую модель.
@@ -889,6 +889,9 @@ async def _call_with_fallback(messages, model, max_tokens, temperature, schema,
     chain, known = [], set()
     for e in entries:
         slug, spec = _parse_model_spec(e)
+        if slug and slug not in known and (not exclude or slug not in exclude):
+            chain.append((slug, spec))
+            known.add(slug)_spec(e)
         if slug and slug not in known:
             chain.append((slug, spec))
             known.add(slug)
