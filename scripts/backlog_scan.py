@@ -149,8 +149,15 @@ async def main() -> None:
     ap.add_argument("--max-batches", type=int, default=0,
                     help="тест: оценить не больше M батчей (0 = все)")
     args = ap.parse_args()
+    if args.batch < 1:
+        raise SystemExit("--batch должен быть >= 1")
+    if not 0 <= args.min_score <= 10:
+        raise SystemExit("--min-score в пределах 0..10")
+    args.pause = max(0.0, args.pause)
+    args.tg_sleep = max(0.0, args.tg_sleep)
 
     out_path, raw_path, state_path = _paths(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)   # media/backlog/ и т.п. создаём сами
     state = _load_state(state_path)
 
     client = TelegramClient(settings.reader_session_path,
