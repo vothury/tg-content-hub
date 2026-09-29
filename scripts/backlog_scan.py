@@ -142,8 +142,13 @@ async def main() -> None:
     ap.add_argument("--min-score", type=float, default=7.0)
     ap.add_argument("--pause", type=float, default=2.5, help="пауза между LLM-вызовами, сек")
     ap.add_argument("--tg-sleep", type=float, default=1.5, help="пауза между запросами истории, сек")
-    ap.add_argument("--model", default="", help="пусто = глобальная цепочка llm.classify_model")
-    ap.add_argument("--out", default="backlog_scan.md")
+    ap.add_argument("--model", default="",
+                    help="пусто = глобальная цепочка llm.classify_model; провайдеры каждой "
+                         "модели — в скобках рядом с ней: 'slug (prov/quant, prov/quant), "
+                         "slug2 (prov/quant)' (тот же синтаксис, что у classify_model в "
+                         "sources.yaml); модели без скобок берут глобальные "
+                         "llm.classify_providers")
+    ap.add_argument("--out", default="media/backlog/backlog_scan.md")
     ap.add_argument("--limit", type=int, default=0,
                     help="тест: тянуть не больше N сообщений истории (0 = всю)")
     ap.add_argument("--max-batches", type=int, default=0,
@@ -233,6 +238,15 @@ async def main() -> None:
                          bi + 1, total, len(kept), cost_total)
             await asyncio.sleep(args.pause)
 
+        seen_ids: set = set()
+        uniq: list = []
+        for r in kept:
+            if r["msg_id"] in seen_ids:
+                continue
+            seen_ids.add(r["msg_id"])
+            uniq.append(r)
+        kept = uniq
+        state["kept"] = kept
         kept.sort(key=lambda r: (-r["score"], r["date"]))
         tz = owner_tz()
         lines = [f"# Backlog {args.source}: отобрано {len(kept)} "

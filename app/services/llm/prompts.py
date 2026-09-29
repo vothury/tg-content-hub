@@ -572,7 +572,7 @@ SKIP (score 0-6) — documentary politics, war, hardship, dry facts:
 Borderline: prefer KEEP when the caption paints a visual, nostalgic, celebrity or brand scene; prefer SKIP when it reads as history-textbook, political or misery documentary.
 Scores: 9-10 iconic celebrity/brand/strong story; 7-8 solid era visual; 6 and below skip.
 For every KEPT item write "caption": ONE Russian sentence of at most 15 words, preserving names, brand/title and the year, shortened from the original caption. For skipped items "caption": "".
-Answer ONLY JSON: {{"items": [{{"i": 1, "keep": true, "score": 8, "caption": "..."}}, ...]}} covering every number, no extra text."""
+Answer ONLY JSON: {"items": [{"i": 1, "keep": true, "score": 8, "caption": "..."}, ...]} covering every number, no extra text."""
 
 BACKLOG_SCAN_USER = """Numbered captions:
 {listing}"""
