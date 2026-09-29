@@ -891,9 +891,6 @@ async def _call_with_fallback(messages, model, max_tokens, temperature, schema,
         slug, spec = _parse_model_spec(e)
         if slug and slug not in known and (not exclude or slug not in exclude):
             chain.append((slug, spec))
-            known.add(slug)_spec(e)
-        if slug and slug not in known:
-            chain.append((slug, spec))
             known.add(slug)
     used, resp, result = (chain[0][0] if chain else str(model)), None, None
     call_status, error_text = LLMCallStatus.ERROR, "нет ответа"
