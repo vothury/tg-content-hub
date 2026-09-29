@@ -181,6 +181,8 @@ async def main() -> None:
                     help="регекс-гейт: записи без совпадения не попадают в батчи (срежет объём бесплатно)")
     ap.add_argument("--since", default="",
                     help="не читать историю раньше даты YYYY-MM-DD (период опроса)")
+    ap.add_argument("--niche", default="",
+                    help="описание ниши для режима audit (по умолчанию — первичка Москвы/МО)")
     args = ap.parse_args()
     if args.batch < 1:
         raise SystemExit("--batch должен быть >= 1")
@@ -238,8 +240,10 @@ async def main() -> None:
             chunk = pending[bi * args.batch:(bi + 1) * args.batch]
             listing = "\n".join(
                 f"{n}. {(e['text'] or '')[:300]}" for n, e in enumerate(chunk, 1))
+            niche_default = ("Moscow/region PRIMARY market — residential complexes, developers, "
+                             "prices per m2, mortgages, construction stages, permits, renovation/KRT")
             system = {"taste": BACKLOG_SCAN_SYSTEM,
-                      "audit": BACKLOG_AUDIT_SYSTEM,
+                      "audit": BACKLOG_AUDIT_SYSTEM.format(niche=args.niche or niche_default),
                       "facts": BACKLOG_FACTS_SYSTEM}[args.mode]
             messages = [
                 {"role": "system", "content": system},

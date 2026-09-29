@@ -582,7 +582,7 @@ BACKLOG_AUDIT_VERSION = "backlog-audit-v1"
 BACKLOG_FACTS_VERSION = "backlog-facts-v1"
 
 BACKLOG_AUDIT_SYSTEM = """You are a media auditor. You receive a numbered list of post captions from a Telegram channel (Russian). Classify EACH item into exactly one category:
-- "profile": core niche of the channel (for real-estate probes: Moscow/region PRIMARY market — residential complexes, developers, prices per m2, mortgages, construction stages, permits, renovation/KRT);
+- "profile": core niche of the channel: {niche};
 - "secondary": adjacent real estate (secondary market, rentals, country houses, foreign property);
 - "water": retellings and announcements without facts, numbers or events;
 - "ads": advertising, affiliate integrations, selling services;
