@@ -343,6 +343,7 @@ class BacklogScanResult:
         scores: dict = {}
         for m in _TASTE_LINE_RE.finditer(s):
             scores[int(m.group(1))] = float(m.group(2).replace(",", "."))
+        items: list = []
         for i, score in sorted(scores.items()):
             j = caps.get(i)
             items.append({"i": i,
@@ -387,11 +388,6 @@ class BacklogAuditResult:
         if alt:
             return cls(items=alt)
         raise LLMParseError(f"нет строки «i cat» и нет JSON: {s[:200]!r}")
-        except Exception:  # noqa: BLE001
-            pass
-        if not items:
-            raise LLMParseError(f"нет строки «i cat» и нет JSON: {s[:200]!r}")
-        return cls(items=items)
 
 
 @dataclass

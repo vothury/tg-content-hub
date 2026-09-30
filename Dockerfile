@@ -21,6 +21,7 @@ RUN python -c 'import tomllib; d=tomllib.load(open("pyproject.toml","rb")); open
 COPY app ./app
 COPY alembic.ini ./
 COPY alembic ./alembic
+COPY scripts ./scripts
 # Раскомментируйте, если compose НЕ монтирует ./config в контейнер:
 # COPY config ./config
 
