@@ -308,57 +308,90 @@ class CleanPlanResult:
         return cls(remove=items, warnings=warns)
 
 
+_TASTE_LINE_RE = re.compile(r"(\d+)\s*[:.)\-]?\s*(\d+(?:[.,]\d+)?)")
+_AUDIT_LINE_RE = re.compile(r"(\d+)\s*[:.)\-]?\s*\b(profile|secondary|water|ads|other)\b", re.I)
+
+
 @dataclass
 class BacklogScanResult:
+    """taste: строка «i score» по всем номерам + JSON-подписи только для keep-ов."""
     items: list = field(default_factory=list)
 
     @classmethod
     def from_response(cls, content: str) -> "BacklogScanResult":
-        data = extract_json(content)
-        raw = data.get("items") if isinstance(data, dict) else data
-        if not isinstance(raw, list):
-            raise LLMParseError("ожидался список items")
-        items = []
-        for x in raw:
-            if not isinstance(x, dict):
+        s = (content or "").strip()
+        caps: dict = {}
+        try:
+            data = extract_json(s)
+            raw = data.get("items") if isinstance(data, dict) else data
+            for x in (raw if isinstance(raw, list) else []):
+                if not isinstance(x, dict):
+                    continue
+                try:
+                    i = int(x.get("i"))
+                except (TypeError, ValueError):
+                    continue
+                try:
+                    sc = float(x.get("score") or 0)
+                except (TypeError, ValueError):
+                    sc = 0.0
+                caps[i] = {"score": max(0.0, min(10.0, sc)),
+                           "caption": str(x.get("caption") or "").strip(),
+                           "keep": bool(x.get("keep", True))}
+        except Exception:  # noqa: BLE001 — JSON может отсутствовать (новый формат)
+            pass
+        items, seen = [], set()
+        for m in _TASTE_LINE_RE.finditer(s):
+            i = int(m.group(1))
+            if i in seen:
                 continue
-            try:
-                i = int(x.get("i"))
-            except (TypeError, ValueError):
-                continue
-            try:
-                score = float(x.get("score") or 0)
-            except (TypeError, ValueError):
-                score = 0.0
-            items.append({"i": i, "keep": bool(x.get("keep")),
-                          "score": max(0.0, min(10.0, score)),
-                          "caption": str(x.get("caption") or "").strip()})
-        if not items:
-            raise LLMParseError("пустой список items")
-        return cls(items=items)
+            seen.add(i)
+            score = float(m.group(2).replace(",", "."))
+            j = caps.get(i)
+            items.append({"i": i,
+                          "keep": True if j is None else j["keep"],
+                          "score": max(score, j["score"]) if j else score,
+                          "caption": j["caption"] if j else ""})
+        if items:
+            return cls(items=items)
+        if caps:  # запасной путь: модель ответила старым полным JSON без строки
+            return cls(items=[{"i": i, "keep": v["keep"], "score": v["score"],
+                               "caption": v["caption"]} for i, v in sorted(caps.items())])
+        raise LLMParseError(f"нет строки «i score» и нет JSON: {s[:200]!r}")
 
 
 @dataclass
 class BacklogAuditResult:
+    """audit: ответ = одна строка «i cat.» на весь батч, JSON не требуется."""
     items: list = field(default_factory=list)
 
     @classmethod
     def from_response(cls, content: str) -> "BacklogAuditResult":
-        data = extract_json(content)
-        raw = data.get("items") if isinstance(data, dict) else data
-        if not isinstance(raw, list):
-            raise LLMParseError("ожидался список items")
-        items = []
-        for x in raw:
-            if not isinstance(x, dict):
+        s = (content or "").strip()
+        items, seen = [], set()
+        for m in _AUDIT_LINE_RE.finditer(s):
+            i = int(m.group(1))
+            if i in seen:
                 continue
-            try:
-                i = int(x.get("i"))
-            except (TypeError, ValueError):
-                continue
-            items.append({"i": i, "cat": str(x.get("cat") or "other").strip().lower()})
+            seen.add(i)
+            items.append({"i": i, "cat": m.group(1 + 1).lower()})
+        if items:
+            return cls(items=items)
+        try:  # запасной путь: модель по привычке выдала JSON
+            data = extract_json(s)
+            raw = data.get("items") if isinstance(data, dict) else data
+            for x in (raw if isinstance(raw, list) else []):
+                if not isinstance(x, dict):
+                    continue
+                try:
+                    i = int(x.get("i"))
+                except (TypeError, ValueError):
+                    continue
+                items.append({"i": i, "cat": str(x.get("cat") or "other").strip().lower()})
+        except Exception:  # noqa: BLE001
+            pass
         if not items:
-            raise LLMParseError("пустой список items")
+            raise LLMParseError(f"нет строки «i cat» и нет JSON: {s[:200]!r}")
         return cls(items=items)
 
 
