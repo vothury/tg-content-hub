@@ -133,14 +133,29 @@ async def _fetch_history(client, entity, raw_path: Path, state: dict,
                     continue  # служебные сообщения
                 rc = getattr(m, "reactions", None)
                 rlist = getattr(rc, "results", None) or (rc if isinstance(rc, list) else [])
+                rmap, rsum = {}, 0
+                for r in rlist:
+                    cnt = int(getattr(r, "count", 0) or 0)
+                    emo = getattr(getattr(r, "reaction", None), "emoticon", None) \
+                        or str(getattr(r, "reaction", "") or "?")
+                    rmap[emo] = rmap.get(emo, 0) + cnt
+                    rsum += cnt
+                media_kind = ("photo" if getattr(m, "photo", None)
+                              else "video" if getattr(m, "video", None)
+                              else "document" if getattr(m, "document", None)
+                              else "other" if getattr(m, "media", None) else None)
                 fh.write(json.dumps({
                     "id": m.id,
                     "date": m.date.astimezone(timezone.utc).isoformat(),
                     "text": text,
                     "grouped_id": gid,
+                    "media": media_kind,
                     "views": getattr(m, "views", None),
                     "forwards": getattr(m, "forwards", None),
-                    "reactions": sum(getattr(r, "count", 0) or 0 for r in rlist),
+                    "reply_count": getattr(m, "reply_count", None),
+                    "reactions": rsum,
+                    "reactions_map": rmap,
+                    "edited": bool(getattr(m, "edit_date", None)),
                 }, ensure_ascii=False) + "\n")
                 seen.add(m.id)
                 added += 1
@@ -164,16 +179,28 @@ def _entries(raw_path: Path) -> list:
         gid = r.get("grouped_id")
         if gid:
             e = by_gid.setdefault(gid, {"id": r["id"], "date": r["date"], "text": "",
+                                        "media": None,
                                         "views": r.get("views"), "forwards": r.get("forwards"),
-                                        "reactions": r.get("reactions") or 0})
+                                        "reply_count": r.get("reply_count"),
+                                        "reactions": 0, "reactions_map": {}})
             if r["text"] and not e["text"]:
                 e["text"] = r["text"]
             e["id"] = min(e["id"], r["id"])
+            if r.get("media") and not e["media"]:
+                e["media"] = r["media"]
+            e["views"] = max(e["views"] or 0, r.get("views") or 0) or None
+            e["forwards"] = max(e["forwards"] or 0, r.get("forwards") or 0) or None
+            e["reply_count"] = max(e["reply_count"] or 0, r.get("reply_count") or 0) or None
             e["reactions"] = (e["reactions"] or 0) + (r.get("reactions") or 0)
+            for k, v in (r.get("reactions_map") or {}).items():
+                e["reactions_map"][k] = e["reactions_map"].get(k, 0) + v
         else:
             solo.append({"id": r["id"], "date": r["date"], "text": r["text"],
+                         "media": r.get("media"),
                          "views": r.get("views"), "forwards": r.get("forwards"),
-                         "reactions": r.get("reactions") or 0})
+                         "reply_count": r.get("reply_count"),
+                         "reactions": r.get("reactions") or 0,
+                         "reactions_map": r.get("reactions_map") or {}})
     out = solo + list(by_gid.values())
     out = [e for e in out if (e["text"] or "").strip()]
     out.sort(key=lambda e: e["id"])
@@ -189,7 +216,7 @@ async def main() -> None:
     ap.add_argument("--tg-sleep", type=float, default=1.5, help="пауза между запросами истории, сек")
     ap.add_argument("--model", default="",
                     help="пусто = глобальная цепочка llm.classify_model; провайдеры каждой "
-                         "модели - в скобках рядом с ней: 'slug (prov/quant, prov/quant), "
+                         "модели — в скобках рядом с ней: 'slug (prov/quant, prov/quant), "
                          "slug2 (prov/quant)' (тот же синтаксис, что у classify_model в "
                          "sources.yaml); модели без скобок берут глобальные llm.classify_providers")
     ap.add_argument("--out", default="backlog/backlog_scan.md")
@@ -206,7 +233,7 @@ async def main() -> None:
     ap.add_argument("--since", default="",
                     help="не читать историю раньше даты YYYY-MM-DD (период опроса)")
     ap.add_argument("--niche", default="",
-                    help="описание ниши для режима audit (по умолчанию - первичка Москвы/МО)")
+                    help="описание ниши для режима audit (по умолчанию — первичка Москвы/МО)")
     ap.add_argument("--reasoning", type=int, default=500,
                     help="бюджет рассуждений вызовов скана: протокол компактный, "
                          "500 хватает на батч 40; 0 = попытка вовсе без рассуждений")
@@ -270,7 +297,7 @@ async def main() -> None:
         total = (len(pending) + args.batch - 1) // args.batch
         if args.max_batches:
             total = min(total, args.max_batches)
-        niche_default = ("Moscow/region PRIMARY market - residential complexes, developers, "
+        niche_default = ("Moscow/region PRIMARY market — residential complexes, developers, "
                          "prices per m2, mortgages, construction stages, permits, renovation/KRT")
         for bi in range(total):
             chunk = pending[bi * args.batch:(bi + 1) * args.batch]
@@ -295,7 +322,7 @@ async def main() -> None:
                     providers, args.reasoning, **call_kwargs)
                 if resp is not None and resp.cost_usd:
                     cost_total += float(resp.cost_usd)
-                # Бан "раздумчивых": два подряд обрыва на лимите токенов - вне цепочки.
+                # Бан «раздумчивых»: два подряд обрыва на лимите токенов — вне цепочки.
                 for r in rotation:
                     slug = r.get("model")
                     if _is_limit_error(r.get("error")):
@@ -327,15 +354,28 @@ async def main() -> None:
                         kept.append({"msg_id": e["id"], "date": e["date"],
                                      "score": it["score"],
                                      "caption": it["caption"] or (e["text"] or "")[:110],
-                                     "views": e.get("views"), "batch": bi + 1})
+                                     "views": e.get("views"), "forwards": e.get("forwards"),
+                                     "replies": e.get("reply_count"),
+                                     "reactions": e.get("reactions"),
+                                     "reactions_map": e.get("reactions_map"),
+                                     "media": e.get("media"), "batch": bi + 1})
                     elif args.mode == "audit":
                         kept.append({"msg_id": e["id"], "date": e["date"], "cat": it["cat"],
-                                     "views": e.get("views"), "batch": bi + 1})
+                                     "views": e.get("views"), "forwards": e.get("forwards"),
+                                     "replies": e.get("reply_count"),
+                                     "reactions": e.get("reactions"),
+                                     "reactions_map": e.get("reactions_map"),
+                                     "media": e.get("media"), "batch": bi + 1})
                     else:
                         if not it["rel"] or not it["facts"]:
                             continue
                         kept.append({"msg_id": e["id"], "date": e["date"], "obj": it["obj"],
                                      "facts": it["facts"], "views": e.get("views"),
+                                     "forwards": e.get("forwards"),
+                                     "replies": e.get("reply_count"),
+                                     "reactions": e.get("reactions"),
+                                     "reactions_map": e.get("reactions_map"),
+                                     "media": e.get("media"),
                                      "text": (e["text"] or "")[:200],
                                      "source": args.source, "batch": bi + 1})
                 # Помечаем обработанными ТОЛЬКО успешные батчи: упавшие дооценит resume.
@@ -370,10 +410,25 @@ async def main() -> None:
             years: dict = {}
             for r in kept:
                 years.setdefault(r["date"][:4], Counter())[r["cat"]] += 1
+            profile_n = cnt.get("profile", 0)
+            share = profile_n / total_n
+            # окно аудита в месяцах (по фактическому диапазону дат) -> экстраполяция на 3 года
+            ds = sorted(r["date"] for r in kept)
+            if len(ds) >= 2:
+                months = max(1, round((_dt.fromisoformat(ds[-1])
+                                       - _dt.fromisoformat(ds[0])).days / 30.44))
+            elif since_dt is not None:
+                months = max(1, round((_dt.now(timezone.utc) - since_dt).days / 30.44))
+            else:
+                months = 1
+            per_month = profile_n / months
+            est_3y = int(per_month * 36)
             verdict = ("ДОПУСТИТЬ к глубокому скану"
-                       if cnt.get("profile", 0) / total_n >= 0.65 else "ИСКЛЮЧИТЬ")
+                       if (share >= 0.20 or est_3y >= 500) else "ИСКЛЮЧИТЬ")
             lines = [f"# Аудит {args.source}: {total_n} постов, {BACKLOG_AUDIT_VERSION}, $ {cost_total:.4f}",
-                     f"# Вердикт: {verdict} (порог profile >= 65%)", "",
+                     f"# Вердикт: {verdict} (порог: profile >= 20% ИЛИ >= 500 профильных за 3 года)",
+                     f"# Профиль: {profile_n} ({share:.1%}) за {months} мес окна; "
+                     f"~{per_month:.0f}/мес; ~{est_3y} за 3 года", "",
                      "| категория | кол-во | доля |", "|---|---|---|"]
             for cat, n in cnt.most_common():
                 lines.append(f"| {cat} | {n} | {n / total_n:.1%} |")
