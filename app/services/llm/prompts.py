@@ -580,7 +580,6 @@ BACKLOG_SCAN_USER = """Numbered captions:
 
 
 BACKLOG_AUDIT_VERSION = "backlog-audit-v2"
-BACKLOG_FACTS_VERSION = "backlog-facts-v2"
 
 BACKLOG_AUDIT_SYSTEM = """You are a media auditor. You receive a numbered list of post captions from a Telegram channel (Russian). Classify EACH item into exactly one category:
 - "profile": core niche of the channel: {niche};
@@ -590,9 +589,9 @@ BACKLOG_AUDIT_SYSTEM = """You are a media auditor. You receive a numbered list o
 - "other": everything else (politics, unrelated topics).
 OUTPUT FORMAT (strict): answer with ONE single line of per-item tokens "<i> <cat>." for EVERY number, e.g. "1 profile. 2 water. 3 ads. 4 profile." — no JSON, no quotes, no other text."""
 
-BACKLOG_FACTS_VERSION = "backlog-facts-v3"
+BACKLOG_FACTS_VERSION = "backlog-facts-v4"
 
-BACKLOG_FACTS_SYSTEM = """You are a fact-extractor for a real-estate analytics knowledge base (Moscow primary market). You receive a numbered list of post texts (Russian). Extract facts an analyst can use WITHOUT seeing the original post.
+BACKLOG_FACTS_SYSTEM = """You are a fact-extractor for a real-estate analytics knowledge base (Moscow/MO primary market). You receive a numbered list of post texts (Russian). Extract facts an analyst can use WITHOUT seeing the original post.
 
 WHAT COUNTS AS A FACT (only these):
 - prices and dynamics: ₽/m2, total price, discounts, price change % with period;
@@ -602,26 +601,30 @@ WHAT COUNTS AS A FACT (only these):
 - developer business: revenue, profit, debt, IPO, land purchases, new project launches;
 - land and auctions: plot, purpose, price, winner.
 
-IGNORE (not facts): tariffs and utilities, city improvement, demolition of unrelated objects, opinions/forecasts without numbers, event announcements, ads, complaints without a named object and concrete numbers.
+IGNORE (not facts): tariffs and utilities, city improvement, demolition of unrelated objects, opinions/forecasts without numbers, event announcements, ads, complaints without concrete numbers; clearly FOREIGN objects (China, Dubai, Turkey, etc.) unless tied to the Moscow market; other regions of Russia — ONLY if the post concerns a Moscow/MO project or a federal rate/program affecting Moscow.
 
 HARD QUALITY RULES:
-1. OBJECT must be a proper name taken from the text: ЖК «Name», developer name, program name, district/locality. Generic objects ("ЖК", "рынок", "Москва", "застройщик", "объект") are FORBIDDEN — if the post has no named object, the post is NOT relevant and gets no line.
+1. OBJECT = the SUBJECT of the fact (whose prices/sales/construction/money it is), NEVER the reporting agency. In "…, сообщила компания Циан" or "по данным BN.ru" the agency is the SOURCE: the object must be the real subject, and the source goes in parentheses at the end of the last fact: "(по данным Циан)".
+   - if the metric belongs to the WHOLE MARKET/segment, object = the qualified segment name: "рынок новостроек Москвы и МО", "ипотека РФ", "апартаменты Москвы"; bare words ("рынок", "ЖК", "Москва", "застройщик", "объект", "проект") are FORBIDDEN as object;
+   - if the agency reports ITS OWN metric ("Циан: наша квартальная выручка…"), the agency IS the subject — object = "Циан".
 2. Each fact must be SELF-CONTAINED: period + metric + value with units ("01-06.2024: продажи +75%, 170,2 млрд ₽"). A fact that cannot be understood without the original post is garbage — do not output it.
-3. Numbers exactly as in the text with units; dates as MM.YYYY or explicit period; never invent or round.
-4. When in doubt between a weak fact and no fact — choose NO fact. Precision matters more than recall.
+3. Every period MUST include the YEAR when it is stated in the text or unambiguously derivable from it; if the year is absent and not derivable — keep the period as written ("9 месяцев"), NEVER invent a year.
+4. Numbers exactly as in the text, with units; never round, convert or invent.
+5. When in doubt between a weak fact and no fact — choose NO fact. Precision matters more than recall.
 
 REASONING PROTOCOL (mandatory): reason in ONE short pass — for each item decide +/- in a few words and move on, NEVER revisit an item; if you notice the same word, number or phrase appearing twice in your reasoning, STOP reasoning and output the answer immediately; do NOT repeat post text in the answer.
+
 OUTPUT FORMAT (strict) — plain text lines, NO JSON, NO quotes, NO markdown:
 1) first line: "R: <comma-separated numbers of items with usable facts>" or "R: -" if none;
-2) then ONE line per item: "<i>|<Object with proper name>|<fact 1>; <fact 2>"
+2) then ONE line per item: "<i>|<Object>|<fact 1>; <fact 2>"
    - <i> = EXACTLY the number printed before the text in the input list (1-based); never renumber, shift or invent numbers;
-   - object: proper name (+ short qualifier in parentheses), no "|" inside;
+   - object per rule 1, no "|" inside;
    - 1-4 facts joined by "; ", no "|" inside;
    - the set of numbers in the R line MUST exactly match the set of data lines.
 
-BAD example (generic object, fact without subject — GARBAGE):
+BAD examples (garbage):
 5|ЖК|2020: перенос сроков сдачи; продолжается по сей день
-GOOD example (same post done right):
+15|Циан|квартальная выручка 754 млрд рублей
+GOOD examples (the same posts done right):
 5|ЖК «Светлый мир «В стремлении к свету»» (Seven Suns)|с 2020: переносы сроков сдачи, не сдан; у застройщика 4 проблемных проекта
-BAD example (no named object — such item must NOT appear in R at all):
-8|рынок Москвы|коэффициент за потребление воды 3 вместо 1,5"""
+15|рынок новостроек Москвы и МО|квартальная выручка девелоперов +80% год к году, до 754 млрд ₽ (по данным Циан)"""
