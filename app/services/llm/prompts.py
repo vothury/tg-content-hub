@@ -590,17 +590,38 @@ BACKLOG_AUDIT_SYSTEM = """You are a media auditor. You receive a numbered list o
 - "other": everything else (politics, unrelated topics).
 OUTPUT FORMAT (strict): answer with ONE single line of per-item tokens "<i> <cat>." for EVERY number, e.g. "1 profile. 2 water. 3 ads. 4 profile." — no JSON, no quotes, no other text."""
 
-BACKLOG_FACTS_SYSTEM = """You are a fact-extractor for a real-estate analytics knowledge base. You receive a numbered list of post captions (Russian). Find items with concrete primary-market facts (price, event date, sales start, completion, permit, program rate, volume, company metrics).
-REASONING PROTOCOL (mandatory): think briefly; do NOT repeat caption text in the answer.
+BACKLOG_FACTS_VERSION = "backlog-facts-v3"
+
+BACKLOG_FACTS_SYSTEM = """You are a fact-extractor for a real-estate analytics knowledge base (Moscow primary market). You receive a numbered list of post texts (Russian). Extract facts an analyst can use WITHOUT seeing the original post.
+
+WHAT COUNTS AS A FACT (only these):
+- prices and dynamics: ₽/m2, total price, discounts, price change % with period;
+- volumes: sales (ДДУ count, ₽, m2), supply, inventory, absorption;
+- construction milestones with dates: РНС/permit, start, stage, commissioning, delay of a NAMED object;
+- mortgage & programs: rate, limit, program name, dates of changes;
+- developer business: revenue, profit, debt, IPO, land purchases, new project launches;
+- land and auctions: plot, purpose, price, winner.
+
+IGNORE (not facts): tariffs and utilities, city improvement, demolition of unrelated objects, opinions/forecasts without numbers, event announcements, ads, complaints without a named object and concrete numbers.
+
+HARD QUALITY RULES:
+1. OBJECT must be a proper name taken from the text: ЖК «Name», developer name, program name, district/locality. Generic objects ("ЖК", "рынок", "Москва", "застройщик", "объект") are FORBIDDEN — if the post has no named object, the post is NOT relevant and gets no line.
+2. Each fact must be SELF-CONTAINED: period + metric + value with units ("01-06.2024: продажи +75%, 170,2 млрд ₽"). A fact that cannot be understood without the original post is garbage — do not output it.
+3. Numbers exactly as in the text with units; dates as MM.YYYY or explicit period; never invent or round.
+4. When in doubt between a weak fact and no fact — choose NO fact. Precision matters more than recall.
+
+REASONING PROTOCOL (mandatory): think briefly; do NOT repeat post text in the answer.
 OUTPUT FORMAT (strict) — plain text lines, NO JSON, NO quotes, NO markdown:
-1) first line: "R: <comma-separated numbers of items that HAVE concrete facts>" or "R: -" if there are none;
-2) then ONE line per relevant item: "<i>|<object>|<fact 1>; <fact 2>; <fact 3>"
-   - <i> = EXACTLY the number printed before the caption in the input list (1-based); never renumber, shift or invent numbers;
-   - object: short name (ЖК / developer / district / program / "рынок Москвы"), no "|" inside;
-   - each fact: date or period + metric + value, short Russian ("01-06.2024: продажи +75%, 170,2 млрд ₽"); 1-4 facts joined by "; "; no "|" inside facts;
-   - items WITHOUT concrete facts get NO data line.
-Example:
-R: 1,2,3
-1|Glorax|2025: IPO, объём не уточнён
-2|Самолет|01-06.2024: продажи +75%, 170,2 млрд ₽; 01-06.2024: площадь +42%, 708,4 тыс. кв.м
-3|семейная ипотека РФ|продлена до 2030; ставка 6%; лимит до 12 млн ₽"""
+1) first line: "R: <comma-separated numbers of items with usable facts>" or "R: -" if none;
+2) then ONE line per item: "<i>|<Object with proper name>|<fact 1>; <fact 2>"
+   - <i> = EXACTLY the number printed before the text in the input list (1-based); never renumber, shift or invent numbers;
+   - object: proper name (+ short qualifier in parentheses), no "|" inside;
+   - 1-4 facts joined by "; ", no "|" inside;
+   - the set of numbers in the R line MUST exactly match the set of data lines.
+
+BAD example (generic object, fact without subject — GARBAGE):
+5|ЖК|2020: перенос сроков сдачи; продолжается по сей день
+GOOD example (same post done right):
+5|ЖК «Светлый мир «В стремлении к свету»» (Seven Suns)|с 2020: переносы сроков сдачи, не сдан; у застройщика 4 проблемных проекта
+BAD example (no named object — such item must NOT appear in R at all):
+8|рынок Москвы|коэффициент за потребление воды 3 вместо 1,5"""

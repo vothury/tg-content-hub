@@ -60,6 +60,14 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 # Обрыв на лимите токенов: рассуждения съели бюджет, финальный JSON не вышел.
 _LIMIT_MARKS = ("лимит токенов исчерпан", "reasoning loop")
 
+# «Объекты» без имени собственного: факт без субъекта — шум, в kept не пускаем.
+_GENERIC_OBJ = {
+    "жк", "рынок", "рынок москвы", "рынок недвижимости", "москва", "московский рынок",
+    "столичный рынок", "столица", "объект", "проект", "компания", "застройщик",
+    "дом", "квартиры", "новостройки", "недвижимость", "россия", "рф", "регион",
+    "отрасль", "город",
+}
+
 # Поддерживает ли текущий llm_pipeline исключение моделей из цепочки (бан).
 _SUPPORTS_EXCLUDE = "exclude" in inspect.signature(_call_with_fallback).parameters
 
@@ -303,8 +311,9 @@ async def main() -> None:
                          "prices per m2, mortgages, construction stages, permits, renovation/KRT")
         for bi in range(total):
             chunk = pending[bi * args.batch:(bi + 1) * args.batch]
+            cut = {"taste": 300, "audit": 300, "facts": 700}[args.mode]
             listing = "\n".join(
-                f"{n}. {(e['text'] or '')[:300]}" for n, e in enumerate(chunk, 1))
+                f"{n}. {(e['text'] or '')[:cut]}" for n, e in enumerate(chunk, 1))
             system = {"taste": BACKLOG_SCAN_SYSTEM,
                       "audit": BACKLOG_AUDIT_SYSTEM.format(niche=args.niche or niche_default),
                       "facts": BACKLOG_FACTS_SYSTEM}[args.mode]
@@ -315,7 +324,7 @@ async def main() -> None:
             schema = {"taste": BacklogScanResult,
                       "audit": BacklogAuditResult,
                       "facts": BacklogFactsResult}[args.mode]
-            out_tokens = {"taste": 900, "audit": 600, "facts": 900}[args.mode]
+            out_tokens = {"taste": 900, "audit": 600, "facts": 1200}[args.mode]
             result = None
             for attempt in (1, 2):
                 call_kwargs = {"exclude": banned} if _SUPPORTS_EXCLUDE else {}
@@ -373,7 +382,10 @@ async def main() -> None:
                     else:
                         if not it["rel"] or not it["facts"]:
                             continue
-                        kept.append({"msg_id": e["id"], "date": e["date"], "obj": it["obj"],
+                        obj = (it["obj"] or "").strip().strip('«»"')
+                        if not obj or obj.lower() in _GENERIC_OBJ:
+                            continue   # безымянный «объект» — в базу не пишем
+                        kept.append({"msg_id": e["id"], "date": e["date"], "obj": obj,
                                      "facts": it["facts"], "views": e.get("views"),
                                      "forwards": e.get("forwards"),
                                      "replies": e.get("reply_count"),
