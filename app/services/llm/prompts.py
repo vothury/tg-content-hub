@@ -610,7 +610,7 @@ HARD QUALITY RULES:
 3. Numbers exactly as in the text with units; dates as MM.YYYY or explicit period; never invent or round.
 4. When in doubt between a weak fact and no fact — choose NO fact. Precision matters more than recall.
 
-REASONING PROTOCOL (mandatory): think briefly; do NOT repeat post text in the answer.
+REASONING PROTOCOL (mandatory): reason in ONE short pass — for each item decide +/- in a few words and move on, NEVER revisit an item; if you notice the same word, number or phrase appearing twice in your reasoning, STOP reasoning and output the answer immediately; do NOT repeat post text in the answer.
 OUTPUT FORMAT (strict) — plain text lines, NO JSON, NO quotes, NO markdown:
 1) first line: "R: <comma-separated numbers of items with usable facts>" or "R: -" if none;
 2) then ONE line per item: "<i>|<Object with proper name>|<fact 1>; <fact 2>"

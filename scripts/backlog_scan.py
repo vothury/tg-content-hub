@@ -50,7 +50,7 @@ from app.services.llm.prompts import (
     BACKLOG_FACTS_VERSION, BACKLOG_SCAN_SYSTEM, BACKLOG_SCAN_USER, BACKLOG_VERSION)
 from app.services.llm.schemas import (
     BacklogAuditResult, BacklogFactsResult, BacklogScanResult)
-from app.services.llm_pipeline import _call_with_fallback
+from app.services.llm_pipeline import _NO_REASONING_DIRECTIVE, _call_with_fallback
 from app.services.settings import Keys, get_providers, get_setting
 from app.services.times import owner_tz
 
@@ -328,9 +328,14 @@ async def main() -> None:
             result = None
             for attempt in (1, 2):
                 call_kwargs = {"exclude": banned} if _SUPPORTS_EXCLUDE else {}
+                # Попытка 2: рассуждений нет — весь лимит финальному ответу.
+                # Спасение от зациклов gpt-oss, съедающих бюджет повторами.
+                reason_budget = args.reasoning if attempt == 1 else 0
+                msgs = messages if attempt == 1 else messages + [
+                    {"role": "system", "content": _NO_REASONING_DIRECTIVE}]
                 used, resp, result, status, error, rotation = await _call_with_fallback(
-                    messages, model, out_tokens, 0.1, schema,
-                    providers, args.reasoning, **call_kwargs)
+                    msgs, model, out_tokens, 0.1, schema,
+                    providers, reason_budget, **call_kwargs)
                 if resp is not None and resp.cost_usd:
                     cost_total += float(resp.cost_usd)
                 # Бан «раздумчивых»: два подряд обрыва на лимите токенов — вне цепочки.
