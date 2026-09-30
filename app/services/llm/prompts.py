@@ -580,6 +580,7 @@ BACKLOG_SCAN_USER = """Numbered captions:
 
 
 BACKLOG_AUDIT_VERSION = "backlog-audit-v2"
+BACKLOG_FACTS_VERSION = "backlog-facts-v2"
 
 BACKLOG_AUDIT_SYSTEM = """You are a media auditor. You receive a numbered list of post captions from a Telegram channel (Russian). Classify EACH item into exactly one category:
 - "profile": core niche of the channel: {niche};
