@@ -594,6 +594,7 @@ REASONING PROTOCOL (mandatory): think briefly; do NOT repeat caption text in the
 OUTPUT FORMAT (strict) — plain text lines, NO JSON, NO quotes, NO markdown:
 1) first line: "R: <comma-separated numbers of items that HAVE concrete facts>" or "R: -" if there are none;
 2) then ONE line per relevant item: "<i>|<object>|<fact 1>; <fact 2>; <fact 3>"
+   - <i> = EXACTLY the number printed before the caption in the input list (1-based); never renumber, shift or invent numbers;
    - object: short name (ЖК / developer / district / program / "рынок Москвы"), no "|" inside;
    - each fact: date or period + metric + value, short Russian ("01-06.2024: продажи +75%, 170,2 млрд ₽"); 1-4 facts joined by "; "; no "|" inside facts;
    - items WITHOUT concrete facts get NO data line.

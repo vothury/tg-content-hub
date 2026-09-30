@@ -399,8 +399,8 @@ class BacklogFactsResult:
     """facts v2: «R: 2,8,9» + линии «i|obj|fact; fact»; JSON собирается здесь.
 
     Устойчива к обрезанию: полные линии спасаются; если R объявил номера,
-    для которых линии не доехали, — ошибка (батч уйдёт в ретрай/ротацию,
-    а ошибка получит лимитную маркировку по finish_reason=length).
+    для которых линии не доехали, — ошибка (батч уйдёт в ретрай).
+    Дубликаты номера сливаются (факты объединяются, до 6 шт.).
     Пустой батч («R: -») легален. Запасной путь — прежний JSON-формат.
     """
     items: list = field(default_factory=list)
@@ -410,23 +410,27 @@ class BacklogFactsResult:
         s = (content or "").strip()
         rm = _FACTS_R_RE.search(s)
         expected = {int(t) for t in re.findall(r"\d+", rm.group(1))} if rm else set()
-        items, seen = [], set()
+        rows: dict = {}
         for m in _FACTS_LINE_RE.finditer(s):
             i = int(m.group(1))
-            if i in seen:
+            facts = [f.strip() for f in m.group(3).split(";") if f.strip()]
+            if not facts:
                 continue
-            seen.add(i)
-            facts = [f.strip() for f in m.group(3).split(";") if f.strip()][:6]
-            if facts:
-                items.append({"i": i, "rel": True,
-                              "obj": m.group(2).strip(), "facts": facts})
-        if rm or items:
-            missing = expected - seen
+            if i in rows:
+                for f in facts:
+                    if f not in rows[i]["facts"] and len(rows[i]["facts"]) < 6:
+                        rows[i]["facts"].append(f)
+            else:
+                rows[i] = {"i": i, "rel": True,
+                           "obj": m.group(2).strip(), "facts": facts[:6]}
+        if rm or rows:
+            missing = expected - set(rows)
             if missing:
                 raise LLMParseError(
                     f"ответ обрезан: R объявил {sorted(expected)}, нет линий для {sorted(missing)}")
-            return cls(items=items)
-        try:  # запасной путь: старый JSON-формат (и пустой {"items": []} теперь легален)
+            return cls(items=[rows[k] for k in sorted(rows)])
+        items = []
+        try:  # запасной путь: старый JSON-формат
             data = extract_json(s)
             raw = data.get("items") if isinstance(data, dict) else data
             for x in (raw if isinstance(raw, list) else []):
@@ -447,3 +451,4 @@ class BacklogFactsResult:
         if items or '"items"' in s:
             return cls(items=items)
         raise LLMParseError(f"нет ни «R:»/линий, ни JSON: {s[:200]!r}")
+

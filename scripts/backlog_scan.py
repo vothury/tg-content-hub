@@ -346,9 +346,11 @@ async def main() -> None:
                 await asyncio.sleep(30)
             if result is not None:
                 by_i = {n: e for n, e in enumerate(chunk, 1)}
+                unknown_i = 0
                 for it in result.items:
                     e = by_i.get(it["i"])
                     if e is None:
+                        unknown_i += 1
                         continue
                     if args.mode == "taste":
                         if not it["keep"] or it["score"] < args.min_score:
@@ -380,6 +382,10 @@ async def main() -> None:
                                      "media": e.get("media"),
                                      "text": (e["text"] or "")[:200],
                                      "source": args.source, "batch": bi + 1})
+                if unknown_i:
+                    log.warning("батч %d/%d: %d элемент(ов) с номером вне списка — "
+                                "модель сбила нумерацию, сверьте kept с raw",
+                                bi + 1, total, unknown_i)
                 # Помечаем обработанными ТОЛЬКО успешные батчи: упавшие дооценит resume.
                 done_ids.update(e["id"] for e in chunk)
                 state["done_ids"] = sorted(done_ids)
