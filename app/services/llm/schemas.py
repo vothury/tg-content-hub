@@ -390,30 +390,60 @@ class BacklogAuditResult:
         raise LLMParseError(f"нет строки «i cat» и нет JSON: {s[:200]!r}")
 
 
+_FACTS_R_RE = re.compile(r"(?m)^\s*R\s*:\s*([0-9,\s\-]+?)\s*$")
+_FACTS_LINE_RE = re.compile(r"(?m)^\s*(\d+)\s*\|([^|\n]*)\|([^\n]*)$")
+
+
 @dataclass
 class BacklogFactsResult:
+    """facts v2: «R: 2,8,9» + линии «i|obj|fact; fact»; JSON собирается здесь.
+
+    Устойчива к обрезанию: полные линии спасаются; если R объявил номера,
+    для которых линии не доехали, — ошибка (батч уйдёт в ретрай/ротацию,
+    а ошибка получит лимитную маркировку по finish_reason=length).
+    Пустой батч («R: -») легален. Запасной путь — прежний JSON-формат.
+    """
     items: list = field(default_factory=list)
 
     @classmethod
     def from_response(cls, content: str) -> "BacklogFactsResult":
-        data = extract_json(content)
-        raw = data.get("items") if isinstance(data, dict) else data
-        if not isinstance(raw, list):
-            raise LLMParseError("ожидался список items")
-        items = []
-        for x in raw:
-            if not isinstance(x, dict):
+        s = (content or "").strip()
+        rm = _FACTS_R_RE.search(s)
+        expected = {int(t) for t in re.findall(r"\d+", rm.group(1))} if rm else set()
+        items, seen = [], set()
+        for m in _FACTS_LINE_RE.finditer(s):
+            i = int(m.group(1))
+            if i in seen:
                 continue
-            try:
-                i = int(x.get("i"))
-            except (TypeError, ValueError):
-                continue
-            facts = x.get("facts") or []
-            if not isinstance(facts, list):
-                facts = [str(facts)]
-            items.append({"i": i, "rel": bool(x.get("rel")),
-                          "obj": str(x.get("obj") or "").strip(),
-                          "facts": [str(f).strip() for f in facts if str(f).strip()][:6]})
-        if not items:
-            raise LLMParseError("пустой список items")
-        return cls(items=items)
+            seen.add(i)
+            facts = [f.strip() for f in m.group(3).split(";") if f.strip()][:6]
+            if facts:
+                items.append({"i": i, "rel": True,
+                              "obj": m.group(2).strip(), "facts": facts})
+        if rm or items:
+            missing = expected - seen
+            if missing:
+                raise LLMParseError(
+                    f"ответ обрезан: R объявил {sorted(expected)}, нет линий для {sorted(missing)}")
+            return cls(items=items)
+        try:  # запасной путь: старый JSON-формат (и пустой {"items": []} теперь легален)
+            data = extract_json(s)
+            raw = data.get("items") if isinstance(data, dict) else data
+            for x in (raw if isinstance(raw, list) else []):
+                if not isinstance(x, dict):
+                    continue
+                try:
+                    i = int(x.get("i"))
+                except (TypeError, ValueError):
+                    continue
+                facts = x.get("facts") or []
+                if not isinstance(facts, list):
+                    facts = [str(facts)]
+                items.append({"i": i, "rel": bool(x.get("rel")),
+                              "obj": str(x.get("obj") or "").strip(),
+                              "facts": [str(f).strip() for f in facts if str(f).strip()][:6]})
+        except Exception:  # noqa: BLE001
+            pass
+        if items or '"items"' in s:
+            return cls(items=items)
+        raise LLMParseError(f"нет ни «R:»/линий, ни JSON: {s[:200]!r}")

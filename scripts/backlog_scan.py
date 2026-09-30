@@ -66,7 +66,9 @@ _SUPPORTS_EXCLUDE = "exclude" in inspect.signature(_call_with_fallback).paramete
 
 def _is_limit_error(err: str) -> bool:
     e = (err or "").lower()
-    return any(m in e for m in _LIMIT_MARKS)
+    if any(m in e for m in _LIMIT_MARKS):
+        return True
+    return "из ответа: ''" in e   # пустой финал — рассуждения съели весь бюджет
 
 
 def _paths(out: str):
@@ -313,7 +315,7 @@ async def main() -> None:
             schema = {"taste": BacklogScanResult,
                       "audit": BacklogAuditResult,
                       "facts": BacklogFactsResult}[args.mode]
-            out_tokens = {"taste": 900, "audit": 600, "facts": 1200}[args.mode]
+            out_tokens = {"taste": 900, "audit": 600, "facts": 900}[args.mode]
             result = None
             for attempt in (1, 2):
                 call_kwargs = {"exclude": banned} if _SUPPORTS_EXCLUDE else {}

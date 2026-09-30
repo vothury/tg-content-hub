@@ -579,8 +579,7 @@ BACKLOG_SCAN_USER = """Numbered captions:
 {listing}"""
 
 
-BACKLOG_AUDIT_VERSION = "backlog-audit-v1"
-BACKLOG_FACTS_VERSION = "backlog-facts-v1"
+BACKLOG_AUDIT_VERSION = "backlog-audit-v2"
 
 BACKLOG_AUDIT_SYSTEM = """You are a media auditor. You receive a numbered list of post captions from a Telegram channel (Russian). Classify EACH item into exactly one category:
 - "profile": core niche of the channel: {niche};
@@ -590,7 +589,16 @@ BACKLOG_AUDIT_SYSTEM = """You are a media auditor. You receive a numbered list o
 - "other": everything else (politics, unrelated topics).
 OUTPUT FORMAT (strict): answer with ONE single line of per-item tokens "<i> <cat>." for EVERY number, e.g. "1 profile. 2 water. 3 ads. 4 profile." — no JSON, no quotes, no other text."""
 
-BACKLOG_FACTS_SYSTEM = """You are a fact-extractor for a real-estate analytics knowledge base. You receive a numbered list of post captions (Russian). For EACH item that contains a concrete primary-market fact (price, event date, sales start, completion, permit, program rate, volume), output the fact; for items without concrete facts output rel=false.
-Fields per item: "i", "rel" (true|false), "obj" (object: ЖК name / developer / district / program / market overall; empty if rel=false), "facts" (1-4 short Russian strings, each = date or period + metric + value, e.g. "03.2024: старт продаж, 280 тыс/м2"; empty if rel=false).
-REASONING PROTOCOL (mandatory): before the JSON output ONE single line of per-item tokens "<i> +." (has concrete facts) or "<i> -." (no facts) — nothing else; do NOT repeat caption text. Then the JSON (only for "+" items).
-Answer ONLY JSON: {{"items": [{{"i": 1, "rel": true, "obj": "ЖК X", "facts": ["03.2024: старт продаж, 280 тыс/м2"]}}, ...]}} covering every number, no extra text."""
+BACKLOG_FACTS_SYSTEM = """You are a fact-extractor for a real-estate analytics knowledge base. You receive a numbered list of post captions (Russian). Find items with concrete primary-market facts (price, event date, sales start, completion, permit, program rate, volume, company metrics).
+REASONING PROTOCOL (mandatory): think briefly; do NOT repeat caption text in the answer.
+OUTPUT FORMAT (strict) — plain text lines, NO JSON, NO quotes, NO markdown:
+1) first line: "R: <comma-separated numbers of items that HAVE concrete facts>" or "R: -" if there are none;
+2) then ONE line per relevant item: "<i>|<object>|<fact 1>; <fact 2>; <fact 3>"
+   - object: short name (ЖК / developer / district / program / "рынок Москвы"), no "|" inside;
+   - each fact: date or period + metric + value, short Russian ("01-06.2024: продажи +75%, 170,2 млрд ₽"); 1-4 facts joined by "; "; no "|" inside facts;
+   - items WITHOUT concrete facts get NO data line.
+Example:
+R: 1,2,3
+1|Glorax|2025: IPO, объём не уточнён
+2|Самолет|01-06.2024: продажи +75%, 170,2 млрд ₽; 01-06.2024: площадь +42%, 708,4 тыс. кв.м
+3|семейная ипотека РФ|продлена до 2030; ставка 6%; лимит до 12 млн ₽"""
