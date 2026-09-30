@@ -94,14 +94,14 @@ async def _fallback_models() -> list:
 
 
 async def _call_json(messages, model, providers, max_tokens, schema,
-                     stage=LLMStage.EDITORIAL_JOURNALIST):
+                     stage=LLMStage.EDITORIAL_JOURNALIST, reasoning: int = 0):
     """Вызов с ротацией моделей: ответ модерации и битый JSON -> следующая модель."""
     chain = [model] + [m for m in await _fallback_models() if m != model]
     last_error = None
     for m in chain:
         resp = await chat_completion(messages, m, max_tokens, temperature=0.0,
                                      provider=providers,
-                                     reasoning_max_tokens=settings.llm_reasoning_small)
+                                     reasoning_max_tokens=reasoning)
         await _account(resp)
         if is_provider_safety_reply(resp.content):
             last_error = LLMParseError(f"{m}: ответ модели модерации вместо JSON")

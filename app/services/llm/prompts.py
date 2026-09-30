@@ -511,7 +511,8 @@ JOURNALIST_BROWSE_USER = """Page: {url}"""
 
 JOURNALIST_TG_SYSTEM = """You are a technical journalist. Create ONE short news headline (up to 12 words) from the post news.
 No evaluations, emotions or comments. The headline MUST stay in the same language as the post.
-Think in English, answer JSON only: {"title": "..."}"""
+Think in English, answer JSON only: {"title": "..."}
+NO DELIBERATION: answer immediately in one pass — no drafts, no word counting, no alternatives, no reasoning steps in the output; if the reasoning budget is zero, output the JSON at once."""
 
 JOURNALIST_TG_USER = """Post text:
 {text}"""
