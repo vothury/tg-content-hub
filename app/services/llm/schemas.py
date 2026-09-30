@@ -340,13 +340,10 @@ class BacklogScanResult:
                            "keep": bool(x.get("keep", True))}
         except Exception:  # noqa: BLE001 — JSON может отсутствовать (новый формат)
             pass
-        items, seen = [], set()
+        scores: dict = {}
         for m in _TASTE_LINE_RE.finditer(s):
-            i = int(m.group(1))
-            if i in seen:
-                continue
-            seen.add(i)
-            score = float(m.group(2).replace(",", "."))
+            scores[int(m.group(1))] = float(m.group(2).replace(",", "."))
+        for i, score in sorted(scores.items()):
             j = caps.get(i)
             items.append({"i": i,
                           "keep": True if j is None else j["keep"],
@@ -368,16 +365,13 @@ class BacklogAuditResult:
     @classmethod
     def from_response(cls, content: str) -> "BacklogAuditResult":
         s = (content or "").strip()
-        items, seen = [], set()
+        items: dict = {}
         for m in _AUDIT_LINE_RE.finditer(s):
-            i = int(m.group(1))
-            if i in seen:
-                continue
-            seen.add(i)
-            items.append({"i": i, "cat": m.group(1 + 1).lower()})
+            items[int(m.group(1))] = m.group(2).lower()
         if items:
-            return cls(items=items)
-        try:  # запасной путь: модель по привычке выдала JSON
+            return cls(items=[{"i": i, "cat": items[i]} for i in sorted(items)])
+        alt: list = []
+        try:
             data = extract_json(s)
             raw = data.get("items") if isinstance(data, dict) else data
             for x in (raw if isinstance(raw, list) else []):
@@ -387,7 +381,12 @@ class BacklogAuditResult:
                     i = int(x.get("i"))
                 except (TypeError, ValueError):
                     continue
-                items.append({"i": i, "cat": str(x.get("cat") or "other").strip().lower()})
+                alt.append({"i": i, "cat": str(x.get("cat") or "other").strip().lower()})
+        except Exception:  # noqa: BLE001
+            pass
+        if alt:
+            return cls(items=alt)
+        raise LLMParseError(f"нет строки «i cat» и нет JSON: {s[:200]!r}")
         except Exception:  # noqa: BLE001
             pass
         if not items:

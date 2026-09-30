@@ -4,14 +4,14 @@
 курсор для возобновления, ограничение периода --since) в <out>.jsonl (raw).
 Фаза 2: схлопывает альбомы, вычитает уже известные БД посты, пропускает через
 регекс-префильтр, режет на батчи по N и оценивает одним из режимов:
-  taste  — отбор постов по вкусу канала (таблица keep-ов);
-  audit  — доли категорий (зонд источника, вердикт ДОПУСТИТЬ/ИСКЛЮЧИТЬ, ниша --niche);
-  facts  — извлечение фактов (даты/объекты/числа) в базу знаний редакции.
+  taste  - отбор постов по вкусу канала (таблица keep-ов);
+  audit  - доли категорий (зонд источника, вердикт ДОПУСТИТЬ/ИСКЛЮЧИТЬ, ниша --niche);
+  facts  - извлечение фактов (даты/объекты/числа) в базу знаний редакции.
 Фаза 3: пишет отчёт Markdown + <out>.kept.jsonl; состояние (курсор, обработанные
-id, стоимость, keep-ы) живёт в <out>.state.json — повторный запуск с тем же --out
+id, стоимость, keep-ы) живёт в <out>.state.json - повторный запуск с тем же --out
 возобновляется; необработанные батчи дооцениваются.
 
-Защита от «раздумчивых» моделей: хоp, дважды подряд оборвавшийся на лимите
+Защита от "раздумчивых" моделей: hop, дважды подряд оборвавшийся на лимите
 токенов (reasoning loop / обрезанный финал), исключается из цепочки до конца
 прогона (нужен параметр exclude у _call_with_fallback, см. патч llm_pipeline).
 
@@ -91,7 +91,7 @@ async def _fetch_history(client, entity, raw_path: Path, state: dict,
                          tg_sleep: float, limit: int = 0, since=None) -> int:
     """Фаза 1: история батчами по 100, пауза и FloodWait-бэк-офф, курсор в state.
 
-    limit — максимум новых сообщений (0 = без лимита); since — не читать сообщения
+    limit - максимум новых сообщений (0 = без лимита); since - не читать сообщения
     старше этой даты (datetime, UTC; None = без ограничения по периоду).
     """
     added = 0
@@ -112,12 +112,12 @@ async def _fetch_history(client, entity, raw_path: Path, state: dict,
                 msgs = await client.get_messages(entity, **kwargs)
             except FloodWaitError as exc:
                 delay = min(int(getattr(exc, "seconds", 60)) + 5, 600)
-                log.warning("FloodWait %s сек — пауза (курсор %s)", delay, cursor)
+                log.warning("FloodWait %s сек - пауза (курсор %s)", delay, cursor)
                 await asyncio.sleep(delay)
                 continue
             if not msgs:
                 break
-            # Период: история идёт от новых к старым; если вся пачка старше since — стоп.
+            # Период: история идёт от новых к старым; если вся пачка старше since - стоп.
             if since is not None:
                 msgs = [m for m in msgs if m.date >= since]
                 if not msgs:
@@ -189,7 +189,7 @@ async def main() -> None:
     ap.add_argument("--tg-sleep", type=float, default=1.5, help="пауза между запросами истории, сек")
     ap.add_argument("--model", default="",
                     help="пусто = глобальная цепочка llm.classify_model; провайдеры каждой "
-                         "модели — в скобках рядом с ней: 'slug (prov/quant, prov/quant), "
+                         "модели - в скобках рядом с ней: 'slug (prov/quant, prov/quant), "
                          "slug2 (prov/quant)' (тот же синтаксис, что у classify_model в "
                          "sources.yaml); модели без скобок берут глобальные llm.classify_providers")
     ap.add_argument("--out", default="backlog/backlog_scan.md")
@@ -206,7 +206,7 @@ async def main() -> None:
     ap.add_argument("--since", default="",
                     help="не читать историю раньше даты YYYY-MM-DD (период опроса)")
     ap.add_argument("--niche", default="",
-                    help="описание ниши для режима audit (по умолчанию — первичка Москвы/МО)")
+                    help="описание ниши для режима audit (по умолчанию - первичка Москвы/МО)")
     ap.add_argument("--reasoning", type=int, default=500,
                     help="бюджет рассуждений вызовов скана: протокол компактный, "
                          "500 хватает на батч 40; 0 = попытка вовсе без рассуждений")
@@ -270,7 +270,7 @@ async def main() -> None:
         total = (len(pending) + args.batch - 1) // args.batch
         if args.max_batches:
             total = min(total, args.max_batches)
-        niche_default = ("Moscow/region PRIMARY market — residential complexes, developers, "
+        niche_default = ("Moscow/region PRIMARY market - residential complexes, developers, "
                          "prices per m2, mortgages, construction stages, permits, renovation/KRT")
         for bi in range(total):
             chunk = pending[bi * args.batch:(bi + 1) * args.batch]
@@ -295,7 +295,7 @@ async def main() -> None:
                     providers, args.reasoning, **call_kwargs)
                 if resp is not None and resp.cost_usd:
                     cost_total += float(resp.cost_usd)
-                # Бан «раздумчивых»: два подряд обрыва на лимите токенов — вне цепочки.
+                # Бан "раздумчивых": два подряд обрыва на лимите токенов - вне цепочки.
                 for r in rotation:
                     slug = r.get("model")
                     if _is_limit_error(r.get("error")):

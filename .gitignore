@@ -5,9 +5,13 @@ sessions/*
 !sessions/.gitkeep
 media/
 
-# Python
+# Python / Byte-compiled / optimized / DLL files
 __pycache__/
 *.pyc
 .venv/
 .pytest_cache/
 .ruff_cache/
+backlog/
+backlog_copy/
+model_prices_backup.csv
+model_price_alerts_backup.csv
