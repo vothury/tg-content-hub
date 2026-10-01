@@ -196,8 +196,12 @@ async def main() -> None:
     ap.add_argument("--reasoning", type=int, default=3000)
     ap.add_argument("--samples", default="scripts/samples/sample*.json")
     ap.add_argument("--out-dir", default="backlog/bench")
+    ap.add_argument("--tag", default="",
+                    help="метка прогона: сырьё и сводка кладутся в <out-dir>/<tag>/; "
+                         "по умолчанию временной штамп — прогоны не перетирают друг друга")
     args = ap.parse_args()
-    out_dir = Path(args.out_dir)
+    stamp = args.tag or time.strftime("%Y%m%d-%H%M%S")
+    out_dir = Path(args.out_dir) / stamp
     out_dir.mkdir(parents=True, exist_ok=True)
     samples = []
     for p in sorted(glob.glob(args.samples)):
@@ -223,12 +227,21 @@ async def main() -> None:
                   f"год>поста {m['wrong_year']}"
                   + (f" | ERR {m['error']}" if m.get("error") else ""))
     head = " | ".join(s for s, _ in samples)
-    print(f"\n| модель | {head} | среднее | $ | сек | сбоев |")
-    print("|---" * (len(samples) + 5) + "|")
+    table = [f"| модель | {head} | среднее | $ | сек | сбоев |",
+             "|---" * (len(samples) + 5) + "|"]
+    print(f"\n{table[0]}")
+    print(table[1])
     for r in results:
         cells = " | ".join(f"{m['score']:.0f}" for _, m in r["rows"])
-        print(f"| {r['slug']} | {cells} | {r['mean']:.1f} | "
-              f"{r['cost']:.4f} | {r['secs']:.0f} | {r['fails']} |")
+        line = (f"| {r['slug']} | {cells} | {r['mean']:.1f} | "
+                f"{r['cost']:.4f} | {r['secs']:.0f} | {r['fails']} |")
+        table.append(line)
+        print(line)
+    (out_dir / "summary.md").write_text(
+        f"# bench {stamp} | reasoning {args.reasoning} | samples: "
+        + ", ".join(s for s, _ in samples) + "\n\n" + "\n".join(table) + "\n",
+        encoding="utf-8")
+    print(f"\nсводка и сырьё прогона: {out_dir}")
 
 
 if __name__ == "__main__":
