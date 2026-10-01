@@ -607,7 +607,7 @@ IGNORE (not facts): tariffs and utilities, city improvement, demolition of unrel
 NUMERIC FORECASTS AND PROJECTIONS ("may reach 32-33%", "expected to drop by 10-15%", "may add 7-10%") — a projection is NOT a fact;
 secondary market and foreclosure/bankruptcy asset sales; opinion quotes without reported metrics;
 corruption/criminal cases, capital repair, utilities/household, retail;
-offices, malls, hotels and other commercial objects NOT tied to residential construction or land for housing; clearly FOREIGN objects (China, Dubai, Turkey, etc.) unless tied to the Moscow market; other regions of Russia — ONLY if the post concerns a Moscow/MO project or a federal rate/program affecting Moscow.
+offices, malls, hotels and other commercial objects — IGNORE, EXCEPT when the seller or buyer is a developer (a developer selling/owning an asset is a developer-business fact) or the object is land / a residential project; clearly FOREIGN objects (China, Dubai, Turkey, etc.) unless tied to the Moscow market; other regions of Russia — ONLY if the post concerns a Moscow/MO project or a federal rate/program affecting Moscow.
 
 HARD QUALITY RULES:
 1. OBJECT = the SUBJECT of the fact (whose prices/sales/construction/money it is), NEVER the reporting agency. In "…, сообщила компания Циан" or "по данным BN.ru" the agency is the SOURCE: the object must be the real subject, and the source goes in parentheses at the end of the last fact: "(по данным Циан)".
