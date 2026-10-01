@@ -1,27 +1,29 @@
 """Разовый просмотр всей истории источника (backlog) пакетной оценкой LLM.
 
 Фаза 1: щадяще тянет историю канала батчами по 100 сообщений (пауза, FloodWait,
-курсор для возобновления, ограничение периода --since) в <out>.jsonl (raw).
-Фаза 2: схлопывает альбомы, вычитает уже известные БД посты, пропускает через
-регекс-префильтр, режет на батчи по N и оценивает одним из режимов:
+курсор для возобновления, ограничение периода --since) в <out>.jsonl (raw) вместе
+с полной метадатой: views, forwards, reply_count, реакции суммой и по эмодзи,
+тип медиа, флаг правки.
+Фаза 2: схлопывает альбомы, вычитает известные БД посты, пропускает через
+регекс-префильтр, режет на батчи и оценивает одним из режимов:
   taste  - отбор постов по вкусу канала (таблица keep-ов);
   audit  - доли категорий (зонд источника, вердикт ДОПУСТИТЬ/ИСКЛЮЧИТЬ, ниша --niche);
   facts  - извлечение фактов (даты/объекты/числа) в базу знаний редакции.
 Фаза 3: пишет отчёт Markdown + <out>.kept.jsonl; состояние (курсор, обработанные
 id, стоимость, keep-ы) живёт в <out>.state.json - повторный запуск с тем же --out
-возобновляется; необработанные батчи дооцениваются.
+возобновляется; необработанные батчи дооцениваются, упавшие не помечаются.
 
-Защита от "раздумчивых" моделей: hop, дважды подряд оборвавшийся на лимите
-токенов (reasoning loop / обрезанный финал), исключается из цепочки до конца
-прогона (нужен параметр exclude у _call_with_fallback, см. патч llm_pipeline).
+Защиты: бан модели после двух БАТЧЕЙ подряд с обрывом на лимите токенов
+(страйк начисляется раз на батч, а не на попытку); аварийный стоп при полностью
+забаненной цепочке; предупреждение о номерах вне списка (сбой нумерации модели).
 
 Запуск В КОНТЕЙНЕРЕ reader (там Telethon-сессия); reader на время остановите:
   docker compose stop reader
   docker compose run --rm --entrypoint python reader scripts/backlog_scan.py \
-      --source istoria --mode facts --since 2023-09-29 --batch 40 --reasoning 500 \
+      --source istoria --mode facts --since 2023-09-30 --batch 25 --reasoning 1500 \
       --prefilter "ЖК|новострой|застройщик|эскроу|ипотек|м²" \
       --pause 2.5 --tg-sleep 1.5 \
-      --model "openai/gpt-oss-20b (akashml/fp4, darkbloom/fp8)" \
+      --model "openai/gpt-oss-20b (darkbloom/fp8)" \
       --out backlog/facts_istoria.md
   docker compose start reader
 """
@@ -50,7 +52,7 @@ from app.services.llm.prompts import (
     BACKLOG_FACTS_VERSION, BACKLOG_SCAN_SYSTEM, BACKLOG_SCAN_USER, BACKLOG_VERSION)
 from app.services.llm.schemas import (
     BacklogAuditResult, BacklogFactsResult, BacklogScanResult)
-from app.services.llm_pipeline import _NO_REASONING_DIRECTIVE, _call_with_fallback
+from app.services.llm_pipeline import _call_with_fallback
 from app.services.settings import Keys, get_providers, get_setting
 from app.services.times import owner_tz
 
@@ -60,7 +62,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 # Обрыв на лимите токенов: рассуждения съели бюджет, финальный JSON не вышел.
 _LIMIT_MARKS = ("лимит токенов исчерпан", "reasoning loop")
 
-# «Объекты» без имени собственного: факт без субъекта — шум, в kept не пускаем.
+# Поддерживает ли текущий llm_pipeline исключение моделей из цепочки (бан).
+_SUPPORTS_EXCLUDE = "exclude" in inspect.signature(_call_with_fallback).parameters
+
+# «Объекты» без имени собственного: факт без субъекта - шум, в kept не пускаем.
 _GENERIC_OBJ = {
     "жк", "рынок", "рынок москвы", "рынок недвижимости", "москва", "московский рынок",
     "столичный рынок", "столица", "объект", "проект", "компания", "застройщик",
@@ -68,15 +73,12 @@ _GENERIC_OBJ = {
     "отрасль", "город",
 }
 
-# Поддерживает ли текущий llm_pipeline исключение моделей из цепочки (бан).
-_SUPPORTS_EXCLUDE = "exclude" in inspect.signature(_call_with_fallback).parameters
-
 
 def _is_limit_error(err: str) -> bool:
     e = (err or "").lower()
     if any(m in e for m in _LIMIT_MARKS):
         return True
-    return "из ответа: ''" in e   # пустой финал — рассуждения съели весь бюджет
+    return "из ответа: ''" in e   # пустой финал - рассуждения съели весь бюджет
 
 
 def _paths(out: str):
@@ -179,7 +181,12 @@ async def _fetch_history(client, entity, raw_path: Path, state: dict,
 
 
 def _entries(raw_path: Path) -> list:
-    """Схлопывает альбомы (grouped_id) в одну запись: текст первого с текстом."""
+    """Схлопывает альбомы (grouped_id) в одну запись с переносом метаданных.
+
+    Просмотры/форварды/комментарии - максимум по участникам альбома,
+    реакции - сумма и поштучное сложение карты, медиа - первое непустое.
+    Старые raw без новых полей совместимы (r.get вернёт None/{}).
+    """
     by_gid: dict = {}
     solo: list = []
     for ln in raw_path.read_text(encoding="utf-8").splitlines():
@@ -226,7 +233,7 @@ async def main() -> None:
     ap.add_argument("--tg-sleep", type=float, default=1.5, help="пауза между запросами истории, сек")
     ap.add_argument("--model", default="",
                     help="пусто = глобальная цепочка llm.classify_model; провайдеры каждой "
-                         "модели — в скобках рядом с ней: 'slug (prov/quant, prov/quant), "
+                         "модели - в скобках рядом с ней: 'slug (prov/quant, prov/quant), "
                          "slug2 (prov/quant)' (тот же синтаксис, что у classify_model в "
                          "sources.yaml); модели без скобок берут глобальные llm.classify_providers")
     ap.add_argument("--out", default="backlog/backlog_scan.md")
@@ -243,10 +250,10 @@ async def main() -> None:
     ap.add_argument("--since", default="",
                     help="не читать историю раньше даты YYYY-MM-DD (период опроса)")
     ap.add_argument("--niche", default="",
-                    help="описание ниши для режима audit (по умолчанию — первичка Москвы/МО)")
-    ap.add_argument("--reasoning", type=int, default=500,
-                    help="бюджет рассуждений вызовов скана: протокол компактный, "
-                         "500 хватает на батч 40; 0 = попытка вовсе без рассуждений")
+                    help="описание ниши для режима audit (по умолчанию - первичка Москвы/МО)")
+    ap.add_argument("--reasoning", type=int, default=1000,
+                    help="бюджет рассуждений вызовов скана (единый на обе попытки; "
+                         "для facts рекомендуется 1500)")
     args = ap.parse_args()
 
     if args.batch < 1:
@@ -307,7 +314,7 @@ async def main() -> None:
         total = (len(pending) + args.batch - 1) // args.batch
         if args.max_batches:
             total = min(total, args.max_batches)
-        niche_default = ("Moscow/region PRIMARY market — residential complexes, developers, "
+        niche_default = ("Moscow/region PRIMARY market - residential complexes, developers, "
                          "prices per m2, mortgages, construction stages, permits, renovation/KRT")
         for bi in range(total):
             chunk = pending[bi * args.batch:(bi + 1) * args.batch]
@@ -348,14 +355,14 @@ async def main() -> None:
                             bi + 1, total, attempt, (error or "")[:120])
                 await asyncio.sleep(30)
             # Пустая цепочка (все модели забанены) = нет ни вызовов, ни rotation:
-            # не крутим 150 батчей впустую, останавливаем прогон чисто.
+            # не крутим батчи впустую, останавливаем прогон чисто.
             if resp is None and not rotation:
-                log.critical("цепочка пуста: все модели забанены (%s) — прогон остановлен; "
+                log.critical("цепочка пуста: все модели забанены (%s) - прогон остановлен; "
                              "возобновите той же командой позже, батчи не потеряны",
                              sorted(banned))
                 break
             # Страйк начисляется ОДИН раз на батч: две попытки одного батча не должны
-            # банить всю цепочку разом; успех в батче обнуляет страйк модели.
+            # банить всю цепочку разом; успех модели в батче обнуляет её страйк.
             for slug in batch_limit_fails - batch_ok:
                 strikes[slug] = strikes.get(slug, 0) + 1
                 if strikes[slug] >= 2 and slug not in banned:
@@ -364,7 +371,7 @@ async def main() -> None:
                                 "2 батча подряд с обрывом на лимите токенов", slug)
                     if not _SUPPORTS_EXCLUDE:
                         log.warning("бан не фильтрует цепочку: примените патч "
-                                            "exclude в app/services/llm_pipeline.py")
+                                    "exclude в app/services/llm_pipeline.py")
             for slug in batch_ok:
                 strikes[slug] = 0
             if result is not None:
@@ -398,7 +405,7 @@ async def main() -> None:
                             continue
                         obj = (it["obj"] or "").strip().strip('«»"')
                         if not obj or obj.lower() in _GENERIC_OBJ:
-                            continue   # безымянный «объект» — в базу не пишем
+                            continue   # безымянный «объект» - в базу не пишем
                         kept.append({"msg_id": e["id"], "date": e["date"], "obj": obj,
                                      "facts": it["facts"], "views": e.get("views"),
                                      "forwards": e.get("forwards"),
@@ -409,7 +416,7 @@ async def main() -> None:
                                      "text": (e["text"] or "")[:200],
                                      "source": args.source, "batch": bi + 1})
                 if unknown_i:
-                    log.warning("батч %d/%d: %d элемент(ов) с номером вне списка — "
+                    log.warning("батч %d/%d: %d элемент(ов) с номером вне списка - "
                                 "модель сбила нумерацию, сверьте kept с raw",
                                 bi + 1, total, unknown_i)
                 # Помечаем обработанными ТОЛЬКО успешные батчи: упавшие дооценит resume.
