@@ -13,9 +13,10 @@
 id, стоимость, keep-ы) живёт в <out>.state.json - повторный запуск с тем же --out
 возобновляется; необработанные батчи дооцениваются, упавшие не помечаются.
 
-Защиты: бан модели после двух БАТЧЕЙ подряд с обрывом на лимите токенов
-(страйк начисляется раз на батч, а не на попытку); аварийный стоп при полностью
-забаненной цепочке; предупреждение о номерах вне списка (сбой нумерации модели).
+Защиты: две попытки на батч с ротацией моделей внутри _call_with_fallback;
+предупреждение о номерах вне списка (сбой нумерации модели); упавшие батчи не
+помечаются обработанными - их дооценит resume. Банов моделей больше нет:
+практика показала, что щедрый бюджет рассуждений дешевле каскадов ротации.
 
 Запуск В КОНТЕЙНЕРЕ reader (там Telethon-сессия); reader на время остановите:
   docker compose stop reader
@@ -31,7 +32,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import inspect
 import json
 import logging
 import re
@@ -59,11 +59,6 @@ from app.services.times import owner_tz
 log = logging.getLogger("backlog_scan")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
-# Обрыв на лимите токенов: рассуждения съели бюджет, финальный JSON не вышел.
-_LIMIT_MARKS = ("лимит токенов исчерпан", "reasoning loop")
-
-# Поддерживает ли текущий llm_pipeline исключение моделей из цепочки (бан).
-_SUPPORTS_EXCLUDE = "exclude" in inspect.signature(_call_with_fallback).parameters
 
 # «Объекты» без имени собственного: факт без субъекта - шум, в kept не пускаем.
 _GENERIC_OBJ = {
@@ -72,13 +67,6 @@ _GENERIC_OBJ = {
     "дом", "квартиры", "новостройки", "недвижимость", "россия", "рф", "регион",
     "отрасль", "город",
 }
-
-
-def _is_limit_error(err: str) -> bool:
-    e = (err or "").lower()
-    if any(m in e for m in _LIMIT_MARKS):
-        return True
-    return "из ответа: ''" in e   # пустой финал - рассуждения съели весь бюджет
 
 
 def _paths(out: str):
@@ -269,9 +257,6 @@ async def main() -> None:
     out_path, raw_path, state_path = _paths(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)   # backlog/ и т.п. создаём сами
     state = _load_state(state_path)
-    if not _SUPPORTS_EXCLUDE:
-        log.info("llm_pipeline без параметра exclude: бан моделей будет только логироваться; "
-                 "примените патч _call_with_fallback, чтобы бан фильтровал цепочку")
 
     client = TelegramClient(settings.reader_session_path,
                             settings.telegram_api_id, settings.telegram_api_hash)
@@ -308,8 +293,6 @@ async def main() -> None:
         kept: list = state.setdefault("kept", [])
         done_ids: set = set(state.setdefault("done_ids", []))
         cost_total = float(state.get("cost", 0.0))
-        banned: set = set()
-        strikes: dict = {}
         pending = [e for e in entries if e["id"] not in done_ids]
         total = (len(pending) + args.batch - 1) // args.batch
         if args.max_batches:
@@ -336,47 +319,18 @@ async def main() -> None:
                       "facts": BacklogFactsResult}[args.mode]
             out_tokens = {"taste": 900, "audit": 600, "facts": 1200}[args.mode]
             result = None
-            batch_limit_fails: set = set()
-            batch_ok: set = set()
             for attempt in (1, 2):
-                call_kwargs = {"exclude": banned} if _SUPPORTS_EXCLUDE else {}
                 used, resp, result, status, error, rotation = await _call_with_fallback(
                     messages, model, out_tokens, 0.1, schema,
-                    providers, args.reasoning, **call_kwargs)
+                    providers, args.reasoning)
                 if resp is not None and resp.cost_usd:
                     cost_total += float(resp.cost_usd)
-                for r in rotation:
-                    slug = r.get("model")
-                    if _is_limit_error(r.get("error")):
-                        batch_limit_fails.add(slug)
-                    else:
-                        batch_ok.add(slug)
                 if result is not None:
-                    batch_ok.add(used)
                     break
                 log.warning("батч %d/%d попытка %d не дала результата: %s",
                             bi + 1, total, attempt, (error or "")[:120])
                 await asyncio.sleep(30)
-            # Пустая цепочка (все модели забанены) = нет ни вызовов, ни rotation:
-            # не крутим батчи впустую, останавливаем прогон чисто.
-            if resp is None and not rotation:
-                log.critical("цепочка пуста: все модели забанены (%s) - прогон остановлен; "
-                             "возобновите той же командой позже, батчи не потеряны",
-                             sorted(banned))
-                break
-            # Страйк начисляется ОДИН раз на батч: две попытки одного батча не должны
-            # банить всю цепочку разом; успех модели в батче обнуляет её страйк.
-            for slug in batch_limit_fails - batch_ok:
-                strikes[slug] = strikes.get(slug, 0) + 1
-                if strikes[slug] >= 2 and slug not in banned:
-                    banned.add(slug)
-                    log.warning("модель %s исключена из цепочки скана: "
-                                "2 батча подряд с обрывом на лимите токенов", slug)
-                    if not _SUPPORTS_EXCLUDE:
-                        log.warning("бан не фильтрует цепочку: примените патч "
-                                    "exclude в app/services/llm_pipeline.py")
-            for slug in batch_ok:
-                strikes[slug] = 0
+
             if result is not None:
                 by_i = {n: e for n, e in enumerate(chunk, 1)}
                 unknown_i = 0
@@ -429,9 +383,8 @@ async def main() -> None:
             state["kept"] = kept
             _save_state(state_path, state)
             if (bi + 1) % 10 == 0:
-                log.info("батч %d/%d, keep=%d, стоимость $%.4f%s",
-                         bi + 1, total, len(kept), cost_total,
-                         f", исключены: {sorted(banned)}" if banned else "")
+                log.info("батч %d/%d, keep=%d, стоимость $%.4f",
+                         bi + 1, total, len(kept), cost_total)
             await asyncio.sleep(args.pause)
 
         seen_ids = set()
@@ -493,9 +446,8 @@ async def main() -> None:
         raw_path.with_suffix(".kept.jsonl").write_text(
             "\n".join(json.dumps(r, ensure_ascii=False) for r in kept) + "\n",
             encoding="utf-8")
-        log.info("готово: %s строк в %s, стоимость $%.4f%s",
-                 len(kept), out_path, cost_total,
-                 f", исключены модели: {sorted(banned)}" if banned else "")
+        log.info("готово: %s строк в %s, стоимость $%.4f",
+            len(kept), out_path, cost_total)
     finally:
         await client.disconnect()
 
