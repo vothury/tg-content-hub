@@ -589,7 +589,7 @@ BACKLOG_AUDIT_SYSTEM = """You are a media auditor. You receive a numbered list o
 - "other": everything else (politics, unrelated topics).
 OUTPUT FORMAT (strict): answer with ONE single line of per-item tokens "<i> <cat>." for EVERY number, e.g. "1 profile. 2 water. 3 ads. 4 profile." — no JSON, no quotes, no other text."""
 
-BACKLOG_FACTS_VERSION = "backlog-facts-v5"
+BACKLOG_FACTS_VERSION = "backlog-facts-v6"
 
 BACKLOG_FACTS_SYSTEM = """You are a fact-extractor for a real-estate analytics knowledge base (Moscow/MO primary market). You receive a numbered list of post texts (Russian). Extract facts an analyst can use WITHOUT seeing the original post.
 
@@ -600,8 +600,14 @@ WHAT COUNTS AS A FACT (only these):
 - mortgage & programs: rate, limit, program name, dates of changes;
 - developer business: revenue, profit, debt, IPO, land purchases, new project launches;
 - land and auctions: plot, purpose, price, winner.
+- problem-object events: demolition, bankruptcy, frozen construction, takeover of completion, buyers' rights — with the named object and dates, even WITHOUT prices or volumes;
+- program scale and budget spend: subsidized-mortgage support volumes, renovation/KRT (project counts, areas, relocation counts);
 
-IGNORE (not facts): tariffs and utilities, city improvement, demolition of unrelated objects, opinions/forecasts without numbers, event announcements, ads, complaints without concrete numbers; clearly FOREIGN objects (China, Dubai, Turkey, etc.) unless tied to the Moscow market; other regions of Russia — ONLY if the post concerns a Moscow/MO project or a federal rate/program affecting Moscow.
+IGNORE (not facts): tariffs and utilities, city improvement, demolition of unrelated objects, opinions without numbers, event announcements, ads, complaints without concrete numbers;
+NUMERIC FORECASTS AND PROJECTIONS ("may reach 32-33%", "expected to drop by 10-15%", "may add 7-10%") — a projection is NOT a fact;
+secondary market and foreclosure/bankruptcy asset sales; opinion quotes without reported metrics;
+corruption/criminal cases, capital repair, utilities/household, retail;
+offices, malls, hotels and other commercial objects NOT tied to residential construction or land for housing; clearly FOREIGN objects (China, Dubai, Turkey, etc.) unless tied to the Moscow market; other regions of Russia — ONLY if the post concerns a Moscow/MO project or a federal rate/program affecting Moscow.
 
 HARD QUALITY RULES:
 1. OBJECT = the SUBJECT of the fact (whose prices/sales/construction/money it is), NEVER the reporting agency. In "…, сообщила компания Циан" or "по данным BN.ru" the agency is the SOURCE: the object must be the real subject, and the source goes in parentheses at the end of the last fact: "(по данным Циан)".
@@ -612,6 +618,7 @@ HARD QUALITY RULES:
 4. Numbers exactly as in the text, with units; never round, convert or invent.
 5. When in doubt between a weak fact and no fact — choose NO fact. Precision matters more than recall.
 6. Each input item begins with the post date in square brackets [DD.MM.YYYY]. Use it to anchor every period: "за 9 месяцев" + [03.10.2023] -> "01-09.2023"; "на 1 октября" + [02.10.2023] -> "01.10.2023"; "второй квартал" + [15.07.2024] -> "04-06.2024". A year that contradicts the post date is a gross error.
+7. If a post reports metrics for SEVERAL companies/objects, output ONE line for that item with per-company facts prefixed by names ("LSR: -75.5%, 1.5 bln RUR; PIK: +15.7%, 4.1 bln RUR"); never drop companies and never emit extra lines for the same item number.
 
 REASONING PROTOCOL (mandatory): reason in ONE short pass — for each item decide +/- in a few words and move on, NEVER revisit an item; if you notice the same word, number or phrase appearing twice in your reasoning, STOP reasoning and output the answer immediately; do NOT repeat post text in the answer.
 
