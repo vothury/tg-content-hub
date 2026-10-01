@@ -1,13 +1,15 @@
-"""Виртуальная редакция: цикл журналист → главред → сбор/текст.
+"""Виртуальная редакция: цикл журналист → главред → (фаза 3: сбор/текст).
 
-Шаг 1: каркас — расписание циклов из настройки editorial_cycle_times,
-фазы будут добавлены в Шагах 2-4. Один цикл = один проход всех фаз.
+Цикл стартует по расписанию editorial_cycle_times; один цикл = один проход
+всех фаз. Фаза 1: журналист собирает заголовки (web + tg). Фаза 2: главред
+выбирает темы (topics) и привязывает к ним заголовки. Фаза 3 (следующий
+пакет): материалы → вердикт → текст статьи → Post на штатное ревью.
+Пустой цикл (журналист не принёс ни одного заголовка) трактуется как сбой
+сети/DNS и однократно повторяется через 10 минут.
 """
 from __future__ import annotations
 
 import asyncio
-import logging
-import re
 from datetime import timedelta
 
 from app.common.logging import setup_logging
@@ -27,14 +29,25 @@ async def _settings() -> tuple[int, str]:
 
 
 def _next_cycle_at(times: str):
+    """Ближайший слот расписания сегодня; если все прошли — завтра 00:05.
+
+    Битые элементы расписания пропускаются, чтобы ошибка настройки не
+    уронила воркер в crash-loop.
+    """
     now = owner_now()
     slots = []
     for part in times.split(","):
         part = part.strip()
         if not part or ":" not in part:
             continue
-        h, m = part.split(":")
-        t = now.replace(hour=int(h), minute=int(m), second=0, microsecond=0)
+        h, m, *rest = part.split(":")
+        if rest:
+            continue
+        try:
+            t = now.replace(hour=int(h), minute=int(m), second=0, microsecond=0)
+        except ValueError:
+            log.warning("editorial: пропущен битый слот расписания %r", part)
+            continue
         if t > now:
             slots.append(t)
     return min(slots) if slots else (now + timedelta(days=1)).replace(
@@ -42,16 +55,15 @@ def _next_cycle_at(times: str):
 
 
 async def run_cycle() -> bool:
-    """Возвращает True, если цикл оказался пустым (нужен повтор)."""
-    from app.services.editorial_chief import prune_headlines, run_chief_phase
+    """Один проход всех фаз. Возвращает True, если цикл пустой (нужен повтор)."""
+    from app.services.editorial_chief import (HEADLINE_RETENTION_DAYS,
+                                               prune_headlines, run_chief_phase)
     from app.services.editorial_journalist import run_journalist_phase
+
     log.info("редакция: цикл начат")
     web_n, tg_n = await run_journalist_phase()
-    # Фаза 2: главред — темы из собранных заголовков (фаза 3 — следующий пакет)
     topics_n = await run_chief_phase()
-    async with session_scope() as session:
-        retention = int(await get_setting(session, Keys.EDITORIAL_HEADLINE_RETENTION_DAYS))
-    pruned = await prune_headlines(retention)
+    pruned = await prune_headlines(HEADLINE_RETENTION_DAYS)
     log.info("редакция: цикл завершён (заголовков web=%d tg=%d, тем=%d, prune=%d)",
              web_n, tg_n, topics_n, pruned)
     return web_n == 0 and tg_n == 0

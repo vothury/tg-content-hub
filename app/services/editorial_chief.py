@@ -3,7 +3,7 @@
 Вход: заголовки headlines.status='new', схлопнутые в кластеры близких по тексту
 (дубли одного сюжета у разных источников = сигнал важности, маркер [xN]);
 профиль канала и недавние темы — в промпте CHIEF.
-Выход: строки topics (kind=hypothesis|rewrite, status=scheduled) + привязка
+Выход: строки topics (kind=hypothesis|rewrite, status=IN_WORK) + привязка
 заголовков (topic_id, status='picked'). Гигиена: prune заголовков старше N дней
 без темы (настройка editorial.headline_retention_days).
 """
@@ -19,10 +19,10 @@ from sqlalchemy import delete, select, update
 from app.db.enums import LLMStage, TopicKind, TopicStatus
 from app.db.models import Headline, Topic
 from app.db.session import session_scope
-from app.services.editorial_journalist import _call_json, _journalist_model
+from app.services.editorial_journalist import _call_json
 from app.services.llm.prompts import CHIEF_SYSTEM, CHIEF_USER
 from app.services.llm.schemas import ChiefTopicsResult
-from app.services.settings import Keys, get_setting
+from app.services.settings import Keys, get_providers, get_setting
 from app.services.times import owner_now
 from app.redis_client import get_redis
 
@@ -31,6 +31,9 @@ log = logging.getLogger("editorial_chief")
 
 _CLUSTER_SIM = 0.86   # порог «это тот же сюжет»
 _THEME_SIM = 0.85     # порог «тема уже была недавно»
+
+TOPICS_PER_CYCLE = 2          # тем за цикл; тюним по ходу (решение 2)
+HEADLINE_RETENTION_DAYS = 30  # prune заголовков без темы (решение 3)
 
 
 def _sim(a: str, b: str) -> float:
@@ -51,15 +54,23 @@ def _cluster(rows: list) -> list:
     return clusters
 
 
+async def _chief_model() -> tuple[str, dict | None]:
+    """editorial.chief_model; пусто -> модель ревизии по умолчанию (как в карточке)."""
+    async with session_scope() as session:
+        model = (str(await get_setting(session, Keys.EDITORIAL_CHIEF_MODEL) or "").strip()
+                 or str(await get_setting(session, Keys.REVISION_MODEL) or "").strip())
+        providers = await get_providers(session, Keys.REVISION_PROVIDERS)
+    return model, providers
+
+
 async def run_chief_phase() -> int:
     """Один проход главреда за цикл; возвращает число созданных тем."""
     async with session_scope() as session:
         enabled = int(await get_setting(session, Keys.EDITORIAL_ENABLED))
         budget = float(await get_setting(session, Keys.EDITORIAL_BUDGET_USD_PER_DAY))
-        max_topics = int(await get_setting(session, Keys.EDITORIAL_TOPICS_PER_CYCLE))
+        max_topics = TOPICS_PER_CYCLE
     if not enabled:
         return 0
-    from app.common.redis import get_redis   # импорт сверьте с editorial_journalist.py
     day = owner_now().date().isoformat()
     spent = float(await get_redis().get(f"guard:editorial_cost:{day}") or 0)
     if spent >= budget:
@@ -88,7 +99,7 @@ async def run_chief_phase() -> int:
         {"role": "user", "content": CHIEF_USER.format(
             recent="\n".join(f"- {t}" for t in recent) or "—", listing=listing)},
     ]
-    model, providers = await _journalist_model()
+    model, providers = await _chief_model()
     try:
         result = await _call_json(messages, model, providers, 900, ChiefTopicsResult,
                                   stage=LLMStage.EDITORIAL_CHIEF)
