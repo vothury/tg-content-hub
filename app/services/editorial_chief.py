@@ -107,7 +107,8 @@ async def run_chief_phase() -> int:
             continue
         async with session_scope() as session:
             topic = Topic(kind=TopicKind(t["kind"]), status=TopicStatus.IN_WORK,
-                          theme=t["theme"], hypothesis=t["hypothesis"] or None)
+                          theme=t["theme"], hypothesis=t["hypothesis"] or None,
+                          materials=flat)   # ids заголовков — задел для фазы 3
             session.add(topic)
             await session.flush()
             await session.execute(
