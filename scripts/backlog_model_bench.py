@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import difflib
+import glob
 import json
 import re
 import time
@@ -101,7 +102,8 @@ def _post_years(content: str) -> dict:
 
 
 def score_sample(stem: str, content: str, items: list) -> dict:
-    ref, noise, optional = REFERENCE[stem], NOISE[stem], OPTIONAL.get(stem, set())
+    ref, noise = REFERENCE[stem], NOISE[stem]
+    optional = OPTIONAL.get(stem, set())
     years = _post_years(content)
     got = {it["i"]: it for it in items}
     covered, obj_s, fact_s, wrong_year = [], [], [], 0
@@ -146,16 +148,19 @@ async def run_model(spec: str, samples: list, reasoning: int, out_dir: Path) -> 
             items = BacklogFactsResult.from_response(resp.content).items
             (out_dir / f"{slug.replace('/', '_')}__{stem}.txt").write_text(
                 resp.content or "", encoding="utf-8")
-        except (LLMParseError, OpenRouterError, Exception) as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — сбои вызова и парсинга считаем отдельно
             err = f"{exc.__class__.__name__}: {str(exc)[:120]}"
             fails += 1
         secs += time.time() - t0
-        m = score_sample(stem, content, items) if not err else {
-            "score": 0.0, "recall": 0.0, "fact": 0.0, "obj": 0.0, "precision": 0.0,
-            "missed": sorted(REFERENCE[stem]), "fp": [], "extra": [], "wrong_year": 0}
+        if err:
+            m = {"score": 0.0, "recall": 0.0, "fact": 0.0, "obj": 0.0, "precision": 0.0,
+                 "missed": sorted(REFERENCE[stem]), "fp": [], "extra": [],
+                 "wrong_year": 0}
+        else:
+            m = score_sample(stem, content, items)
         m["error"] = err
         rows.append((stem, m))
-    mean = sum(m["score"] for _, m in rows) / len(rows)
+    mean = sum(m["score"] for _, m in rows) / max(1, len(rows))
     return {"slug": slug, "rows": rows, "mean": mean, "cost": cost,
             "secs": secs, "fails": fails}
 
@@ -171,8 +176,15 @@ async def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     samples = []
     for p in sorted(glob.glob(args.samples)):
+        stem = Path(p).stem
+        if stem not in REFERENCE:
+            print(f"пропуск {stem}: для файла нет эталона в REFERENCE")
+            continue
         d = json.loads(Path(p).read_text(encoding="utf-8"))
-        samples.append((Path(p).stem, d["content"] if isinstance(d, dict) else str(d)))
+        samples.append((stem, d["content"] if isinstance(d, dict) else str(d)))
+    if not samples:
+        raise SystemExit("не найдено ни одного сэмпла с эталоном: "
+                         "проверьте --samples и монтирование scripts/samples")
     results = []
     for spec in _split_model_list(args.models):
         r = await run_model(spec, samples, args.reasoning, out_dir)
@@ -183,12 +195,15 @@ async def main() -> None:
             print(f"  {stem}: {m['score']:5.1f} | recall {m['recall']:.2f} | "
                   f"facts {m['fact']:.2f} | obj {m['obj']:.2f} | prec {m['precision']:.2f} | "
                   f"пропуски {m['missed']} | шум-ложные {m['fp']} | лишние {m['extra']} | "
-                  f"год>поста {m['wrong_year']}" + (f" | ERR {m['error']}" if m.get('error') else ""))
-    print("\n| модель | " + " | ".join(s for s, _ in samples) + " | среднее | $ | сек | сбоев |")
+                  f"год>поста {m['wrong_year']}"
+                  + (f" | ERR {m['error']}" if m.get("error") else ""))
+    head = " | ".join(s for s, _ in samples)
+    print(f"\n| модель | {head} | среднее | $ | сек | сбоев |")
     print("|---" * (len(samples) + 5) + "|")
     for r in results:
         cells = " | ".join(f"{m['score']:.0f}" for _, m in r["rows"])
-        print(f"| {r['slug']} | {cells} | {r['mean']:.1f} | {r['cost']:.4f} | {r['secs']:.0f} | {r['fails']} |")
+        print(f"| {r['slug']} | {cells} | {r['mean']:.1f} | "
+              f"{r['cost']:.4f} | {r['secs']:.0f} | {r['fails']} |")
 
 
 if __name__ == "__main__":
