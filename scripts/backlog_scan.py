@@ -326,38 +326,47 @@ async def main() -> None:
                       "facts": BacklogFactsResult}[args.mode]
             out_tokens = {"taste": 900, "audit": 600, "facts": 1200}[args.mode]
             result = None
+            batch_limit_fails: set = set()
+            batch_ok: set = set()
             for attempt in (1, 2):
                 call_kwargs = {"exclude": banned} if _SUPPORTS_EXCLUDE else {}
-                # Попытка 2: рассуждений нет — весь лимит финальному ответу.
-                # Спасение от зациклов gpt-oss, съедающих бюджет повторами.
-                reason_budget = args.reasoning if attempt == 1 else 0
-                msgs = messages if attempt == 1 else messages + [
-                    {"role": "system", "content": _NO_REASONING_DIRECTIVE}]
                 used, resp, result, status, error, rotation = await _call_with_fallback(
-                    msgs, model, out_tokens, 0.1, schema,
-                    providers, reason_budget, **call_kwargs)
+                    messages, model, out_tokens, 0.1, schema,
+                    providers, args.reasoning, **call_kwargs)
                 if resp is not None and resp.cost_usd:
                     cost_total += float(resp.cost_usd)
-                # Бан «раздумчивых»: два подряд обрыва на лимите токенов — вне цепочки.
                 for r in rotation:
                     slug = r.get("model")
                     if _is_limit_error(r.get("error")):
-                        strikes[slug] = strikes.get(slug, 0) + 1
-                        if strikes[slug] >= 2 and slug not in banned:
-                            banned.add(slug)
-                            log.warning("модель %s исключена из цепочки скана: "
-                                        "2 подряд обрыва на лимите токенов", slug)
-                            if not _SUPPORTS_EXCLUDE:
-                                log.warning("бан не фильтрует цепочку: примените патч "
-                                            "exclude в app/services/llm_pipeline.py")
+                        batch_limit_fails.add(slug)
                     else:
-                        strikes[slug] = 0
+                        batch_ok.add(slug)
                 if result is not None:
-                    strikes[used] = 0
+                    batch_ok.add(used)
                     break
                 log.warning("батч %d/%d попытка %d не дала результата: %s",
                             bi + 1, total, attempt, (error or "")[:120])
                 await asyncio.sleep(30)
+            # Пустая цепочка (все модели забанены) = нет ни вызовов, ни rotation:
+            # не крутим 150 батчей впустую, останавливаем прогон чисто.
+            if resp is None and not rotation:
+                log.critical("цепочка пуста: все модели забанены (%s) — прогон остановлен; "
+                             "возобновите той же командой позже, батчи не потеряны",
+                             sorted(banned))
+                break
+            # Страйк начисляется ОДИН раз на батч: две попытки одного батча не должны
+            # банить всю цепочку разом; успех в батче обнуляет страйк модели.
+            for slug in batch_limit_fails - batch_ok:
+                strikes[slug] = strikes.get(slug, 0) + 1
+                if strikes[slug] >= 2 and slug not in banned:
+                    banned.add(slug)
+                    log.warning("модель %s исключена из цепочки скана: "
+                                "2 батча подряд с обрывом на лимите токенов", slug)
+                    if not _SUPPORTS_EXCLUDE:
+                        log.warning("бан не фильтрует цепочку: примените патч "
+                                            "exclude в app/services/llm_pipeline.py")
+            for slug in batch_ok:
+                strikes[slug] = 0
             if result is not None:
                 by_i = {n: e for n, e in enumerate(chunk, 1)}
                 unknown_i = 0
