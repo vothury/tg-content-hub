@@ -89,6 +89,23 @@ def _tok_hit(tok: str, hay: str) -> bool:
     return False
 
 
+_FACTS_LINE_RE = re.compile(r"(?m)^\s*(\d+)\s*\|([^|\n]*)\|([^\n]*)$")
+
+
+def _parse_lenient(content: str) -> list:
+    """Спасение обрезанного ответа: полные линии считаем, хвост теряем честно."""
+    items, seen = [], set()
+    for m in _FACTS_LINE_RE.finditer(content or ""):
+        i = int(m.group(1))
+        if i in seen:
+            continue
+        seen.add(i)
+        facts = [f.strip() for f in m.group(3).split(";") if f.strip()][:6]
+        if facts:
+            items.append({"i": i, "rel": True, "obj": m.group(2).strip(), "facts": facts})
+    return items
+
+
 def _obj_score(ref_obj: str, got_obj: str) -> float:
     a, b = ref_obj.lower(), (got_obj or "").lower()
     if any(p in b for p in a.split("|")):
@@ -140,12 +157,20 @@ async def run_model(spec: str, samples: list, reasoning: int, out_dir: Path) -> 
         t0 = time.time()
         items, err = [], None
         try:
+            reason_cap = min(reasoning, 4000)          # как REASONING_HARD_CAP в пайплайне
+            total_cap = 1200 + reason_cap              # max_tokens у OR включает рассуждения
             resp = await chat_completion(
                 [{"role": "system", "content": BACKLOG_FACTS_SYSTEM},
                  {"role": "user", "content": content}],
-                slug, 1200, 0.1, provider=prov, reasoning_max_tokens=reasoning)
+                slug, total_cap, 0.1, provider=prov, reasoning_max_tokens=reason_cap)
             cost += float(resp.cost_usd or 0.0)
-            items = BacklogFactsResult.from_response(resp.content).items
+            try:
+                items = BacklogFactsResult.from_response(resp.content).items
+            except LLMParseError as pe:
+                if "обрезан" not in str(pe):
+                    raise
+                items = _parse_lenient(resp.content)   # salvage: считаем то, что доехало
+                truncated = True
             (out_dir / f"{slug.replace('/', '_')}__{stem}.txt").write_text(
                 resp.content or "", encoding="utf-8")
         except Exception as exc:  # noqa: BLE001 — сбои вызова и парсинга считаем отдельно
