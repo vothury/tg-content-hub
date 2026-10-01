@@ -320,7 +320,10 @@ async def main() -> None:
             chunk = pending[bi * args.batch:(bi + 1) * args.batch]
             cut = {"taste": 300, "audit": 300, "facts": 700}[args.mode]
             listing = "\n".join(
-                f"{n}. {(e['text'] or '')[:cut]}" for n, e in enumerate(chunk, 1))
+                (f"{n}. [{_dt.fromisoformat(e['date']).strftime('%d.%m.%Y')}] "
+                 f"{(e['text'] or '')[:cut]}") if args.mode == "facts"
+                else f"{n}. {(e['text'] or '')[:cut]}"
+                for n, e in enumerate(chunk, 1))
             system = {"taste": BACKLOG_SCAN_SYSTEM,
                       "audit": BACKLOG_AUDIT_SYSTEM.format(niche=args.niche or niche_default),
                       "facts": BACKLOG_FACTS_SYSTEM}[args.mode]

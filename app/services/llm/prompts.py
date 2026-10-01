@@ -589,7 +589,7 @@ BACKLOG_AUDIT_SYSTEM = """You are a media auditor. You receive a numbered list o
 - "other": everything else (politics, unrelated topics).
 OUTPUT FORMAT (strict): answer with ONE single line of per-item tokens "<i> <cat>." for EVERY number, e.g. "1 profile. 2 water. 3 ads. 4 profile." — no JSON, no quotes, no other text."""
 
-BACKLOG_FACTS_VERSION = "backlog-facts-v4"
+BACKLOG_FACTS_VERSION = "backlog-facts-v5"
 
 BACKLOG_FACTS_SYSTEM = """You are a fact-extractor for a real-estate analytics knowledge base (Moscow/MO primary market). You receive a numbered list of post texts (Russian). Extract facts an analyst can use WITHOUT seeing the original post.
 
@@ -611,6 +611,7 @@ HARD QUALITY RULES:
 3. Every period MUST include the YEAR when it is stated in the text or unambiguously derivable from it; if the year is absent and not derivable — keep the period as written ("9 месяцев"), NEVER invent a year.
 4. Numbers exactly as in the text, with units; never round, convert or invent.
 5. When in doubt between a weak fact and no fact — choose NO fact. Precision matters more than recall.
+6. Each input item begins with the post date in square brackets [DD.MM.YYYY]. Use it to anchor every period: "за 9 месяцев" + [03.10.2023] -> "01-09.2023"; "на 1 октября" + [02.10.2023] -> "01.10.2023"; "второй квартал" + [15.07.2024] -> "04-06.2024". A year that contradicts the post date is a gross error.
 
 REASONING PROTOCOL (mandatory): reason in ONE short pass — for each item decide +/- in a few words and move on, NEVER revisit an item; if you notice the same word, number or phrase appearing twice in your reasoning, STOP reasoning and output the answer immediately; do NOT repeat post text in the answer.
 
