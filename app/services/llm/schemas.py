@@ -452,3 +452,35 @@ class BacklogFactsResult:
             return cls(items=items)
         raise LLMParseError(f"нет ни «R:»/линий, ни JSON: {s[:200]!r}")
 
+
+@dataclass
+class ChiefTopicsResult:
+    """Главред: 0..N тем; пустой список = «сегодня нечего производить» — это норма."""
+    topics: list = field(default_factory=list)
+
+    @classmethod
+    def from_response(cls, content: str) -> "ChiefTopicsResult":
+        data = extract_json(content)
+        raw = data.get("topics") if isinstance(data, dict) else data
+        if not isinstance(raw, list):
+            raise LLMParseError("ожидался список topics")
+        topics = []
+        for x in raw:
+            if not isinstance(x, dict):
+                continue
+            kind = str(x.get("kind") or "").strip().lower()
+            if kind not in ("hypothesis", "rewrite"):
+                continue
+            theme = str(x.get("theme") or "").strip()
+            if not theme:
+                continue
+            nums = []
+            for n in x.get("headlines") or []:
+                try:
+                    nums.append(int(n))
+                except (TypeError, ValueError):
+                    continue
+            topics.append({"kind": kind, "theme": theme,
+                           "hypothesis": str(x.get("hypothesis") or "").strip(),
+                           "headlines": nums})
+        return cls(topics=topics)

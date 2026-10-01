@@ -191,6 +191,10 @@ class Headline(Base):
     title_hash: Mapped[str] = mapped_column(String(64), index=True)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     consumed_by_chief_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    topic_id: Mapped[int | None] = mapped_column(
+        ForeignKey("topics.id", ondelete="SET NULL"), nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(16), default="new", server_default="new", nullable=False)
 
 
 class Topic(Base):

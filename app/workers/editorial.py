@@ -43,13 +43,18 @@ def _next_cycle_at(times: str):
 
 async def run_cycle() -> bool:
     """Возвращает True, если цикл оказался пустым (нужен повтор)."""
+    from app.services.editorial_chief import prune_headlines, run_chief_phase
     from app.services.editorial_journalist import run_journalist_phase
     log.info("редакция: цикл начат")
     web_n, tg_n = await run_journalist_phase()
+    # Фаза 2: главред — темы из собранных заголовков (фаза 3 — следующий пакет)
+    topics_n = await run_chief_phase()
+    async with session_scope() as session:
+        retention = int(await get_setting(session, Keys.EDITORIAL_HEADLINE_RETENTION_DAYS))
+    pruned = await prune_headlines(retention)
+    log.info("редакция: цикл завершён (заголовков web=%d tg=%d, тем=%d, prune=%d)",
+             web_n, tg_n, topics_n, pruned)
     return web_n == 0 and tg_n == 0
-    # Фаза 2 (Шаг 3): главред — решения hypothesis/rewrite, задания в topics
-    # Фаза 3 (Шаг 4): сбор материалов, вердикт, текст статьи в articles
-    log.info("редакция: цикл завершён (фаза журналиста отработала)")
 
 
 async def main() -> None:

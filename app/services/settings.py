@@ -111,6 +111,8 @@ class Keys:
     EDITORIAL_JOURNALIST_MODEL = "editorial.journalist_model"
     EDITORIAL_BROWSE_MODEL = "editorial.browse_model"
     EDITORIAL_BROWSE_ENABLED = "editorial.browse_enabled"
+    EDITORIAL_TOPICS_PER_CYCLE = "editorial.topics_per_cycle"          # дефолт 2
+    EDITORIAL_HEADLINE_RETENTION_DAYS = "editorial.headline_retention_days"  # дефолт 30
     AGGREGATE_ACCEPT_DEFAULT = "aggregate.accept_default"
     AGGREGATE_REJECT_DEFAULT = "aggregate.reject_default"
     AGGREGATE_MAX_TOKENS = "llm.aggregate_max_tokens"
