@@ -108,8 +108,12 @@ async def chat_completion(
         "max_tokens": max_tokens,
         "temperature": temperature,
     }
-    # Бюджет внутренних рассуждений: защищает от зацикливания reasoning-моделей
-    if reasoning_max_tokens:
+    # Бюджет внутренних рассуждений: защищает от зацикливания reasoning-моделей.
+    # effort имеет приоритет над max_tokens: "none" выключает рассуждения целиком
+    # (у моделей с поддержкой effort), остальные уровни - относительный бюджет.
+    if reasoning_effort:
+        payload["reasoning"] = {"effort": reasoning_effort}
+    elif reasoning_max_tokens:
         payload["reasoning"] = {"max_tokens": reasoning_max_tokens}
     # Предпочтения провайдеров передаются как есть; пусто = авто-маршрутизация
     if provider:

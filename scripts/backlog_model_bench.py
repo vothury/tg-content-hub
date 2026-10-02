@@ -150,19 +150,22 @@ def score_sample(stem: str, content: str, items: list) -> dict:
             "wrong_year": wrong_year}
 
 
-async def run_model(spec: str, samples: list, reasoning: int, out_dir: Path) -> dict:
+async def run_model(spec: str, samples: list, reasoning: int, out_dir: Path,
+                    effort: str = "") -> dict:
     slug, prov = _parse_model_spec(spec)
     rows, cost, secs, fails = [], 0.0, 0.0, 0
     for stem, content in samples:
         t0 = time.time()
         items, err = [], None
         try:
-            reason_cap = min(reasoning, 4000)          # как REASONING_HARD_CAP в пайплайне
+            reason_cap = 0 if effort == "none" else min(reasoning, 6000)
             total_cap = 1200 + reason_cap              # max_tokens у OR включает рассуждения
             resp = await chat_completion(
                 [{"role": "system", "content": BACKLOG_FACTS_SYSTEM},
                  {"role": "user", "content": content}],
-                slug, total_cap, 0.1, provider=prov, reasoning_max_tokens=reason_cap)
+                slug, total_cap, 0.1, provider=prov,
+                reasoning_max_tokens=reason_cap or None,
+                reasoning_effort=effort or None)
             cost += float(resp.cost_usd or 0.0)
             try:
                 items = BacklogFactsResult.from_response(resp.content).items
@@ -200,6 +203,9 @@ async def main() -> None:
     ap.add_argument("--tag", default="",
                     help="метка прогона: сырьё и сводка кладутся в <out-dir>/<tag>/; "
                          "по умолчанию временной штамп — прогоны не перетирают друг друга")
+    ap.add_argument("--effort", default="",
+                    help="reasoning.effort вместо бюджета токенов ('none' = без рассуждений); "
+                         "пусто = прежняя работа через --reasoning")
     args = ap.parse_args()
     stamp = args.tag or time.strftime("%Y%m%d-%H%M%S")
     out_dir = Path(args.out_dir) / stamp
@@ -217,10 +223,10 @@ async def main() -> None:
                          "проверьте --samples и монтирование scripts/samples")
     results = []
     for spec in _split_model_list(args.models):
-        r = await run_model(spec, samples, args.reasoning, out_dir)
+        r = await run_model(spec, samples, args.reasoning, out_dir, args.effort)
         results.append(r)
-        print(f"\n=== {r['spec']} | среднее {r['mean']:.1f}/100 | "
-              f"${r['cost']:.4f} | {r['secs']:.0f}s | сбоев {r['fails']}")
+        print(f"\n=== {r['spec']} | effort={args.effort or 'tokens'} | "
+              f"среднее {r['mean']:.1f}/100 | ${r['cost']:.4f} | {r['secs']:.0f}s | сбоев {r['fails']}")
         for stem, m in r["rows"]:
             print(f"  {stem}: {m['score']:5.1f} | recall {m['recall']:.2f} | "
                   f"facts {m['fact']:.2f} | obj {m['obj']:.2f} | prec {m['precision']:.2f} | "
@@ -239,7 +245,7 @@ async def main() -> None:
         table.append(line)
         print(line)
     (out_dir / "summary.md").write_text(
-        f"# bench {stamp} | reasoning {args.reasoning} | samples: "
+        f"# bench {stamp} | reasoning {args.reasoning} | effort {args.effort or '-'} | samples: "
         + ", ".join(s for s, _ in samples) + "\n\n" + "\n".join(table) + "\n",
         encoding="utf-8")
     print(f"\nсводка и сырьё прогона: {out_dir}")

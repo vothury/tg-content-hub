@@ -383,7 +383,7 @@ def _is_reasoning_loop(resp, total_cap: int) -> bool:
 
 
 async def _call_and_parse(messages, model, max_tokens, temperature, schema, provider=None,
-                          reasoning_max_tokens: int | None = None):
+                          reasoning_max_tokens: int | None = None, reasoning_effort: str | None = None):
     """Вызов модели + парсинг. Возвращает (ответ, результат, статус, текст ошибки)."""
     resp: LLMResponse | None = None
     result = None
@@ -392,7 +392,8 @@ async def _call_and_parse(messages, model, max_tokens, temperature, schema, prov
     try:
         # max_tokens = лимит финального ответа стадии + бюджет рассуждений:
         # рассуждения тарифицируются внутри max_tokens, ответ не должен голодать
-        reason_cap = min(reasoning_max_tokens or 0, REASONING_HARD_CAP)
+        reason_cap = (0 if reasoning_effort == "none"
+              else min(reasoning_max_tokens or 0, REASONING_HARD_CAP))
         if (reasoning_max_tokens or 0) > REASONING_HARD_CAP:
             log.warning("llm: бюджет рассуждений %d урезан до %d (защита от обрыва и расхода)",
                         reasoning_max_tokens, REASONING_HARD_CAP)
@@ -400,6 +401,7 @@ async def _call_and_parse(messages, model, max_tokens, temperature, schema, prov
         resp = await chat_completion(messages, model, total_cap,
                                      temperature=temperature,
                                      provider=provider, reasoning_max_tokens=reason_cap,
+                                     reasoning_effort=reasoning_effort,
                                      session_id=_session_id(messages, model))
         if _is_reasoning_loop(resp, total_cap):
             raise LLMParseError("reasoning loop: модель зациклилась на повторе и исчерпала лимит без ответа")
@@ -916,7 +918,7 @@ async def _fallback_models() -> list:
 
 
 async def _call_with_fallback(messages, model, max_tokens, temperature, schema,
-                              providers, reasoning_max_tokens, exclude=None):
+                              providers, reasoning_max_tokens, exclude=None, reasoning_effort: str | None = None):
     """Вызов с ротацией: список моделей (у каждой может быть пиннинг провайдеров
     в скобках) + llm_fallback_models. Ответ модели модерации и непроходимый JSON
     считаются сбоем маршрутизации — пробуем следующую модель.
