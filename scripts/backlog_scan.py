@@ -293,6 +293,7 @@ async def main() -> None:
         kept: list = state.setdefault("kept", [])
         done_ids: set = set(state.setdefault("done_ids", []))
         cost_total = float(state.get("cost", 0.0))
+        cached_total = int(state.get("cached", 0))
         pending = [e for e in entries if e["id"] not in done_ids]
         total = (len(pending) + args.batch - 1) // args.batch
         if args.max_batches:
@@ -323,8 +324,8 @@ async def main() -> None:
                 used, resp, result, status, error, rotation = await _call_with_fallback(
                     messages, model, out_tokens, 0.1, schema,
                     providers, args.reasoning)
-                if resp is not None and resp.cost_usd:
-                    cost_total += float(resp.cost_usd)
+                if resp is not None and getattr(resp, "cached_tokens", 0):
+                    cached_total += int(resp.cached_tokens)
                 if result is not None:
                     break
                 log.warning("батч %d/%d попытка %d не дала результата: %s",
@@ -381,10 +382,11 @@ async def main() -> None:
                 state["done_ids"] = sorted(done_ids)
             state["cost"] = cost_total
             state["kept"] = kept
+            state["cached"] = cached_total
             _save_state(state_path, state)
             if (bi + 1) % 10 == 0:
-                log.info("батч %d/%d, keep=%d, стоимость $%.4f",
-                         bi + 1, total, len(kept), cost_total)
+                log.info("батч %d/%d, keep=%d, стоимость $%.4f, кэш %d токенов",
+                        bi + 1, total, len(kept), cost_total, cached_total)
             await asyncio.sleep(args.pause)
 
         seen_ids = set()
@@ -446,8 +448,8 @@ async def main() -> None:
         raw_path.with_suffix(".kept.jsonl").write_text(
             "\n".join(json.dumps(r, ensure_ascii=False) for r in kept) + "\n",
             encoding="utf-8")
-        log.info("готово: %s строк в %s, стоимость $%.4f",
-            len(kept), out_path, cost_total)
+        log.info("готово: %s строк в %s, стоимость $%.4f, кэш-токенов %d",
+            len(kept), out_path, cost_total, cached_total)
     finally:
         await client.disconnect()
 

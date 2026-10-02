@@ -14,9 +14,32 @@ import logging
 import re
 import unicodedata
 from dataclasses import asdict
-from datetime import timezone
+from datetime import datetime, timezone
 
 from sqlalchemy import func, select
+
+import zlib
+
+# Sticky routing ради prompt-кэша: сессия уникальна для связки
+# (модель, crc системного промпта, сутки). Разные стадии и версии промптов
+# не сталкиваются; ротация на другой hop получает свою сессию; суточный скоп
+# не даёт прилипнуть к провайдеру навечно. Бенч вызывает chat_completion
+# напрямую и остаётся БЕЗ пинна — рейтинги провайдеров мерятся честно.
+# Аварийный выключатель: SESSION_PINNING = False.
+SESSION_PINNING = True
+
+
+def _session_id(messages: list, slug: str) -> str | None:
+    if not SESSION_PINNING:
+        return None
+    sys_text = next((m.get("content") or "" for m in messages
+                     if m.get("role") == "system"), "")
+    if not sys_text:
+        return None
+    crc = zlib.crc32(sys_text.encode("utf-8")) % 1_000_000_000
+    day = datetime.now(timezone.utc).strftime("%Y%m%d")
+    return f"tch-{slug.replace('/', '-').replace(':', '-')}-{crc}-{day}"
+
 
 from app.config import settings
 from app.db.enums import (
@@ -376,7 +399,8 @@ async def _call_and_parse(messages, model, max_tokens, temperature, schema, prov
         total_cap = max_tokens + reason_cap
         resp = await chat_completion(messages, model, total_cap,
                                      temperature=temperature,
-                                     provider=provider, reasoning_max_tokens=reason_cap)
+                                     provider=provider, reasoning_max_tokens=reason_cap,
+                                     session_id=_session_id(messages, model))
         if _is_reasoning_loop(resp, total_cap):
             raise LLMParseError("reasoning loop: модель зациклилась на повторе и исчерпала лимит без ответа")
         result = schema.from_response(resp.content)
