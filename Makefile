@@ -135,7 +135,7 @@ wait-idle:
 
 deploy: ## деплой: guard'ы -> pull -> dos2unix изменённого -> одна сборка -> подъём -> чистка
 	@if [ -n "$$(docker ps -q --filter name=reader-run)" ]; then echo "⛔ идёт facts-цикл (reader-run жив) — деплой запрещён"; exit 1; fi
-	@if [ -n "$$(git status --porcelain)" ]; then echo "⛔ на сервере локальные правки — сначала разобрать:"; git status --short; exit 1; fi
+	@if [ -n "$$(git status --porcelain --untracked-files=no)" ]; then echo "⛔ на сервере локальные правки ТРЕКИРУЕМЫХ файлов — сначала разобрать:"; git status --short --untracked-files=no; exit 1; fi
 	git pull --ff-only
 	@git log -1 --oneline
 	git diff --name-only ORIG_HEAD HEAD 2>/dev/null | grep -E '\.(py|html|ya?ml)$$|^[Dd]ockerfile' | xargs -r dos2unix

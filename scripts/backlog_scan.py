@@ -6,26 +6,28 @@
 тип медиа, флаг правки.
 Фаза 2: схлопывает альбомы, вычитает известные БД посты, пропускает через
 регекс-префильтр, режет на батчи и оценивает одним из режимов:
-  taste  - отбор постов по вкусу канала (таблица keep-ов);
-  audit  - доли категорий (зонд источника, вердикт ДОПУСТИТЬ/ИСКЛЮЧИТЬ, ниша --niche);
-  facts  - извлечение фактов (даты/объекты/числа) в базу знаний редакции.
+  taste - отбор постов по вкусу канала (таблица keep-ов);
+  audit - доли категорий (зонд источника, вердикт ДОПУСТИТЬ/ИСКЛЮЧИТЬ, ниша --niche);
+  facts - извлечение фактов (даты/объекта/числа) в базу знаний редакции.
 Фаза 3: пишет отчёт Markdown + <out>.kept.jsonl; состояние (курсор, обработанные
-id, стоимость, keep-ы) живёт в <out>.state.json - повторный запуск с тем же --out
-возобновляется; необработанные батчи дооцениваются, упавшие не помечаются.
-
+id, стоимость, keep-ы, кэш-токены) живёт в <out>.state.json - повторный запуск
+с тем же --out возобновляется; необработанные батчи дооцениваются, упавшие не
+помечаются.
 Защиты: две попытки на батч с ротацией моделей внутри _call_with_fallback;
 предупреждение о номерах вне списка (сбой нумерации модели); упавшие батчи не
 помечаются обработанными - их дооценит resume. Банов моделей больше нет:
 практика показала, что щедрый бюджет рассуждений дешевле каскадов ротации.
-
+Кэш: sticky-сессии создаются автоматически в _call_and_parse (llm_pipeline) по
+связке модель+crc системника+сутки; скан лишь считает сэкономленные токены в
+cached_total (накапливается в state и печатается в логах).
 Запуск В КОНТЕЙНЕРЕ reader (там Telethon-сессия); reader на время остановите:
   docker compose stop reader
   docker compose run --rm --entrypoint python reader scripts/backlog_scan.py \
-      --source istoria --mode facts --since 2023-09-30 --batch 25 --reasoning 1500 \
-      --prefilter "ЖК|новострой|застройщик|эскроу|ипотек|м²" \
-      --pause 2.5 --tg-sleep 1.5 \
-      --model "openai/gpt-oss-20b (darkbloom/fp8)" \
-      --out backlog/facts_istoria.md
+    --source istoria --mode facts --since 2023-09-30 --batch 25 --reasoning 3000 \
+    --prefilter "ЖК|новострой|застройщик|эскроу|ипотек|м²" \
+    --pause 1.5 --tg-sleep 1.5 \
+    --model "z-ai/glm-5.3-flash (parasail/fp4)" \
+    --out backlog/facts_istoria.md
   docker compose start reader
 """
 from __future__ import annotations
@@ -36,6 +38,7 @@ import json
 import logging
 import re
 import sys
+from collections import Counter
 from datetime import datetime as _dt, timezone
 from pathlib import Path
 
@@ -43,6 +46,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # корень 
 
 from telethon import TelegramClient
 from telethon.errors import FloodWaitError
+from sqlalchemy import select
 
 from app.config import settings
 from app.db.models import Post, Source
@@ -58,7 +62,6 @@ from app.services.times import owner_tz
 
 log = logging.getLogger("backlog_scan")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-
 
 # «Объекты» без имени собственного: факт без субъекта - шум, в kept не пускаем.
 _GENERIC_OBJ = {
@@ -241,9 +244,8 @@ async def main() -> None:
                     help="описание ниши для режима audit (по умолчанию - первичка Москвы/МО)")
     ap.add_argument("--reasoning", type=int, default=1000,
                     help="бюджет рассуждений вызовов скана (единый на обе попытки; "
-                         "для facts рекомендуется 1500)")
+                         "для facts рекомендуется 3000)")
     args = ap.parse_args()
-
     if args.batch < 1:
         raise SystemExit("--batch должен быть >= 1")
     if not 0 <= args.min_score <= 10:
@@ -253,11 +255,9 @@ async def main() -> None:
     since_dt = None
     if args.since:
         since_dt = _dt.fromisoformat(args.since).replace(tzinfo=timezone.utc)
-
     out_path, raw_path, state_path = _paths(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)   # backlog/ и т.п. создаём сами
     state = _load_state(state_path)
-
     client = TelegramClient(settings.reader_session_path,
                             settings.telegram_api_id, settings.telegram_api_hash)
     await client.connect()
@@ -268,19 +268,16 @@ async def main() -> None:
         added = await _fetch_history(client, entity, raw_path, state, args.tg_sleep,
                                      limit=args.limit, since=since_dt)
         log.info("фаза 1 завершена: новых сообщений %d", added)
-
         async with session_scope() as s:
             providers = await get_providers(s, Keys.CLASSIFY_PROVIDERS)
             model = args.model or str(await get_setting(s, Keys.CLASSIFY_MODEL))
             src_id = (await s.execute(
-                __import__("sqlalchemy").select(Source.id)
-                .where(Source.username == args.source))).scalar_one_or_none()
+                select(Source.id).where(Source.username == args.source))).scalar_one_or_none()
             known = set()
             if src_id is not None:
                 known = set(x for x in (await s.execute(
-                    __import__("sqlalchemy").select(Post.source_message_id)
+                    select(Post.source_message_id)
                     .where(Post.source_id == src_id))).scalars() if x)
-
         entries = [e for e in _entries(raw_path) if e["id"] not in known]
         if args.prefilter:
             pre_re = re.compile(args.prefilter, re.I)
@@ -289,7 +286,6 @@ async def main() -> None:
             log.info("префильтр: %d -> %d записей", before, len(entries))
         log.info("фаза 2: записей к оценке %d (известных БД пропущено %d)",
                  len(entries), len(known))
-
         kept: list = state.setdefault("kept", [])
         done_ids: set = set(state.setdefault("done_ids", []))
         cost_total = float(state.get("cost", 0.0))
@@ -324,6 +320,8 @@ async def main() -> None:
                 used, resp, result, status, error, rotation = await _call_with_fallback(
                     messages, model, out_tokens, 0.1, schema,
                     providers, args.reasoning)
+                if resp is not None and resp.cost_usd:
+                    cost_total += float(resp.cost_usd)
                 if resp is not None and getattr(resp, "cached_tokens", 0):
                     cached_total += int(resp.cached_tokens)
                 if result is not None:
@@ -331,7 +329,6 @@ async def main() -> None:
                 log.warning("батч %d/%d попытка %d не дала результата: %s",
                             bi + 1, total, attempt, (error or "")[:120])
                 await asyncio.sleep(30)
-
             if result is not None:
                 by_i = {n: e for n, e in enumerate(chunk, 1)}
                 unknown_i = 0
@@ -386,9 +383,8 @@ async def main() -> None:
             _save_state(state_path, state)
             if (bi + 1) % 10 == 0:
                 log.info("батч %d/%d, keep=%d, стоимость $%.4f, кэш %d токенов",
-                        bi + 1, total, len(kept), cost_total, cached_total)
+                         bi + 1, total, len(kept), cost_total, cached_total)
             await asyncio.sleep(args.pause)
-
         seen_ids = set()
         kept = [r for r in kept if not (r["msg_id"] in seen_ids or seen_ids.add(r["msg_id"]))]
         state["kept"] = kept
@@ -403,7 +399,6 @@ async def main() -> None:
                 cap = r["caption"].replace("|", "/").replace("\n", " ")
                 lines.append(f"| {r['score']:.0f} | {r['msg_id']} | {d} | {cap} |")
         elif args.mode == "audit":
-            from collections import Counter
             cnt = Counter(r["cat"] for r in kept)
             total_n = max(1, sum(cnt.values()))
             years: dict = {}
@@ -449,7 +444,7 @@ async def main() -> None:
             "\n".join(json.dumps(r, ensure_ascii=False) for r in kept) + "\n",
             encoding="utf-8")
         log.info("готово: %s строк в %s, стоимость $%.4f, кэш-токенов %d",
-            len(kept), out_path, cost_total, cached_total)
+                 len(kept), out_path, cost_total, cached_total)
     finally:
         await client.disconnect()
 
