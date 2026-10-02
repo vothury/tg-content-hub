@@ -856,33 +856,45 @@ def _split_model_list(s: str) -> list:
     return [x.strip() for x in out if x.strip()]
 
 
-def _parse_model_spec(entry: str) -> tuple:
-    """'slug (p1/q1, p2/q2)' -> (slug, provider-dict | None).
+_QUANT_VOCAB = {"int4", "int8", "fp4", "mxfp4", "mxfp6", "mxfp8",
+                "fp8", "fp16", "fp32"}
 
-    provider-dict — предпочтения OpenRouter для этого hop'а: order + quantizations,
-    allow_fallbacks=True (мягкий пиннинг: при отсутствии ёмкости у указанных
-    провайдеров вызов не ломается, а уходит на другого провайдера модели).
+
+def _parse_model_spec(spec: str):
+    """'slug (pin, pin)' -> (slug, provider-dict | None).
+
+    Пин бывает трёх видов:
+      'prov'          - провайдер;
+      'prov/quant'    - квантизация из словаря OpenRouter (уходит в quantizations);
+      'prov/tag'      - tag НЕ из словаря квантов = сервис-тир или регион
+                        (openai/flex, openai/fast, azure/eu): такой пин уходит
+                        в order ЦЕЛИКОМ, иначе OpenRouter отвечает HTTP 400
+                        provider.quantizations (кейс luna-pro flex).
+    Региональные эндпоинты с наценкой (azure/us, azure/eu) пиннуйте осознанно.
     """
-    m = _MODEL_SPEC_RE.match((entry or "").strip())
-    if not m:
-        return (entry or "").strip(), None
-    slug = m.group("slug")
-    provs = [p.strip() for p in (m.group("provs") or "").split(",") if p.strip()]
-    if not provs:
+    spec = spec.strip()
+    if not spec:
+        return "", None
+    slug, _, pins = spec.partition("(")
+    slug = slug.strip()
+    pins = pins.strip().rstrip(")")
+    if not pins:
         return slug, None
     order, quants = [], []
-    for p in provs:
-        tag, _, q = p.partition("/")
-        tag = tag.strip()
-        if tag and tag not in order:
-            order.append(tag)
-        q = q.strip()
-        if q and q not in quants:
-            quants.append(q)
-    spec = {"order": order, "allow_fallbacks": True}
+    for pin in pins.split(","):
+        pin = pin.strip()
+        if not pin:
+            continue
+        prov, sep, tag = pin.partition("/")
+        if sep and tag.lower() in _QUANT_VOCAB:
+            order.append(prov.strip())
+            quants.append(tag.lower())
+        else:
+            order.append(pin)          # провайдер целиком: с тиром или регионом
+    provider = {"order": order, "allow_fallbacks": False}
     if quants:
-        spec["quantizations"] = quants
-    return slug, spec
+        provider["quantizations"] = quants
+    return slug, provider
 
 async def _fallback_models() -> list:
     """Запасные модели; некорректные значения (мусор после ручных правок) отбрасываются."""
