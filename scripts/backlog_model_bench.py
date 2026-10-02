@@ -171,7 +171,8 @@ async def run_model(spec: str, samples: list, reasoning: int, out_dir: Path) -> 
                     raise
                 items = _parse_lenient(resp.content)   # salvage: считаем то, что доехало
                 truncated = True
-            (out_dir / f"{slug.replace('/', '_')}__{stem}.txt").write_text(
+            safe = re.sub(r"[^0-9A-Za-z._-]+", "_", spec.strip())
+            (out_dir / f"{safe}__{stem}.txt").write_text(
                 resp.content or "", encoding="utf-8")
         except Exception as exc:  # noqa: BLE001 — сбои вызова и парсинга считаем отдельно
             err = f"{exc.__class__.__name__}: {str(exc)[:120]}"
@@ -186,7 +187,7 @@ async def run_model(spec: str, samples: list, reasoning: int, out_dir: Path) -> 
         m["error"] = err
         rows.append((stem, m))
     mean = sum(m["score"] for _, m in rows) / max(1, len(rows))
-    return {"slug": slug, "rows": rows, "mean": mean, "cost": cost,
+    return {"slug": slug, "spec": spec, "rows": rows, "mean": mean, "cost": cost,
             "secs": secs, "fails": fails}
 
 
@@ -218,7 +219,7 @@ async def main() -> None:
     for spec in _split_model_list(args.models):
         r = await run_model(spec, samples, args.reasoning, out_dir)
         results.append(r)
-        print(f"\n=== {r['slug']} | среднее {r['mean']:.1f}/100 | "
+        print(f"\n=== {r['spec']} | среднее {r['mean']:.1f}/100 | "
               f"${r['cost']:.4f} | {r['secs']:.0f}s | сбоев {r['fails']}")
         for stem, m in r["rows"]:
             print(f"  {stem}: {m['score']:5.1f} | recall {m['recall']:.2f} | "
@@ -233,7 +234,7 @@ async def main() -> None:
     print(table[1])
     for r in results:
         cells = " | ".join(f"{m['score']:.0f}" for _, m in r["rows"])
-        line = (f"| {r['slug']} | {cells} | {r['mean']:.1f} | "
+        line = (f"| {r['spec']} | {cells} | {r['mean']:.1f} | "
                 f"{r['cost']:.4f} | {r['secs']:.0f} | {r['fails']} |")
         table.append(line)
         print(line)
