@@ -133,13 +133,16 @@ wait-idle:
 	echo "таймаут 15 минут: обработка не завершилась — смотрите вывод ниже и решайте вручную"; \
 	docker compose exec -T postgres psql -U content_hub -d content_hub -c "$(BUSY_SQL)"; exit 1
 
-deploy:
+deploy: ## деплой: guard'ы -> pull -> dos2unix изменённого -> одна сборка -> подъём -> чистка
+	@if [ -n "$$(docker ps -q --filter name=reader-run)" ]; then echo "⛔ идёт facts-цикл (reader-run жив) — деплой запрещён"; exit 1; fi
+	@if [ -n "$$(git status --porcelain)" ]; then echo "⛔ на сервере локальные правки — сначала разобрать:"; git status --short; exit 1; fi
 	git pull --ff-only
-	git diff --name-only ORIG_HEAD HEAD | grep -E '\.(py|html|ya?ml)$$' | xargs -r dos2unix
-	@if df -m / | awk 'NR==2{exit ($$4 >= 3072)}'; then echo "⚠ свободно <3ГБ — превентивный prune"; docker builder prune -f; docker image prune -f; fi
-	@if [ -n "$$(docker ps -q --filter name=reader-run)" ]; then echo "⛔ идёт facts-цикл — деплой запрещён"; exit 1; fi
-	make down
-	make up
-	make wait-web
+	@git log -1 --oneline
+	git diff --name-only ORIG_HEAD HEAD 2>/dev/null | grep -E '\.(py|html|ya?ml)$$|^[Dd]ockerfile' | xargs -r dos2unix
+	@if df -m / | awk 'NR==2{exit ($$4 >= 3072)}'; then echo "⚠ свободно <3ГБ — image prune (builder-кэш НЕ трогаем)"; docker image prune -f; df -m / | awk 'NR==2{if ($$4 < 3072) print "⚠ всё ещё мало: journalctl vacuum / старые kept вручную; builder prune — только аварией"}'; fi
+	$(MAKE) down
+	$(MAKE) up
+	$(MAKE) wait-web
 	docker image prune -f
-	df -h / | tail -1
+	@df -h / | tail -1
+	@docker compose ps -a --format 'table {{.Name}}\t{{.Status}}' | head -15

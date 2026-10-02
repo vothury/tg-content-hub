@@ -1,8 +1,11 @@
 """Прямой клиент OpenRouter.
 
 - чат-комплишены с ретраем на транзитные ошибки;
-- токены из ответа (usage);
-- стоимость по ценам /models (кэш в памяти, цены за токен);
+- токены из ответа (usage), включая кешированные (prompt caching);
+- стоимость по ценам /models (кэш в памяти, цены за токен; кешированные токены
+  считаются по цене cache_read, если провайдер её публикует, иначе стоимость
+  оценивается по полным ценам — консервативно для бюджет-предохранителей);
+- session_id для sticky routing (аффинность провайдера ради prompt-кэша);
 - логирование вызовов в llm_calls выполняет вызывающий код.
 """
 from __future__ import annotations
@@ -36,13 +39,14 @@ class LLMResponse:
     cost_usd: float | None
     latency_ms: int
     finish_reason: str | None
+    cached_tokens: int = 0   # prompt caching: сколько входных токенов отдано из кэша
 
 
 class PriceBook:
-    """Кэш цен моделей из /models: цена за токен (вход, выход)."""
+    """Кэш цен моделей из /models: цена за токен (вход, выход, cache_read)."""
 
     def __init__(self) -> None:
-        self._prices: dict[str, tuple[float, float]] = {}
+        self._prices: dict[str, tuple[float, float, float | None]] = {}
         self._loaded = False
 
     async def load(self, client: httpx.AsyncClient) -> None:
@@ -58,18 +62,31 @@ class PriceBook:
                     completion_price = float(pricing.get("completion", 0))
                 except (TypeError, ValueError):
                     continue
-                self._prices[item.get("id", "")] = (prompt_price, completion_price)
+                cache_read: float | None = None
+                try:
+                    cache_read = (float(pricing["cache_read"])
+                                  if pricing.get("cache_read") else None)
+                except (TypeError, ValueError):
+                    cache_read = None
+                self._prices[item.get("id", "")] = (prompt_price, completion_price, cache_read)
             self._loaded = True
             log.info("прайс-кэш загружен: %d моделей", len(self._prices))
         except Exception as exc:  # noqa: BLE001 — цены некритичны
             log.warning("не удалось загрузить прайс-кэш: %s", exc)
 
-    def cost(self, model: str, input_tokens: int | None, output_tokens: int | None) -> float | None:
+    def cost(self, model: str, input_tokens: int | None, output_tokens: int | None,
+             cached_tokens: int = 0) -> float | None:
         prices = self._prices.get(model)
         if not prices or input_tokens is None or output_tokens is None:
             return None
-        prompt_price, completion_price = prices
-        return input_tokens * prompt_price + output_tokens * completion_price
+        prompt_price, completion_price, cache_read = prices
+        total = input_tokens * prompt_price + output_tokens * completion_price
+        if cached_tokens and cache_read is not None:
+            # провайдер публикует цену cache_read: кешированные токены считаем по ней,
+            # вычитая их долю из полной стоимости входа
+            total -= cached_tokens * prompt_price
+            total += cached_tokens * cache_read
+        return total
 
 
 _price_book = PriceBook()
@@ -82,6 +99,7 @@ async def chat_completion(
     temperature: float = 0.4,
     provider: dict | None = None,
     reasoning_max_tokens: int | None = None,
+    session_id: str | None = None,
 ) -> LLMResponse:
     """Вызов чат-комплишена с одной повторной попыткой. Бросает OpenRouterError."""
     payload = {
@@ -96,6 +114,9 @@ async def chat_completion(
     # Предпочтения провайдеров передаются как есть; пусто = авто-маршрутизация
     if provider:
         payload["provider"] = provider
+    # Sticky routing: держим запросы на одном провайдере, чтобы жил prompt-кэш
+    if session_id:
+        payload["session_id"] = session_id
     headers = {"Authorization": f"Bearer {settings.openrouter_api_key}"}
     started = time.monotonic()
     last_error: Exception | None = None
@@ -145,6 +166,7 @@ async def chat_completion(
     usage = data.get("usage") or {}
     input_tokens = usage.get("prompt_tokens")
     output_tokens = usage.get("completion_tokens")
+    cached_tokens = int((usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0) or 0)
     answer_model = data.get("model", model)
     return LLMResponse(
         content=content,
@@ -153,7 +175,8 @@ async def chat_completion(
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cost_usd=(0.0 if str(answer_model).endswith(":free")
-                  else _price_book.cost(answer_model, input_tokens, output_tokens)),
+                  else _price_book.cost(answer_model, input_tokens, output_tokens, cached_tokens)),
         latency_ms=latency_ms,
         finish_reason=finish_reason,
+        cached_tokens=cached_tokens,
     )
