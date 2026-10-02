@@ -390,7 +390,7 @@ class BacklogAuditResult:
         raise LLMParseError(f"нет строки «i cat» и нет JSON: {s[:200]!r}")
 
 
-_FACTS_R_RE = re.compile(r"(?m)^\s*R\s*:\s*([0-9,\s\-]+?)\s*$")
+_FACTS_R_RE = re.compile(r"(?m)^\s*R\s*:\s*([0-9,\s;\-]+?)\s*$")
 _FACTS_LINE_RE = re.compile(r"(?m)^\s*(\d+)\s*\|([^|\n]*)\|([^\n]*)$")
 
 
@@ -413,16 +413,18 @@ class BacklogFactsResult:
         rows: dict = {}
         for m in _FACTS_LINE_RE.finditer(s):
             i = int(m.group(1))
+            obj = m.group(2).strip()
             facts = [f.strip() for f in m.group(3).split(";") if f.strip()]
             if not facts:
                 continue
             if i in rows:
+                base = rows[i]
                 for f in facts:
-                    if f not in rows[i]["facts"] and len(rows[i]["facts"]) < 6:
-                        rows[i]["facts"].append(f)
+                    tagged = f if (not obj or obj == base["obj"]) else f"{obj}: {f}"
+                    if tagged not in base["facts"] and len(base["facts"]) < 8:
+                        base["facts"].append(tagged)
             else:
-                rows[i] = {"i": i, "rel": True,
-                           "obj": m.group(2).strip(), "facts": facts[:6]}
+                rows[i] = {"i": i, "rel": True, "obj": obj, "facts": facts[:8]}
         if rm or rows:
             missing = expected - set(rows)
             if missing:
