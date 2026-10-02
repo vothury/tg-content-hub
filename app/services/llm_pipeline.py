@@ -938,7 +938,8 @@ async def _call_with_fallback(messages, model, max_tokens, temperature, schema,
         resp, result, call_status, error_text = await _call_and_parse(
             messages, m, max_tokens, temperature=temperature, schema=schema,
             provider=spec if spec is not None else providers,
-            reasoning_max_tokens=reasoning_max_tokens)
+            reasoning_max_tokens=reasoning_max_tokens,
+            reasoning_effort=reasoning_effort)
         if resp is not None and resp.cost_usd:
             await guards.add_llm_cost(resp.cost_usd)
         if call_status is not LLMCallStatus.OK:

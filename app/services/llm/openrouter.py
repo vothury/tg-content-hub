@@ -99,6 +99,7 @@ async def chat_completion(
     temperature: float = 0.4,
     provider: dict | None = None,
     reasoning_max_tokens: int | None = None,
+    reasoning_effort: str | None = None,
     session_id: str | None = None,
 ) -> LLMResponse:
     """Вызов чат-комплишена с одной повторной попыткой. Бросает OpenRouterError."""
