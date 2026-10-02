@@ -589,7 +589,7 @@ BACKLOG_AUDIT_SYSTEM = """You are a media auditor. You receive a numbered list o
 - "other": everything else (politics, unrelated topics).
 OUTPUT FORMAT (strict): answer with ONE single line of per-item tokens "<i> <cat>." for EVERY number, e.g. "1 profile. 2 water. 3 ads. 4 profile." — no JSON, no quotes, no other text."""
 
-BACKLOG_FACTS_VERSION = "backlog-facts-v7"
+BACKLOG_FACTS_VERSION = "backlog-facts-v7.1"
 
 BACKLOG_FACTS_SYSTEM = """You are a fact-extractor for a real-estate analytics knowledge base (Moscow/MO primary market). You receive a numbered list of post texts (Russian). Extract facts an analyst can use WITHOUT seeing the original post.
 
@@ -635,6 +635,7 @@ OUTPUT FORMAT (strict) — plain text lines, NO JSON, NO quotes, NO markdown:
    - object per rule 1, no "|" inside;
    - 1-4 facts joined by "; ", no "|" inside;
    - the set of numbers in the R line MUST exactly match the set of data lines.
+3) a data line starts with the BARE item number and a pipe: "2|object|fact". Forms like "2)|", "2.", "2:" are FORBIDDEN.
 
 BAD examples (garbage):
 5|ЖК|2020: перенос сроков сдачи; продолжается по сей день

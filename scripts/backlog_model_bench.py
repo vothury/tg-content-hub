@@ -89,7 +89,7 @@ def _tok_hit(tok: str, hay: str) -> bool:
     return False
 
 
-_FACTS_LINE_RE = re.compile(r"(?m)^\s*(\d+)\s*\|([^|\n]*)\|([^\n]*)$")
+_FACTS_LINE_RE = re.compile(r"(?m)^\s*(\d+)\s*[).:]?\s*\|([^|\n]*)\|([^\n]*)$")
 
 
 def _parse_lenient(content: str) -> list:

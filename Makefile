@@ -1,4 +1,4 @@
-.PHONY: up down restart logs ps migrate revision psql health test login source-add source-list source-disable rm_post_true rm_post_false rm_post_status verify verify-full verify-json is_post_processing wait-idl
+.PHONY: up down restart logs ps migrate revision psql health test login source-add source-list source-disable rm_post_true rm_post_false rm_post_status verify verify-full verify-json is_post_processing wait-idl deploy
 
 up:            ## собрать и запустить всё
 	docker compose up -d --build
@@ -132,3 +132,14 @@ wait-idle:
 	done; \
 	echo "таймаут 15 минут: обработка не завершилась — смотрите вывод ниже и решайте вручную"; \
 	docker compose exec -T postgres psql -U content_hub -d content_hub -c "$(BUSY_SQL)"; exit 1
+
+deploy:
+	git pull --ff-only
+	git diff --name-only ORIG_HEAD HEAD | grep -E '\.(py|html|ya?ml)$$' | xargs -r dos2unix
+	@if df -m / | awk 'NR==2{exit ($$4 >= 3072)}'; then echo "⚠ свободно <3ГБ — превентивный prune"; docker builder prune -f; docker image prune -f; fi
+	@if [ -n "$$(docker ps -q --filter name=reader-run)" ]; then echo "⛔ идёт facts-цикл — деплой запрещён"; exit 1; fi
+	make down
+	make up
+	make wait-web
+	docker image prune -f
+	df -h / | tail -1

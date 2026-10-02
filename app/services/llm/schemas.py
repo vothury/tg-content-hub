@@ -390,8 +390,8 @@ class BacklogAuditResult:
         raise LLMParseError(f"нет строки «i cat» и нет JSON: {s[:200]!r}")
 
 
-_FACTS_R_RE = re.compile(r"(?m)^\s*R\s*:\s*([0-9,\s;\-]+?)\s*$")
-_FACTS_LINE_RE = re.compile(r"(?m)^\s*(\d+)\s*\|([^|\n]*)\|([^\n]*)$")
+_FACTS_LINE_RE = re.compile(r"(?m)^\s*(\d+)\s*[).:]?\s*\|([^|\n]*)\|([^\n]*)$")
+_FACTS_R_RE = re.compile(r"(?m)^\s*R\s*:\s*([0-9,\s;\-)]+?)\s*$")
 
 
 @dataclass
