@@ -233,7 +233,8 @@ async def settings_page(request: Request, msg: str = ""):
             editable.append({
                 "key": e["key"], "label": e["label"], "type": e["type"],
                 "attr": e["attr"], "hint": e.get("hint", ""),
-                "current": current, "default": default,
+                "current": "" if current is None else current,
+                "default": default,
             })
         sources = (await session.execute(select(Source).order_by(Source.id))).scalars().all()
         channels = (await session.execute(select(TargetChannel).order_by(TargetChannel.id))).scalars().all()
@@ -307,7 +308,7 @@ async def settings_page(request: Request, msg: str = ""):
         "editable": editable,
         "groups": groups,
         "summary": summary,
-    })
+    }, headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
 
 
 
