@@ -61,11 +61,13 @@ async def run_cycle() -> bool:
     from app.services.editorial_journalist import run_journalist_phase
 
     log.info("редакция: цикл начат")
+    from app.services.editorial_writer import run_writer_phase
     web_n, tg_n = await run_journalist_phase()
     topics_n = await run_chief_phase()
+    articles_n = await run_writer_phase()
     pruned = await prune_headlines(HEADLINE_RETENTION_DAYS)
-    log.info("редакция: цикл завершён (заголовков web=%d tg=%d, тем=%d, prune=%d)",
-             web_n, tg_n, topics_n, pruned)
+    log.info("редакция: цикл завершён (заголовков web=%d tg=%d, тем=%d, статей=%d, prune=%d)",
+             web_n, tg_n, topics_n, articles_n, pruned)
     return web_n == 0 and tg_n == 0
 
 

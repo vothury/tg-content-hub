@@ -486,3 +486,26 @@ class ChiefTopicsResult:
                            "hypothesis": str(x.get("hypothesis") or "").strip(),
                            "headlines": nums})
         return cls(topics=topics)
+
+
+@dataclass
+class EditorialArticleResult:
+    """Фаза 3: вердикт писателя + черновик статьи (пустой текст при write = брак)."""
+    verdict: str = "drop"
+    drop_reason: str = ""
+    title: str = ""
+    text: str = ""
+
+    @classmethod
+    def from_response(cls, content: str) -> "EditorialArticleResult":
+        data = extract_json(content)
+        verdict = str(data.get("verdict") or "").strip().lower()
+        if verdict not in ("write", "drop"):
+            raise LLMParseError("verdict должен быть write|drop")
+        text = str(data.get("text") or "").strip()
+        if verdict == "write" and not text:
+            raise LLMParseError("verdict=write без текста статьи")
+        return cls(verdict=verdict,
+                   drop_reason=str(data.get("drop_reason") or "").strip(),
+                   title=str(data.get("title") or "").strip(),
+                   text=text)

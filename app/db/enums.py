@@ -54,6 +54,7 @@ class DraftOrigin(str, enum.Enum):
     LLM_REWRITE = "llm_rewrite"
     LLM_REVISION = "llm_revision"
     MANUAL = "manual"
+    EDITORIAL = "editorial"        # черновик виртуальной редакции (фаза 3)
 
 
 class MediaType(str, enum.Enum):
