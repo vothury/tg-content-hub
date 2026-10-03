@@ -20,6 +20,7 @@ from app.db.session import session_scope
 from app.redis_client import get_redis
 from app.services import guards
 from app.services.llm.openrouter import chat_completion
+from app.services.llm_pipeline import _parse_model_spec, _split_model_list
 from app.services.llm.prompts import (
     JOURNALIST_TG_SYSTEM, JOURNALIST_TG_USER,
     JOURNALIST_WEB_SYSTEM, JOURNALIST_WEB_USER,
@@ -95,25 +96,36 @@ async def _fallback_models() -> list:
 
 async def _call_json(messages, model, providers, max_tokens, schema,
                      stage=LLMStage.EDITORIAL_JOURNALIST, reasoning: int = 0):
-    """Вызов с ротацией моделей: ответ модерации и битый JSON -> следующая модель."""
-    chain = [model] + [m for m in await _fallback_models() if m != model]
+    """Вызов с ротацией моделей: ответ модерации и битый JSON -> следующая модель.
+
+    Строка model принимает синтаксис скана: цепочка через запятую,
+    провайдеры/квантизации каждой модели в скобках рядом с ней;
+    скобки модели бьют глобальные providers стадии.
+    """
+    specs = [_parse_model_spec(s) for s in _split_model_list(model)]
+    seen = {slug for slug, _ in specs}
+    for fb in await _fallback_models():
+        slug, prov = _parse_model_spec(fb)
+        if slug not in seen:
+            specs.append((slug, prov))
+            seen.add(slug)
     last_error = None
-    for m in chain:
-        resp = await chat_completion(messages, m, max_tokens, temperature=0.0,
-                                     provider=providers,
+    for slug, prov in specs:
+        resp = await chat_completion(messages, slug, max_tokens, temperature=0.0,
+                                     provider=prov if prov is not None else providers,
                                      reasoning_max_tokens=reasoning)
         await _account(resp)
         if is_provider_safety_reply(resp.content):
-            last_error = LLMParseError(f"{m}: ответ модели модерации вместо JSON")
-            log.warning("journalist: %s вернула ответ модерации — пробуем следующую модель", m)
+            last_error = LLMParseError(f"{slug}: ответ модели модерации вместо JSON")
+            log.warning("journalist: %s вернула ответ модерации — пробуем следующую модель", slug)
             continue
         try:
             result = schema.from_response(resp.content)
         except Exception as exc:  # noqa: BLE001
             last_error = exc
-            await _log_call(stage, m, messages, resp, LLMCallStatus.PARSE_ERROR, str(exc))
+            await _log_call(stage, slug, messages, resp, LLMCallStatus.PARSE_ERROR, str(exc))
             continue
-        await _log_call(stage, m, messages, resp, LLMCallStatus.OK, None)
+        await _log_call(stage, slug, messages, resp, LLMCallStatus.OK, None)
         return result
     raise last_error or LLMParseError("нет ответа ни от одной модели цепочки")
 
