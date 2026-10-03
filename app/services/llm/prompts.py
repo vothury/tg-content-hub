@@ -589,7 +589,7 @@ BACKLOG_AUDIT_SYSTEM = """You are a media auditor. You receive a numbered list o
 - "other": everything else (politics, unrelated topics).
 OUTPUT FORMAT (strict): answer with ONE single line of per-item tokens "<i> <cat>." for EVERY number, e.g. "1 profile. 2 water. 3 ads. 4 profile." — no JSON, no quotes, no other text."""
 
-BACKLOG_FACTS_VERSION = "backlog-facts-v7.1"
+BACKLOG_FACTS_VERSION = "backlog-facts-v7.2"
 
 BACKLOG_FACTS_SYSTEM = """You are a fact-extractor for a real-estate analytics knowledge base (Moscow/MO primary market). You receive a numbered list of post texts (Russian). Extract facts an analyst can use WITHOUT seeing the original post.
 
@@ -617,7 +617,17 @@ HARD QUALITY RULES:
 3. Every period MUST include the YEAR when it is stated in the text or unambiguously derivable from it; if the year is absent and not derivable — keep the period as written ("9 месяцев"), NEVER invent a year.
 4. Numbers exactly as in the text, with units; never round, convert or invent.
 5. When in doubt between a weak fact and no fact — choose NO fact. Precision matters more than recall.
-6. Each input item begins with the post date in square brackets [DD.MM.YYYY]. Use it to anchor every period: "за 9 месяцев" + [03.10.2023] -> "01-09.2023"; "на 1 октября" + [02.10.2023] -> "01.10.2023"; "второй квартал" + [15.07.2024] -> "04-06.2024". A year that contradicts the post date is a gross error.
+6. Each input item begins with the post date in square brackets [DD.MM.YYYY]. Use it to anchor EVERY period via this conversion table:
+   - "за N месяцев" / "N месяцев" (reporting results) -> the N calendar months ending at the month BEFORE the post month: "за 9 месяцев" + [03.10.2023] -> "01-09.2023";
+   - "квартал" / "I-IV квартал" / "Q1-Q4" -> the 3 calendar months of that quarter of the post year (Q1=01-03, Q2=04-06, Q3=07-09, Q4=10-12): "третий квартал" + [11.11.2024] -> "07-09.2024";
+   - "полугодие" / "первое полугодие" / "1П" -> 01-06 of the post year; "второе полугодие" -> 07-12: "первое полугодие" + [28.08.2026] -> "01-06.2026";
+   - "за год" / "по итогам года" -> the calendar post year; for rolling metrics ("за последние 12 месяцев") -> the 12 months ending at the post month;
+   - "неделя" / "за неделю" / "за 7 дней" -> the 7 days ending at the post date: "за 7 дней" + [14.03.2025] -> "07-14.03.2025";
+   - "с начала года" / "с 01.01" -> from 01.01 of the post year to the post month: "с начала года" + [23.07.2025] -> "01.01-07.2025";
+   - "на 1 октября" / "по состоянию на 01.10" -> the exact date 01.10 of the post year: "на 1 октября" + [02.10.2023] -> "01.10.2023";
+   - a named month ("в мае", "июнь") -> that month of the post year, unless the text explicitly implies another year;
+   - if the year is absent and not derivable from the post date — keep the period as written ("9 месяцев"), NEVER invent a year;
+   A year or month range that contradicts the post date is a gross error.
 7. If a post reports metrics for SEVERAL companies/objects, output ONE line for that item with per-company facts prefixed by names ("LSR: -75.5%, 1.5 bln RUR; PIK: +15.7%, 4.1 bln RUR"); never drop companies and never emit extra lines for the same item number.
 8. NEVER emit two lines with the same item number: one item = exactly ONE line; several companies/objects of one post go into that single line with names prefixed ("ЛСР: -75.5%, 1.5 bln RUR; Brusnika: -29.2%, 560 mln RUR").
 9. The IGNORE list is STRICT and overrides any numbers present: corruption/criminal cases, capital repair, secondary-market stats, foreclosure/enforcement, forecasts and projections ("may drop by 10-15%"), offices/malls/hotels and other non-residential objects are NOT facts.
