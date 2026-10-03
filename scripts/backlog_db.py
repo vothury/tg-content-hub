@@ -9,10 +9,24 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sqlite3
 from pathlib import Path
 
 DB = Path("backlog/facts.db")
+
+
+def _norm(s: str) -> str:
+    """Нормализация для сравнения: lower, убрать лишние пробелы, унифицировать разделители."""
+    s = (s or "").lower().strip()
+    s = re.sub(r"\s+", " ", s)
+    s = s.replace(",", ".").replace(" ", "")
+    return s
+
+
+def _fact_key(obj: str, fact: str) -> tuple:
+    """Ключ схлопывания: (нормализованный объект, нормализованный факт)."""
+    return (_norm(obj), _norm(fact))
 
 
 def _conn() -> sqlite3.Connection:
@@ -27,22 +41,58 @@ def _conn() -> sqlite3.Connection:
 
 
 def cmd_build(paths: list) -> None:
-    con = _conn()
-    n = 0
+    # Читаем все kept-файлы, группируем по (obj, fact)
+    groups: dict[tuple, dict] = {}
+    total_rows = 0
     for p in paths:
         for ln in Path(p).read_text(encoding="utf-8").splitlines():
             if not ln.strip():
                 continue
             r = json.loads(ln)
+            total_rows += 1
             for f in r.get("facts") or []:
-                cur = con.execute(
-                    "INSERT INTO facts(source, msg_id, date, views, obj, fact, snip) "
-                    "VALUES (?,?,?,?,?,?,?)",
-                    (r.get("source"), r.get("msg_id"), r.get("date"),
-                     r.get("views"), r.get("obj"), f, r.get("text", "")[:200]))
-                con.execute("INSERT INTO facts_fts(rowid, obj, fact, snip) VALUES (?,?,?,?)",
-                            (cur.lastrowid, r.get("obj") or "", f, r.get("text", "")[:200]))
-                n += 1
+                key = _fact_key(r.get("obj") or "", f)
+                if key not in groups:
+                    groups[key] = {
+                        "obj": r.get("obj") or "",
+                        "fact": f,
+                        "snip": (r.get("text") or "")[:200],
+                        "date": r.get("date") or "",
+                        "views": int(r.get("views") or 0),
+                        "sources": [],
+                        "msg_ids": [],
+                    }
+                g = groups[key]
+                src = r.get("source") or ""
+                mid = r.get("msg_id")
+                tag = f"{src}#{mid}" if src and mid else (src or str(mid or ""))
+                if tag not in g["sources"]:
+                    g["sources"].append(tag)
+                if mid and mid not in g["msg_ids"]:
+                    g["msg_ids"].append(mid)
+                v = int(r.get("views") or 0)
+                if v > g["views"]:
+                    g["views"] = v
+                if r.get("date") and (not g["date"] or r["date"] < g["date"]):
+                    g["date"] = r["date"]
+    print(f"строк до схлопывания: {total_rows} | уникальных фактов: {len(groups)}")
+
+    # Пересоздаём БД
+    if DB.exists():
+        DB.unlink()
+    con = _conn()
+    n = 0
+    for key, g in groups.items():
+        sources_str = ", ".join(g["sources"])
+        msg_ids_str = ",".join(str(x) for x in g["msg_ids"])
+        cur = con.execute(
+            "INSERT INTO facts(source, msg_id, date, views, obj, fact, snip) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (sources_str, msg_ids_str, g["date"], g["views"],
+             g["obj"], g["fact"], g["snip"]))
+        con.execute("INSERT INTO facts_fts(rowid, obj, fact, snip) VALUES (?,?,?,?)",
+                    (cur.lastrowid, g["obj"], g["fact"], g["snip"]))
+        n += 1
     con.commit()
     print(f"фактов в базе: {n}")
 
@@ -67,7 +117,7 @@ def cmd_q(text: str, since: str, limit: int) -> None:
             "WHERE obj LIKE ? OR fact LIKE ? OR snip LIKE ? ORDER BY date DESC LIMIT ?",
             (like, like, like, limit)).fetchall()
     for d, src, obj, fact, mid, views in rows:
-        print(f"{d[:10]} | {src} | {obj or '—'} | {fact} | msg {mid} | views {views}")
+        print(f"{d[:10]} | {obj or '—'} | {fact} | sources: {src} | msg {mid} | views {views}")
     if not rows:
         print("ничего не найдено")
 
