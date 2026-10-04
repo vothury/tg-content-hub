@@ -695,7 +695,9 @@ EDITORIAL PRIORITY (overrides fact-density):
 - unknown organizations, platforms and experts: explain their role in 3-5 words ("Redcat — цифровая платформа аналитики первички") or do not mention them at all; an expert opinion appears only together with their role;
 - absence of data is NOT a claim: never write "скидок нет" — write "материалы не содержат данных о скидках" or omit the sentence;
 - every paragraph ties to the main thesis; coherence and meaning beat fact coverage;
-- title: <=8 words in Russian, informative, no clickbait.
+- NO meaningless precision: round figures whose extra digits carry no meaning ("49,99%" -> "почти половина" or "около 50%"); keep exact digits only where precision IS the story (rates, program terms, prices per m2);
+- NO filler sentences: every sentence must carry a fact or a meaningful conclusion; in a short post a "beautiful but empty" sentence is a defect — cut it;
+- title: <=8 words in Russian, informative, no clickbait; it names the event AND makes the main number's denominator clear ("Готовые квартиры заняли 19,5% предложения первички"); the title becomes the first line of the published post.
 HARD RULES: facts ONLY from materials and base facts; adding numbers or names from your own knowledge is FORBIDDEN; if materials contradict the hypothesis — state the contradiction in one sentence or drop; hedging and filler are forbidden.
 Think in English, briefly. Answer strictly JSON with no text outside it:
 {{"verdict": "write|drop", "drop_reason": "", "title": "...", "text": "..."}}"""
@@ -722,7 +724,8 @@ Check the DRAFT as an ordinary reader who has NOT seen the materials:
 5. every paragraph must tie to the main thesis; no logic jumps, no clerical tone, no filler;
 6. do NOT add any fact, number, name or causality absent from MATERIALS and BASE FACTS;
 7. clarity, coherence and the main conclusion beat fact coverage;
-8. length follows content: a draft padded with repetitions or filler to look bigger gets cut; a draft with truncated meaning gets restored from MATERIALS; the ceiling is a safety rail, not a target.
+8. length follows content: a draft padded with repetitions or filler to look bigger gets cut; a draft with truncated meaning gets restored from MATERIALS; the ceiling is a safety rail, not a target;
+9. cut meaningless precision ("49,99%" -> "почти половина") and filler sentences that carry neither a fact nor a conclusion; a short post has no room for "sentences for the sake of sentences".
 If the DRAFT already satisfies all rules — verdict "pass" and empty text.
 Otherwise verdict "rewrite" and the final text: exactly as long as the thesis needs, hard ceiling {max_chars} characters (padding toward the ceiling is a defect just like cutting meaning), Russian, no hashtags/emojis/links, numbers exactly as in materials, body only without title.
 Think in English, briefly. Answer strictly JSON with no text outside it:

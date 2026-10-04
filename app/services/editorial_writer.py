@@ -152,7 +152,9 @@ async def run_writer_phase() -> int:
             except Exception as exc:  # noqa: BLE001
                 log.warning("writer: редактор не смог проверить тему #%s — черновик как есть: %s",
                             t.id, exc)
-            art = Article(topic_id=t.id, draft_text=res.text,
+            final_text = (f"{res.title.strip()}\n\n{res.text.strip()}"
+                          if res.title.strip() else res.text.strip())
+            art = Article(topic_id=t.id, draft_text=final_text,
                           status=ArticleStatus.REVIEW)
             session.add(art)
             await session.flush()
@@ -160,13 +162,13 @@ async def run_writer_phase() -> int:
             tgt_id = await _editorial_target(session)
             post = Post(source_id=src_id,
                         source_message_id=_SYNTH_MSG_BASE + art.id,
-                        original_text=res.text, draft_text=res.text,
+                        original_text=final_text, draft_text=final_text,
                         status=PostStatus.AWAITING_REVIEW,
                         target_channel_id=tgt_id, autopilot=False)
             session.add(post)
             await session.flush()
             session.add(PostDraftVersion(post_id=post.id, version=1,
-                                         text=res.text, origin=DraftOrigin.EDITORIAL))
+                                         text=final_text, origin=DraftOrigin.EDITORIAL))
             for h in heads:
                 hh = await session.get(Headline, h.id)
                 if hh is not None:
