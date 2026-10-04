@@ -509,3 +509,21 @@ class EditorialArticleResult:
                    drop_reason=str(data.get("drop_reason") or "").strip(),
                    title=str(data.get("title") or "").strip(),
                    text=text)
+
+
+@dataclass
+class EditorResult:
+    """Второй проход: вердикт строгого редактора по черновику (pass | rewrite + текст)."""
+    verdict: str = "pass"
+    problems: list | None = None
+    text: str = ""
+
+    @classmethod
+    def from_response(cls, content: str) -> "EditorResult":
+        data = extract_json(content)
+        verdict = str(data.get("verdict") or "").strip().lower()
+        if verdict not in ("pass", "rewrite"):
+            raise LLMParseError("editor verdict должен быть pass|rewrite")
+        return cls(verdict=verdict,
+                   problems=[str(x) for x in (data.get("problems") or [])][:5],
+                   text=str(data.get("text") or "").strip())

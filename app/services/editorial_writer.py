@@ -21,8 +21,8 @@ from app.db.models import (Article, Headline, Material, Post, PostDraftVersion,
 from app.db.session import session_scope
 from app.services import facts_kb
 from app.services.editorial_journalist import _call_json
-from app.services.llm.prompts import WRITER_SYSTEM, WRITER_USER
-from app.services.llm.schemas import EditorialArticleResult
+from app.services.llm.prompts import EDITOR_SYSTEM, EDITOR_USER, WRITER_SYSTEM, WRITER_USER
+from app.services.llm.schemas import EditorialArticleResult, EditorResult
 from app.services.settings import Keys, get_providers, get_setting
 from app.services.times import owner_now
 from app.redis_client import get_redis
@@ -136,6 +136,22 @@ async def run_writer_phase() -> int:
                 await session.commit()
                 log.info("writer: тема #%s отклонена: %s", t.id, t.verdict_note)
                 continue
+            try:
+                ed = await _call_json(
+                    [{"role": "system",
+                      "content": EDITOR_SYSTEM.format(max_chars=max_chars)},
+                     {"role": "user",
+                      "content": EDITOR_USER.format(materials=listing, kb=kb,
+                                                    draft=res.text)}],
+                    model, providers, 1200, EditorResult,
+                    stage=LLMStage.EDITORIAL_WRITE)
+                if ed.verdict == "rewrite" and ed.text:
+                    log.info("writer: редактор переписал статью темы #%s: %s",
+                             t.id, "; ".join(ed.problems or [])[:160])
+                    res.text = ed.text
+            except Exception as exc:  # noqa: BLE001
+                log.warning("writer: редактор не смог проверить тему #%s — черновик как есть: %s",
+                            t.id, exc)
             art = Article(topic_id=t.id, draft_text=res.text,
                           status=ArticleStatus.REVIEW)
             session.add(art)
