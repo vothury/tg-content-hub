@@ -20,14 +20,14 @@ def search(theme: str, limit: int = 6) -> list:
         return []
     words = [w for w in re.split(r"[^0-9A-Za-zА-Яа-яЁё-]+", theme or "")
              if len(w) >= 6 and w.lower() not in _STOP]
-    words = sorted(set(words), key=len, reverse=True)[:3]
+    words = sorted(set(words), key=len, reverse=True)[:4]
     if not words:
         return []
     out, seen = [], set()
     con = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
     try:
         for w in words:
-            like = f"%{w}%"
+            like = f"%{w[:6]}%"   # префикс-стемм: ловит словоформы ("рекордными" -> "рекорд")
             rows = con.execute(
                 "SELECT date, obj, fact, sources FROM facts "
                 "WHERE obj LIKE ? OR fact LIKE ? ORDER BY date DESC LIMIT ?",

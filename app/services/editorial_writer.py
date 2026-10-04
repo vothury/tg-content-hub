@@ -87,7 +87,7 @@ async def _gather(session, topic):
         session.add(Material(topic_id=topic.id, url=h.url, post_id=h.post_id,
                              title=h.title, full_text=body or None))
     listing = "\n\n".join(blocks) or "—"
-    kb = facts_kb.format_context(facts_kb.search(topic.theme))
+    kb = facts_kb.format_context(facts_kb.search(f"{topic.theme} {topic.hypothesis or ''}"))
     return heads, listing, kb
 
 
