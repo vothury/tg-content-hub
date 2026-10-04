@@ -95,7 +95,7 @@ async def _fallback_models() -> list:
 
 
 async def _call_json(messages, model, providers, max_tokens, schema,
-                     stage=LLMStage.EDITORIAL_JOURNALIST, reasoning: int = 0):
+                     stage=LLMStage.EDITORIAL_JOURNALIST, reasoning: int | None = None):
     """Вызов с ротацией моделей: ответ модерации и битый JSON -> следующая модель.
 
     Строка model принимает синтаксис скана: цепочка через запятую,
@@ -109,11 +109,12 @@ async def _call_json(messages, model, providers, max_tokens, schema,
         if slug not in seen:
             specs.append((slug, prov))
             seen.add(slug)
+    reason = reasoning if reasoning else settings.llm_reasoning_small
     last_error = None
     for slug, prov in specs:
-        resp = await chat_completion(messages, slug, max_tokens, temperature=0.0,
+        resp = await chat_completion(messages, slug, max_tokens + reason, temperature=0.0,
                                      provider=prov if prov is not None else providers,
-                                     reasoning_max_tokens=reasoning)
+                                     reasoning_max_tokens=reason)
         await _account(resp)
         if is_provider_safety_reply(resp.content):
             last_error = LLMParseError(f"{slug}: ответ модели модерации вместо JSON")
