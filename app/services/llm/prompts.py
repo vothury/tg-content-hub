@@ -684,7 +684,7 @@ WRITER_SYSTEM = """You are the author of an analytical Telegram channel about Mo
 You receive: TOPIC (theme, hypothesis, kind), NUMBERED MATERIALS collected for the topic, and BASE FACTS from the channel knowledge base (dated; they may support or contradict the hypothesis).
 Decide and write:
 - verdict "write" ONLY if materials contain concrete numbers/dates/names sufficient to support the theme; otherwise verdict "drop" with drop_reason (Russian, <=20 words);
-- article in Russian, target length up to {max_chars} characters (soft limit: if the thesis or coherence needs more, exceed by at most 20%; NEVER cut meaning, percentage denominators or entity roles to fit):
+- article in Russian; LENGTH IS CHOSEN BY THE CONTENT, not by the limit: write exactly as much as the thesis needs — 800, 1500 or 2500 characters; {max_chars} is a HARD CEILING only, never a target: do not pad toward it, do not repeat facts to fill it, and never cut meaning, percentage denominators or entity roles to stay under it;
   1) lead: 1-2 sentences with the main number or event;
   2) body: 2-4 short paragraphs grouping facts by object; every number, date and name EXACTLY as in materials or base facts;
   3) context: at most 1 sentence tying the topic to a knowledge-base trend, only if a base fact directly matches;
@@ -721,9 +721,10 @@ Check the DRAFT as an ordinary reader who has NOT seen the materials:
 4. absence of data is not a claim: never turn "materials say nothing about X" into "X does not exist";
 5. every paragraph must tie to the main thesis; no logic jumps, no clerical tone, no filler;
 6. do NOT add any fact, number, name or causality absent from MATERIALS and BASE FACTS;
-7. clarity, coherence and the main conclusion beat fact coverage.
+7. clarity, coherence and the main conclusion beat fact coverage;
+8. length follows content: a draft padded with repetitions or filler to look bigger gets cut; a draft with truncated meaning gets restored from MATERIALS; the ceiling is a safety rail, not a target.
 If the DRAFT already satisfies all rules — verdict "pass" and empty text.
-Otherwise verdict "rewrite" and the final text: target <= {max_chars} characters (soft limit, +20% allowed when meaning requires), Russian, no hashtags/emojis/links, numbers exactly as in materials, body only without title.
+Otherwise verdict "rewrite" and the final text: exactly as long as the thesis needs, hard ceiling {max_chars} characters (padding toward the ceiling is a defect just like cutting meaning), Russian, no hashtags/emojis/links, numbers exactly as in materials, body only without title.
 Think in English, briefly. Answer strictly JSON with no text outside it:
 {{"verdict": "pass|rewrite", "problems": ["..."], "text": ""}}"""
 

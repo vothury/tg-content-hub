@@ -150,7 +150,7 @@ EDITABLE = [
     {"key": _k("EDITORIAL_AUTO_PUBLISH", "editorial.auto_publish"), "label": "Редакция: автопубликация", "attr": "editorial_auto_publish", "type": "number",
      "hint": "0 = статья ждёт одобрения владельца; 1 = публикация по окнам без ревью."},
     {"key": _k("EDITORIAL_POST_MAX_CHARS", "editorial.post_max_chars"), "label": "Редакция: макс. знаков поста", "attr": "editorial_post_max_chars", "type": "number",
-     "hint": "Целевой предел знаков поста (2000-2500); мягкий: при необходимости +20%, качество важнее краткости."},
+     "hint": "Жёсткий потолок знаков поста; длину выбирает содержание: хватает 1000 — будет 1000, нужно 2500 — будет 2500."},
     {"key": _k("EDITORIAL_REWRITE_MAX_PER_DAY", "editorial.rewrite_max_per_day"), "label": "Редакция: рерайтов в день", "attr": "editorial_rewrite_max_per_day", "type": "number",
      "hint": "Ограничение доли рерайтов, чтобы канал оставался аналитикой, а не лентой."},
     {"key": _k("EDITORIAL_BUDGET_USD_PER_DAY", "editorial.budget_usd_per_day"), "label": "Редакция: бюджет $/день", "attr": "editorial_budget_usd_per_day", "type": "number",
