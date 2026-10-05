@@ -120,7 +120,10 @@ async def run_topic(spec: str, topic: dict, out_dir: Path):
                 return "skip", "", []
             await asyncio.sleep(2)
     if res.verdict == "drop":
-        return "drop", res.drop_reason, []
+        exp = topic.get("expect", "write")
+        if exp == "drop":
+            return "drop", res.drop_reason, []
+        return "drop", res.drop_reason, [f"lost_story: expect {exp}, got drop"]
     body = res.text
     for attempt in (1, 2):
         try:
