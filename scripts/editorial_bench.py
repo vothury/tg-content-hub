@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import difflib
 import glob
 import json
 import re
@@ -41,7 +42,10 @@ def _checks(topic: dict, title: str, body: str) -> list:
     bad = []
     paras = [p for p in body.split("\n\n") if p.strip()]
     first = paras[0] if paras else ""
-    if "%" in body and not any(w in first for w in DENOM):
+    share = re.search(r"(доля|занимают|занимает|приходится|"
+                      r"кажд\w+ (пятая|вторая|третья|четвертая|пятый|второй|третий|четвертый))",
+                      first)
+    if share and not any(w in first for w in DENOM):
         bad.append("denominator")
     if re.search(r"\d+,\d{2,}\s*%", body):
         bad.append("precision")
@@ -51,14 +55,19 @@ def _checks(topic: dict, title: str, body: str) -> list:
     for c in CANC:
         if c in body:
             bad.append(f"canc:{c}")
-    nums = re.findall(r"\d+[.,]?\d*", body)
-    if len(nums) > 7:
+    nums = re.findall(r"\d+[.,]?\d*\s*(?:%|₽|руб|млн|млрд|тыс|м²|кв)", body)
+    if len(nums) > 10:
         bad.append(f"numbers:{len(nums)}")
-    if len(body) > 700 and (len(paras) < 2 or max(len(re.findall(r"[.!?", p) for p in paras)) > 5):
+    if len(body) > 700 and (len(paras) < 2 or
+                            max((len(re.findall(r"[.!?]", p)) for p in paras),
+                                default=0) > 5):
         bad.append("wall")
     lead = first[:60]
     if lead and sum(1 for p in paras[1:] if lead[:40] in p):
         bad.append("repeat")
+    if (title and first and difflib.SequenceMatcher(
+            None, title.lower(), first[:len(title)].lower()).ratio() > 0.8):
+        bad.append("title_lead_dup")
     return bad
 
 
