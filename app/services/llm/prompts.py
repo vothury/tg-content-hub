@@ -722,7 +722,7 @@ Check the DRAFT as an ordinary reader who has NOT seen the materials:
 3. remove numbers that do not support the main thesis (keep at most 3-4 numbers in the whole post);
 4. absence of data is not a claim: never turn "materials say nothing about X" into "X does not exist";
 5. every paragraph must tie to the main thesis; no logic jumps, no clerical tone, no filler;
-6. do NOT add any fact, number, name or causality absent from MATERIALS and BASE FACTS;
+6. do NOT add any fact, number, name, comparison or causality absent from MATERIALS and BASE FACTS (e.g. "долг превышает половину годового бюджета Москвы" is a defect even when it sounds persuasive);
 7. clarity, coherence and the main conclusion beat fact coverage;
 8. length follows content: a draft padded with repetitions or filler to look bigger gets cut; a draft with truncated meaning gets restored from MATERIALS; the ceiling is a safety rail, not a target;
 9. cut meaningless precision ("49,99%" -> "почти половина") and filler sentences that carry neither a fact nor a conclusion; a short post has no room for "sentences for the sake of sentences".
