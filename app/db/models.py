@@ -53,6 +53,8 @@ class Source(Base):
     username: Mapped[str | None] = mapped_column(String(64), index=True)
     telegram_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     enabled: Mapped[bool] = mapped_column(default=True)
+    # Пауза владельца из UI: sources_sync не трогает (enabled = признак топологии yaml)
+    paused: Mapped[bool] = mapped_column(default=False)
     manual: Mapped[bool] = mapped_column(default=False)  # создан курированием; sources_sync не трогает
     poll_interval_sec: Mapped[int | None] = mapped_column(Integer)
     backfill_limit: Mapped[int | None] = mapped_column(Integer)
@@ -119,6 +121,13 @@ class TargetChannel(Base):
     # Разрешённые окна публикации: ["08:00-11:00", "17:00-21:00"];
     # пусто = круглые сутки за вычетом quiet_hours
     publish_windows: Mapped[list | None] = mapped_column(JSONB)
+    # История и свежесть v2: наследуются всеми источниками этого канала
+    read_history: Mapped[bool] = mapped_column(default=True)
+    history_max_posts: Mapped[int | None] = mapped_column(Integer)
+    fresh_window_min: Mapped[int | None] = mapped_column(Integer)
+    # Пауза владельца из UI: sources_sync не трогает; reader не собирает,
+    # публикация ждёт с причиной
+    paused: Mapped[bool] = mapped_column(default=False)
     last_admin_check_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

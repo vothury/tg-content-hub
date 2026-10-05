@@ -413,7 +413,7 @@ async def _channel_allows(channel_id: int) -> tuple[bool, str, timedelta | None]
         if channel is None:
             return False, "канал не найден", timedelta(minutes=15)
         now = owner_now()
-        if not channel.enabled:
+        if not channel.enabled or channel.paused:
             return False, "канал на паузе", timedelta(minutes=15)
         if _in_quiet_hours(channel, now):
             return False, "тихие часы", timedelta(minutes=15)

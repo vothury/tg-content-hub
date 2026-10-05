@@ -88,7 +88,10 @@ def parse_sources_text(text: str):
             "min_interval_min": t.get("min_interval_min"),
             "quiet_hours": t.get("quiet_hours"),
             "publish_windows": t.get("publish_windows"),
-            "paused": bool(t.get("paused", False)),
+            "read_history": True if t.get("read_history") is None
+                            else bool(t.get("read_history")),
+            "history_max_posts": t.get("history_max_posts"),
+            "fresh_window_min": t.get("fresh_window_min"),
             "rewrite": t.get("rewrite"),
             "dup_recap": bool(t.get("dup_recap", False)),
             "editorial": bool(t.get("editorial", False)),
@@ -130,7 +133,6 @@ def parse_sources_text(text: str):
             "editorial_only": bool(s.get("editorial_only", False)),
             "llm_instructions": str(s.get("llm_instructions") or "").strip() or None,
             "poll_interval_sec": s.get("poll_interval_sec"),
-            "backfill_limit": s.get("backfill_limit"),
             "fresh_window_min": s.get("fresh_window_min"),
             "fallback_count": s.get("fallback_count"),
             "fallback_max_age_hours": s.get("fallback_max_age_hours"),
@@ -240,6 +242,9 @@ async def apply_parsed(parsed) -> dict:
                                           daily_limit=cfg["daily_limit"] or 6, min_interval_min=cfg["min_interval_min"] or 60,
                                           quiet_hours=cfg["quiet_hours"],
                                           publish_windows=cfg["publish_windows"],
+                                          read_history=cfg["read_history"],
+                                          history_max_posts=cfg["history_max_posts"],
+                                          fresh_window_min=cfg["fresh_window_min"],publish_windows"],
                                           enabled=not bool(cfg["paused"]),
                                           rewrite_enabled=True if cfg["rewrite"] is None else bool(cfg["rewrite"]),
                                           dup_recap_enabled=bool(cfg["dup_recap"]),
@@ -269,8 +274,9 @@ async def apply_parsed(parsed) -> dict:
             if cfg["min_interval_min"] and ch.min_interval_min != cfg["min_interval_min"]: ch.min_interval_min = cfg["min_interval_min"]; changed = True
             if cfg["quiet_hours"] is not None and ch.quiet_hours != cfg["quiet_hours"]: ch.quiet_hours = cfg["quiet_hours"]; changed = True
             if cfg["publish_windows"] is not None and ch.publish_windows != cfg["publish_windows"]: ch.publish_windows = cfg["publish_windows"]; changed = True
-            en = not bool(cfg["paused"])
-            if ch.enabled != en: ch.enabled = en; changed = True
+            if ch.read_history != cfg["read_history"]: ch.read_history = cfg["read_history"]; changed = True
+            if cfg["history_max_posts"] is not None and ch.history_max_posts != cfg["history_max_posts"]: ch.history_max_posts = cfg["history_max_posts"]; changed = True
+            if cfg["fresh_window_min"] is not None and ch.fresh_window_min != cfg["fresh_window_min"]: ch.fresh_window_min = cfg["fresh_window_min"]; changed = True
             rw = True if cfg["rewrite"] is None else bool(cfg["rewrite"])
             ap = bool(cfg["autopilot"])
             if ch.autopilot != ap: ch.autopilot = ap; changed = True
@@ -325,7 +331,6 @@ async def apply_parsed(parsed) -> dict:
                 src = Source(username=e["username"], title=e["title"] or e["username"],
                              kind=e["kind"], enabled=e["enabled"], target_channel_id=tgt,
                              poll_interval_sec=e["poll_interval_sec"] or d_interval,
-                             backfill_limit=e["backfill_limit"],
                              fresh_window_min=e["fresh_window_min"] or d_window,
                              fallback_count=e["fallback_count"] if e["fallback_count"] is not None else d_fb,
                              fallback_max_age_hours=e["fallback_max_age_hours"] if e["fallback_max_age_hours"] is not None else d_fb_h,
@@ -341,7 +346,6 @@ async def apply_parsed(parsed) -> dict:
                 if src.enabled != e["enabled"]: src.enabled = e["enabled"]; changed = True
                 if src.target_channel_id != tgt: src.target_channel_id = tgt; changed = True
                 if e["poll_interval_sec"] and src.poll_interval_sec != e["poll_interval_sec"]: src.poll_interval_sec = e["poll_interval_sec"]; changed = True
-                if e["backfill_limit"] is not None and src.backfill_limit != e["backfill_limit"]: src.backfill_limit = e["backfill_limit"]; changed = True
                 if e["fresh_window_min"] and src.fresh_window_min != e["fresh_window_min"]: src.fresh_window_min = e["fresh_window_min"]; changed = True
                 if e["fallback_count"] is not None and src.fallback_count != e["fallback_count"]: src.fallback_count = e["fallback_count"]; changed = True
                 if e["fallback_max_age_hours"] is not None and src.fallback_max_age_hours != e["fallback_max_age_hours"]: src.fallback_max_age_hours = e["fallback_max_age_hours"]; changed = True

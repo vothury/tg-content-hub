@@ -4,12 +4,13 @@
 тестовый канал-лаборатория) одним механизмом на Telethon под отдельным
 аккаунтом-читателем. ТОЛЬКО чтение: никаких отправок, реакций, вступлений.
 
-Политика свежести:
-- в работу берутся посты не старше окна свежести (fresh_window_min);
-- если свежих нет — последние `fallback_count` постов, но не старше
-  `fallback_max_age_hours`;
-- устаревшие посты не сохраняются, но курсор чтения двигается вперёд.
-Параметры глобальные (.env) и на источник (sources.yaml).
+История и свежесть v2 (рычаги на целевом канале, наследуются источниками):
+- read_history=false: история и бэклог простоя не читаются вовсе, курсор
+  прыгает на свежий пост, в работу идёт только появившееся после возобновления;
+- read_history=true: при подключении/догонянии после простоя берём не более
+  history_max_posts самых свежих постов бэклога (возраст не проверяется);
+- в штатном режиме в работу берутся посты не старше fresh_window_min;
+  устаревшие не сохраняются, но курсор чтения двигается вперёд.
 """
 from __future__ import annotations
 
@@ -66,12 +67,11 @@ class SourceSnapshot:
     telegram_id: int | None
     last_read_message_id: int | None
     poll_interval_sec: int
-    backfill_limit: int
+    backfill_limit: int          # потолок истории/бэклога (history_max_posts)
+    read_history: bool           # False = историю и бэклог простоя не читать вовсе
     last_read_at: datetime | None
     target_channel_id: int | None
-    fresh_window_min: int
-    fallback_count: int
-    fallback_max_age_hours: int
+    fresh_window_min: int        # возрастной гейт штатного режима
 
 
 # ---------- метаданные медиа ----------
@@ -387,25 +387,36 @@ async def _persist_unit(client, snap: SourceSnapshot, entity, unit,
 # ---------- работа с источниками ----------
 
 async def load_sources() -> list[SourceSnapshot]:
+    """Источники включённых каналов вне паузы; история/свежесть наследуются от таргета."""
     async with session_scope() as session:
-        rows = (await session.execute(select(Source).where(Source.enabled.is_(True)))).scalars().all()
-        return [
-            SourceSnapshot(
+        rows = (await session.execute(
+            select(Source, TargetChannel)
+            .outerjoin(TargetChannel, TargetChannel.id == Source.target_channel_id)
+            .where(Source.enabled.is_(True), Source.paused.is_(False))
+        )).all()
+        out = []
+        for r, ch in rows:
+            if ch is not None and ch.paused:
+                continue  # канал на паузе: ничего не собираем
+            cap = (r.backfill_limit if r.backfill_limit is not None
+                   else (ch.history_max_posts if ch is not None and ch.history_max_posts is not None
+                         else settings.reader_backfill_limit))
+            window = (r.fresh_window_min if r.fresh_window_min is not None
+                      else (ch.fresh_window_min if ch is not None and ch.fresh_window_min is not None
+                            else settings.reader_fresh_window_min))
+            out.append(SourceSnapshot(
                 id=r.id,
                 username=r.username,
                 telegram_id=r.telegram_id,
                 last_read_message_id=r.last_read_message_id,
                 poll_interval_sec=r.poll_interval_sec or settings.reader_default_source_interval_sec,
-                backfill_limit=settings.reader_backfill_limit
-                if r.backfill_limit is None else r.backfill_limit,
+                backfill_limit=cap,
+                read_history=ch.read_history if ch is not None else True,
                 last_read_at=r.last_read_at,
                 target_channel_id=r.target_channel_id,
-                fresh_window_min=settings.reader_fresh_window_min if r.fresh_window_min is None else r.fresh_window_min,
-                fallback_count=settings.reader_fallback_count if r.fallback_count is None else r.fallback_count,
-                fallback_max_age_hours=settings.reader_fallback_max_age_hours if r.fallback_max_age_hours is None else r.fallback_max_age_hours,
-            )
-            for r in rows
-        ]
+                fresh_window_min=window,
+            ))
+        return out
 
 
 async def resolve_entity(client: TelegramClient, snap: SourceSnapshot):
@@ -450,19 +461,11 @@ def build_units(messages: list) -> list:
     return units
 
 
-def _select_fresh(messages: list, snap: SourceSnapshot) -> list:
-    """Политика свежести: окно свежести; если пусто — фолбэк последних."""
+def _select_fresh_window(messages: list, snap: SourceSnapshot) -> list:
+    """Штатный режим: только посты в окне свежести; устаревшие мимо (курсор идёт)."""
     now = _utcnow()
-    fresh_limit = timedelta(minutes=snap.fresh_window_min)
-    fallback_limit = timedelta(hours=snap.fallback_max_age_hours)
-
-    fresh = [m for m in messages if m.date is not None and (now - m.date) <= fresh_limit]
-    if fresh:
-        return fresh
-    recent = [m for m in messages if m.date is not None and (now - m.date) <= fallback_limit]
-    if snap.fallback_count > 0:
-        return recent[-snap.fallback_count:]
-    return []
+    limit = timedelta(minutes=snap.fresh_window_min)
+    return [m for m in messages if m.date is not None and (now - m.date) <= limit]
 
 
 async def mark_read(snap: SourceSnapshot, last_id: int | None) -> None:
@@ -485,28 +488,34 @@ async def process_source(client: TelegramClient, snap: SourceSnapshot) -> None:
     entity = await resolve_entity(client, snap)
     await sync_source_meta(snap, entity)
 
-    if snap.last_read_message_id is None:
-        if snap.backfill_limit == 0:
-            # История не нужна совсем: курсор на свежий пост, ничего не обрабатываем
+    gap = (snap.last_read_at is not None and
+           (_utcnow() - snap.last_read_at).total_seconds() > 2 * snap.poll_interval_sec)
+    backlog = snap.last_read_message_id is None or gap
+    if backlog:
+        if not snap.read_history:
             latest = await client.get_messages(entity, limit=1)
             if latest:
                 await mark_read(snap, max(m.id for m in latest))
-                log.info("источник #%s: история пропущена (backfill_limit=0), "
-                         "курсор установлен на свежий пост", snap.id)
+                log.info("источник #%s: история/бэклог пропущены (read_history=false), "
+                         "курсор на свежий пост", snap.id)
             return
-        fetch_limit = max(snap.backfill_limit, snap.fallback_count, 1)
-        messages = await client.get_messages(entity, limit=fetch_limit)
+        cap = max(snap.backfill_limit, 1)
+        if snap.last_read_message_id is None:
+            messages = await client.get_messages(entity, limit=cap)
+        else:
+            fetched = await client.get_messages(
+                entity, min_id=snap.last_read_message_id, limit=MAX_MESSAGES_PER_CYCLE)
+            messages = fetched[-cap:]
     else:
         messages = await client.get_messages(
-            entity, min_id=snap.last_read_message_id, limit=MAX_MESSAGES_PER_CYCLE
-        )
+            entity, min_id=snap.last_read_message_id, limit=MAX_MESSAGES_PER_CYCLE)
     messages = sorted(messages, key=lambda m: m.id)
 
     if not messages:
         await mark_read(snap, None)
         return
 
-    selected = _select_fresh(messages, snap)
+    selected = messages if backlog else _select_fresh_window(messages, snap)
     skipped = len(messages) - len(selected)
     if skipped:
         log.info("источник #%s: пропущено устаревших постов: %d", snap.id, skipped)
@@ -557,8 +566,9 @@ async def process_media_refresh(client: TelegramClient) -> None:
             snap = SourceSnapshot(
                 id=src.id, username=src.username, telegram_id=src.telegram_id,
                 last_read_message_id=None, poll_interval_sec=0, backfill_limit=0,
+                read_history=False,
                 last_read_at=None, target_channel_id=src.target_channel_id,
-                fresh_window_min=0, fallback_count=0, fallback_max_age_hours=0,
+                fresh_window_min=0,
             )
             entity = await resolve_entity(client, snap)
             msgs = [m for m in await client.get_messages(entity, ids=[msg_id]) if m is not None]
