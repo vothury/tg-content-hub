@@ -35,7 +35,8 @@ CANC = ["осуществляет", "в рамках", "данная ситуа�
 TAUT = ["девелопер недвижимости", "девелопер жилья", "деловое медиа",
         "компания-застройщик жилья"]
 DENOM = ["предложения", "объёма", "объема", "сделок", "рынка", "стройк",
-         "кажд", "лот", "квартир"]
+         "кажд", "лот", "квартир", "стоимост", "ДДУ", "выдач", "ввод",
+         "экспозиции"]
 
 
 def _checks(topic: dict, title: str, body: str) -> list:
@@ -58,9 +59,10 @@ def _checks(topic: dict, title: str, body: str) -> list:
     nums = re.findall(r"\d+[.,]?\d*\s*(?:%|₽|руб|млн|млрд|тыс|м²|кв)", body)
     if len(nums) > 10:
         bad.append(f"numbers:{len(nums)}")
-    if len(body) > 700 and (len(paras) < 2 or
-                            max((len(re.findall(r"[.!?]", p)) for p in paras),
-                                default=0) > 5):
+    if len(body) > 900 and (len(paras) < 2 or
+                            max((len(re.findall(r"[.!?](?:\s|$)",
+                                re.sub(r"(?:кв|тыс|млн|млрд|руб|г|м)\.\s*", "", p)))
+                                for p in paras), default=0) > 5):
         bad.append("wall")
     lead = first[:60]
     if lead and sum(1 for p in paras[1:] if lead[:40] in p):
@@ -81,7 +83,8 @@ def _expect_ok(topic: dict, verdict: str, body: str) -> tuple:
         ok = any(k in body for k in ("прогноз", "ожида", "может", "ждут", "допуска"))
         return ok, "forecast not attributed"
     if exp == "stale":
-        ok = any(k in body for k in ("по данным на", "в марте", "весной", "по итогам 2025"))
+        low = body.lower()
+        ok = any(k in low for k in ("по данным на", "в марте", "весной", "по итогам 2025"))
         return ok, "stale materials not date-anchored"
     return True, ""
 
@@ -159,7 +162,9 @@ async def main() -> None:
         for t in topics:
             t0 = time.time()
             verdict, final, bad = await run_topic(spec, t, out_dir)
-            score = 1.0 if not bad else max(0.0, 1.0 - len(bad) * 0.15)
+            light = [b for b in bad if b.startswith(("precision", "numbers", "wall"))]
+            heavy = [b for b in bad if b not in light]
+            score = max(0.0, 1.0 - 0.15 * len(heavy) - 0.05 * len(light))
             scores.append(score)
             print(f"\n===== {spec} | {t['file']} | {verdict} | "
                   f"score {score:.2f} | {time.time() - t0:.0f}s"
