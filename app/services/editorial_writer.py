@@ -151,8 +151,6 @@ async def run_writer_phase() -> int:
                 await session.commit()
                 log.info("writer: тема #%s отклонена: %s", t.id, t.verdict_note)
                 continue
-            editor_chain = model if "glm-5.3" in model else \
-                f"{model}, z-ai/glm-5.3-flash (gmicloud/fp8)"
             try:
                 ed = await _call_json(
                     [{"role": "system",
@@ -161,7 +159,7 @@ async def run_writer_phase() -> int:
                      {"role": "user",
                       "content": EDITOR_USER.format(materials=listing, kb=kb,
                                                     draft=res.text)}],
-                    editor_chain, providers, 1200, EditorResult,
+                    model, providers, 1200, EditorResult,
                     stage=LLMStage.EDITORIAL_WRITE)
                 if ed.verdict == "rewrite" and ed.text:
                     log.info("writer: редактор переписал статью темы #%s: %s",
