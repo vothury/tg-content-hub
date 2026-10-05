@@ -1,13 +1,15 @@
-"""Бенч писателя редакции: файлы тем -> writer -> editor -> финальный пост.
+"""Бенч писателя редакции: темы -> writer -> editor -> пост + авто-рубрика.
 
-Офлайн-итерации промптов и моделей БЕЗ деплоя и без трогания редакции:
-локальный prompts.py монтируется в образ, эталоны лежат рядом с темами.
+Офлайн-итерации промптов/моделей/бренд-файлов без деплоя:
   docker compose run --rm \
     -v ./scripts/editorial_bench.py:/app/scripts/editorial_bench.py:ro \
     -v ./scripts/samples_writer:/app/scripts/samples_writer:ro \
     -v ./app/services/llm/prompts.py:/app/app/services/llm/prompts.py:ro \
+    -v ./app/services/editorial_brand:/app/app/services/editorial_brand:ro \
     --entrypoint python reader scripts/editorial_bench.py \
-    --models "openai/gpt-5.6-luna (openai), z-ai/glm-5.3-flash (gmicloud/fp8)" --tag style-v3
+    --models "openai/gpt-5.6-luna (openai), z-ai/glm-5.3-flash (gmicloud/fp8)" --tag wide-v1
+Рубрика: знаменатель процента, запрет точности 0,00%, тавтологии-роли, канцелярит,
+стена текста, бюджет цифр, повторы лида, соответствие expect (write/drop/forecast/stale).
 """
 from __future__ import annotations
 
@@ -27,28 +29,76 @@ from app.services.llm_pipeline import _parse_model_spec, _split_model_list
 
 MAX_CHARS = 2500
 REASON = 300
+CANC = ["осуществляет", "в рамках", "данная ситуация", "следует отметить",
+        "в современном мире", "важно понимать", "нельзя не отметить", "представьте"]
+TAUT = ["девелопер недвижимости", "девелопер жилья", "деловое медиа",
+        "компания-застройщик жилья"]
+DENOM = ["предложения", "объёма", "объема", "сделок", "рынка", "стройк",
+         "кажд", "лот", "квартир"]
 
 
-async def run_topic(spec: str, topic: dict, out_dir: Path) -> str:
+def _checks(topic: dict, title: str, body: str) -> list:
+    bad = []
+    paras = [p for p in body.split("\n\n") if p.strip()]
+    first = paras[0] if paras else ""
+    if "%" in body and not any(w in first for w in DENOM):
+        bad.append("denominator")
+    if re.search(r"\d+,\d{2,}\s*%", body):
+        bad.append("precision")
+    for t in TAUT:
+        if t in body:
+            bad.append(f"taut:{t}")
+    for c in CANC:
+        if c in body:
+            bad.append(f"canc:{c}")
+    nums = re.findall(r"\d+[.,]?\d*", body)
+    if len(nums) > 7:
+        bad.append(f"numbers:{len(nums)}")
+    if len(body) > 700 and (len(paras) < 2 or max(len(re.findall(r"[.!?", p) for p in paras)) > 5):
+        bad.append("wall")
+    lead = first[:60]
+    if lead and sum(1 for p in paras[1:] if lead[:40] in p):
+        bad.append("repeat")
+    return bad
+
+
+def _expect_ok(topic: dict, verdict: str, body: str) -> tuple:
+    exp = topic.get("expect", "write")
+    if exp == "drop":
+        return (verdict == "drop"), f"expect drop, got {verdict}"
+    if verdict == "drop":
+        return False, "unexpected drop"
+    if exp == "forecast":
+        ok = any(k in body for k in ("прогноз", "ожида", "может", "ждут", "допуска"))
+        return ok, "forecast not attributed"
+    if exp == "stale":
+        ok = any(k in body for k in ("по данным на", "в марте", "весной", "по итогам 2025"))
+        return ok, "stale materials not date-anchored"
+    return True, ""
+
+
+async def run_topic(spec: str, topic: dict, out_dir: Path):
     slug, prov = _parse_model_spec(spec)
     materials = "\n\n".join(
         f"{n}. [{m['label']}]\n{m['text']}"
         for n, m in enumerate(topic["materials"], 1))
     kb = topic.get("kb") or "—"
     w = await chat_completion(
-        [{"role": "system", "content": WRITER_SYSTEM.format(max_chars=MAX_CHARS)},
+        [{"role": "system", "content": WRITER_SYSTEM.format(max_chars=MAX_CHARS)
+          + "\n\nBRAND AND STYLE MEMORY:\n" + _brand()},
          {"role": "user", "content": WRITER_USER.format(
              theme=topic["theme"], hypothesis=topic["hypothesis"],
              kind=topic["kind"], materials=materials, kb=kb)}],
         slug, 1400 + REASON, 0.1, provider=prov, reasoning_max_tokens=REASON)
     res = EditorialArticleResult.from_response(w.content)
     if res.verdict == "drop":
-        return f"VERDICT DROP: {res.drop_reason}"
+        return "drop", res.drop_reason, []
     body = res.text
     for attempt in (1, 2):
         try:
             e = await chat_completion(
-                [{"role": "system", "content": EDITOR_SYSTEM.format(max_chars=MAX_CHARS)},
+                [{"role": "system", "content": EDITOR_SYSTEM.format(max_chars=MAX_CHARS)
+                  + "\n\nBRAND AND STYLE MEMORY:\n" + _brand()},
                  {"role": "user", "content": EDITOR_USER.format(
                      materials=materials, kb=kb, draft=res.text)}],
                 slug, 1200 + REASON, 0.1, provider=prov, reasoning_max_tokens=REASON)
@@ -58,14 +108,27 @@ async def run_topic(spec: str, topic: dict, out_dir: Path) -> str:
             break
         except Exception as exc:  # noqa: BLE001
             if attempt == 2:
-                print(f"----- editor failed ({exc.__class__.__name__}), "
-                      f"keeping writer draft: {spec} | {topic['file']}")
+                print(f"----- editor failed ({exc.__class__.__name__}): draft kept")
             else:
                 await asyncio.sleep(2)
     final = f"{res.title.strip()}\n\n{body.strip()}"
     safe = re.sub(r"[^0-9A-Za-z.-]+", "", spec)
     (out_dir / f"{safe}__{topic['file']}.txt").write_text(final, encoding="utf-8")
-    return final
+    bad = _checks(topic, res.title, body)
+    ok, note = _expect_ok(topic, "write", body)
+    if not ok:
+        bad.append(note)
+    return "write", final, bad
+
+
+def _brand() -> str:
+    d = Path("/app/app/services/editorial_brand")
+    parts = []
+    for name in ("voice.md", "forbidden.md", "examples_good.md", "examples_bad.md"):
+        p = d / name
+        if p.exists():
+            parts.append(p.read_text(encoding="utf-8").strip())
+    return "\n\n".join(parts) or "—"
 
 
 async def main() -> None:
@@ -81,11 +144,24 @@ async def main() -> None:
         d = json.loads(Path(p).read_text(encoding="utf-8"))
         d["file"] = Path(p).stem
         topics.append(d)
+    print(f"тем в наборе: {len(topics)}")
     for spec in _split_model_list(args.models):
+        scores = []
         for t in topics:
             t0 = time.time()
-            final = await run_topic(spec, t, out_dir)
-            print(f"\n===== {spec} | {t['file']} | {time.time() - t0:.0f}s\n{final}")
+            verdict, final, bad = await run_topic(spec, t, out_dir)
+            score = 1.0 if not bad else max(0.0, 1.0 - len(bad) * 0.15)
+            scores.append(score)
+            print(f"\n===== {spec} | {t['file']} | {verdict} | "
+                  f"score {score:.2f} | {time.time() - t0:.0f}s"
+                  + (f" | FAIL: {', '.join(bad)}" if bad else ""))
+            if verdict == "write":
+                print(final)
+            else:
+                print(f"DROP: {final}")
+        mean = sum(scores) / max(1, len(scores))
+        print(f"\n##### {spec} | среднее по рубрике: {mean:.2f} из 1.00 "
+              f"({len(topics)} тем)")
 
 
 if __name__ == "__main__":
