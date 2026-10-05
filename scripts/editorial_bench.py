@@ -30,6 +30,9 @@ from app.services.llm_pipeline import _parse_model_spec, _split_model_list
 
 MAX_CHARS = 2500
 REASON = 300
+WRITER_TOTAL = 2500   # суммарный потолок вызова писателя вместе с рассуждениями
+EDITOR_TOTAL = 1500   # то же для редактора
+WRITER_ATTEMPTS = 3   # попытки на пустой/битый JSON, затем пропуск темы
 CANC = ["осуществляет", "в рамках", "данная ситуация", "следует отметить",
         "в современном мире", "важно понимать", "нельзя не отметить", "представьте"]
 TAUT = ["девелопер недвижимости", "девелопер жилья", "деловое медиа",
@@ -95,14 +98,25 @@ async def run_topic(spec: str, topic: dict, out_dir: Path):
         f"{n}. [{m['label']}]\n{m['text']}"
         for n, m in enumerate(topic["materials"], 1))
     kb = topic.get("kb") or "—"
-    w = await chat_completion(
-        [{"role": "system", "content": WRITER_SYSTEM.format(max_chars=MAX_CHARS)
-          + "\n\nBRAND AND STYLE MEMORY:\n" + _brand()},
-         {"role": "user", "content": WRITER_USER.format(
-             theme=topic["theme"], hypothesis=topic["hypothesis"],
-             kind=topic["kind"], materials=materials, kb=kb)}],
-        slug, 1400 + REASON, 0.1, provider=prov, reasoning_max_tokens=REASON)
-    res = EditorialArticleResult.from_response(w.content)
+    res = None
+    for attempt in range(1, WRITER_ATTEMPTS + 1):
+        try:
+            w = await chat_completion(
+                [{"role": "system", "content": WRITER_SYSTEM.format(max_chars=MAX_CHARS)
+                  + "\n\nBRAND AND STYLE MEMORY:\n" + _brand()},
+                 {"role": "user", "content": WRITER_USER.format(
+                     theme=topic["theme"], hypothesis=topic["hypothesis"],
+                     kind=topic["kind"], materials=materials, kb=kb)}],
+                slug, WRITER_TOTAL, 0.1, provider=prov,
+                reasoning_max_tokens=REASON)
+            res = EditorialArticleResult.from_response(w.content)
+            break
+        except Exception as exc:  # noqa: BLE001
+            if attempt == WRITER_ATTEMPTS:
+                print(f"----- writer failed {WRITER_ATTEMPTS}x "
+                      f"({exc.__class__.__name__}): SKIP {spec} | {topic['file']}")
+                return "skip", "", []
+            await asyncio.sleep(2)
     if res.verdict == "drop":
         return "drop", res.drop_reason, []
     body = res.text
@@ -113,7 +127,7 @@ async def run_topic(spec: str, topic: dict, out_dir: Path):
                   + "\n\nBRAND AND STYLE MEMORY:\n" + _brand()},
                  {"role": "user", "content": EDITOR_USER.format(
                      materials=materials, kb=kb, draft=res.text)}],
-                slug, 1200 + REASON, 0.1, provider=prov, reasoning_max_tokens=REASON)
+                slug, EDITOR_TOTAL, 0.1, provider=prov, reasoning_max_tokens=REASON)
             ed = EditorResult.from_response(e.content)
             if ed.verdict == "rewrite" and ed.text:
                 body = ed.text
@@ -159,9 +173,15 @@ async def main() -> None:
     print(f"тем в наборе: {len(topics)}")
     for spec in _split_model_list(args.models):
         scores = []
+        skips = 0
         for t in topics:
             t0 = time.time()
             verdict, final, bad = await run_topic(spec, t, out_dir)
+            if verdict == "skip":
+                skips += 1
+                print(f"\n===== {spec} | {t['file']} | SKIP (writer empty after retries)")
+                continue
+            light = [b for b in bad if b.startswith(("precision", "numbers", "wall"))]
             light = [b for b in bad if b.startswith(("precision", "numbers", "wall"))]
             heavy = [b for b in bad if b not in light]
             score = max(0.0, 1.0 - 0.15 * len(heavy) - 0.05 * len(light))
@@ -175,7 +195,7 @@ async def main() -> None:
                 print(f"DROP: {final}")
         mean = sum(scores) / max(1, len(scores))
         print(f"\n##### {spec} | среднее по рубрике: {mean:.2f} из 1.00 "
-              f"({len(topics)} тем)")
+              f"({len(scores)} тем оценено, пропусков {skips})")
 
 
 if __name__ == "__main__":
