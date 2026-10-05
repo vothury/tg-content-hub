@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects.postgresql import JSONB
 
 revision = "0043"
 down_revision = "0042"
@@ -16,7 +17,7 @@ depends_on = None
 
 def upgrade() -> None:
     op.add_column("target_channels",
-                  sa.Column("publish_windows", sa.JSONB(), nullable=True))
+                  sa.Column("publish_windows", JSONB(), nullable=True))
 
 
 def downgrade() -> None:
