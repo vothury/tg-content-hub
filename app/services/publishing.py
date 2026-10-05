@@ -246,6 +246,31 @@ async def purge_post_media(post_id: int) -> None:
             log.warning("не удалось удалить медиафайл %s", p)
 
 
+def _until_next_window(channel: TargetChannel, now_local: datetime):
+    """None = окна не заданы или сейчас внутри окна; иначе дельта до ближайшего начала."""
+    wins = channel.publish_windows or []
+    if not wins:
+        return None
+    cur = now_local.time()
+    best = None
+    for w in wins:
+        try:
+            a_s, b_s = str(w).split("-")
+            ta = datetime.strptime(a_s.strip(), "%H:%M").time()
+            tb = datetime.strptime(b_s.strip(), "%H:%M").time()
+        except ValueError:
+            continue
+        inside = (ta <= cur < tb) if ta <= tb else (cur >= ta or cur < tb)
+        if inside:
+            return None
+        delta = (datetime.combine(now_local.date(), ta) - now_local).total_seconds()
+        if delta < 0:
+            delta += 86400
+        if best is None or delta < best:
+            best = delta
+    return timedelta(seconds=best) if best is not None else None
+
+
 def _in_quiet_hours(channel: TargetChannel, now_local: datetime) -> bool:
     qh = channel.quiet_hours or {}
     start_s, end_s = qh.get("start"), qh.get("end")
@@ -388,8 +413,13 @@ async def _channel_allows(channel_id: int) -> tuple[bool, str, timedelta | None]
         if channel is None:
             return False, "канал не найден", timedelta(minutes=15)
         now = owner_now()
+        if not channel.enabled:
+            return False, "канал на паузе", timedelta(minutes=15)
         if _in_quiet_hours(channel, now):
             return False, "тихие часы", timedelta(minutes=15)
+        win_wait = _until_next_window(channel, now)
+        if win_wait is not None:
+            return False, "вне окон публикации канала", win_wait
         day_start_utc = now.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
         published_today = await session.scalar(
             select(func.count()).select_from(PublishJob).where(

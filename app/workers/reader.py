@@ -396,7 +396,8 @@ async def load_sources() -> list[SourceSnapshot]:
                 telegram_id=r.telegram_id,
                 last_read_message_id=r.last_read_message_id,
                 poll_interval_sec=r.poll_interval_sec or settings.reader_default_source_interval_sec,
-                backfill_limit=r.backfill_limit or settings.reader_backfill_limit,
+                backfill_limit=settings.reader_backfill_limit
+                if r.backfill_limit is None else r.backfill_limit,
                 last_read_at=r.last_read_at,
                 target_channel_id=r.target_channel_id,
                 fresh_window_min=settings.reader_fresh_window_min if r.fresh_window_min is None else r.fresh_window_min,
@@ -485,6 +486,14 @@ async def process_source(client: TelegramClient, snap: SourceSnapshot) -> None:
     await sync_source_meta(snap, entity)
 
     if snap.last_read_message_id is None:
+        if snap.backfill_limit == 0:
+            # История не нужна совсем: курсор на свежий пост, ничего не обрабатываем
+            latest = await client.get_messages(entity, limit=1)
+            if latest:
+                await mark_read(snap, max(m.id for m in latest))
+                log.info("источник #%s: история пропущена (backfill_limit=0), "
+                         "курсор установлен на свежий пост", snap.id)
+            return
         fetch_limit = max(snap.backfill_limit, snap.fallback_count, 1)
         messages = await client.get_messages(entity, limit=fetch_limit)
     else:

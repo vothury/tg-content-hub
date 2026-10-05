@@ -116,6 +116,9 @@ class TargetChannel(Base):
     min_interval_min: Mapped[int] = mapped_column(default=60)
     # Например {"start": "23:00", "end": "08:00"}
     quiet_hours: Mapped[dict | None] = mapped_column(JSONB)
+    # Разрешённые окна публикации: ["08:00-11:00", "17:00-21:00"];
+    # пусто = круглые сутки за вычетом quiet_hours
+    publish_windows: Mapped[list | None] = mapped_column(JSONB)
     last_admin_check_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
