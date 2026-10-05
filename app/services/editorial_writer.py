@@ -19,6 +19,8 @@ from app.db.enums import (ArticleStatus, DraftOrigin, LLMStage, PostStatus,
 from app.db.models import (Article, Headline, Material, Post, PostDraftVersion,
                            Source, TargetChannel, Topic)
 from app.db.session import session_scope
+from pathlib import Path
+
 from app.services import facts_kb
 from app.services.editorial_journalist import _call_json
 from app.services.llm.prompts import EDITOR_SYSTEM, EDITOR_USER, WRITER_SYSTEM, WRITER_USER
@@ -32,6 +34,17 @@ log = logging.getLogger("editorial_writer")
 ARTICLES_PER_CYCLE = 1            # дисциплина редакции: 1 статья за цикл, 1-3 поста в день
 _SYNTH_MSG_BASE = 9_000_000_000   # синтетические source_message_id редакционных постов
 _SOURCE_USERNAME = "virtual_editorial"
+_BRAND_DIR = Path(__file__).resolve().parent / "editorial_brand"
+
+
+def _brand_block() -> str:
+    """Редакционная память стиля: голос, запреты, примеры хорошо/плохо."""
+    parts = []
+    for name in ("voice.md", "forbidden.md", "examples_good.md", "examples_bad.md"):
+        p = _BRAND_DIR / name
+        if p.exists():
+            parts.append(f"### {name}\n{p.read_text(encoding='utf-8').strip()}")
+    return "\n\n".join(parts) or "—"
 
 
 async def _writer_model() -> tuple[str, dict | None]:
@@ -117,7 +130,9 @@ async def run_writer_phase() -> int:
             t = await session.get(Topic, topic.id)
             heads, listing, kb = await _gather(session, t)
             messages = [
-                {"role": "system", "content": WRITER_SYSTEM.format(max_chars=max_chars)},
+                {"role": "system",
+                 "content": WRITER_SYSTEM.format(max_chars=max_chars)
+                 + "\n\nBRAND AND STYLE MEMORY:\n" + _brand_block()},
                 {"role": "user", "content": WRITER_USER.format(
                     theme=t.theme, hypothesis=t.hypothesis or "—",
                     kind=t.kind.value, materials=listing, kb=kb)},
@@ -136,14 +151,17 @@ async def run_writer_phase() -> int:
                 await session.commit()
                 log.info("writer: тема #%s отклонена: %s", t.id, t.verdict_note)
                 continue
+            editor_chain = model if "glm-5.3" in model else \
+                f"{model}, z-ai/glm-5.3-flash (gmicloud/fp8)"
             try:
                 ed = await _call_json(
                     [{"role": "system",
-                      "content": EDITOR_SYSTEM.format(max_chars=max_chars)},
+                      "content": EDITOR_SYSTEM.format(max_chars=max_chars)
+                      + "\n\nBRAND AND STYLE MEMORY:\n" + _brand_block()},
                      {"role": "user",
                       "content": EDITOR_USER.format(materials=listing, kb=kb,
                                                     draft=res.text)}],
-                    model, providers, 1200, EditorResult,
+                    editor_chain, providers, 1200, EditorResult,
                     stage=LLMStage.EDITORIAL_WRITE)
                 if ed.verdict == "rewrite" and ed.text:
                     log.info("writer: редактор переписал статью темы #%s: %s",

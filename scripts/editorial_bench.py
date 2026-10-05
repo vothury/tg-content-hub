@@ -44,13 +44,24 @@ async def run_topic(spec: str, topic: dict, out_dir: Path) -> str:
     res = EditorialArticleResult.from_response(w.content)
     if res.verdict == "drop":
         return f"VERDICT DROP: {res.drop_reason}"
-    e = await chat_completion(
-        [{"role": "system", "content": EDITOR_SYSTEM.format(max_chars=MAX_CHARS)},
-         {"role": "user", "content": EDITOR_USER.format(
-             materials=materials, kb=kb, draft=res.text)}],
-        slug, 1200 + REASON, 0.1, provider=prov, reasoning_max_tokens=REASON)
-    ed = EditorResult.from_response(e.content)
-    body = ed.text if (ed.verdict == "rewrite" and ed.text) else res.text
+    body = res.text
+    for attempt in (1, 2):
+        try:
+            e = await chat_completion(
+                [{"role": "system", "content": EDITOR_SYSTEM.format(max_chars=MAX_CHARS)},
+                 {"role": "user", "content": EDITOR_USER.format(
+                     materials=materials, kb=kb, draft=res.text)}],
+                slug, 1200 + REASON, 0.1, provider=prov, reasoning_max_tokens=REASON)
+            ed = EditorResult.from_response(e.content)
+            if ed.verdict == "rewrite" and ed.text:
+                body = ed.text
+            break
+        except Exception as exc:  # noqa: BLE001
+            if attempt == 2:
+                print(f"----- editor failed ({exc.__class__.__name__}), "
+                      f"keeping writer draft: {spec} | {topic['file']}")
+            else:
+                await asyncio.sleep(2)
     final = f"{res.title.strip()}\n\n{body.strip()}"
     safe = re.sub(r"[^0-9A-Za-z.-]+", "", spec)
     (out_dir / f"{safe}__{topic['file']}.txt").write_text(final, encoding="utf-8")

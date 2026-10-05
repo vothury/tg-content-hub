@@ -38,6 +38,9 @@ _MODEL_SETTING_KEYS = (
 )
 
 
+from app.services.llm_pipeline import _parse_model_spec, _split_model_list
+
+
 def _clean_slug(s: str) -> str:
     """'~slug:online', пробелы, скобки и кавычки вокруг -> канонический slug; пусто -> ''."""
     s = (s or "").strip().strip("[]\"'").strip().lstrip("~")
@@ -358,10 +361,15 @@ async def watch_models() -> int:
     # или целыми строками-списками — расщепляем до отдельных slug'ов
     clean_targets: dict = {}
     for raw_model, pinned in list(targets.items()):
-        for part in str(raw_model).split(","):
-            slug = _clean_slug(part)
-            if slug and slug not in POOLED:
-                clean_targets.setdefault(slug, set()).update(pinned or set())
+        for spec in _split_model_list(str(raw_model)):
+            slug, prov = _parse_model_spec(spec)
+            slug = _clean_slug(slug)
+            if not slug or slug in POOLED:
+                continue
+            provs = set(pinned or ())
+            if isinstance(prov, dict):
+                provs.update(str(x) for x in (prov.get("order") or []))
+            clean_targets.setdefault(slug, set()).update(provs)
     targets = clean_targets
     if not targets:
         return 0
