@@ -1,0 +1,4 @@
+# Концы строк: сервер (Linux) обязан получать LF для скриптов и Makefile
+# независимо от редактора на Windows; dos2unix в deploy после этого — no-op.
+*.sh text eol=lf
+Makefile text eol=lf
