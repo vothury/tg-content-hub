@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Каналы — TG Content Hub{% endblock %}
+{% block content %}
+<h2 class="section-title">Каналы</h2>
+<div class="list">
+  {% for r in rows %}
+  <div class="card">
+    <div class="label">@{{ r.ch.username }} — {{ r.ch.title }}
+      <span class="badge">{{ 'пауза' if r.ch.paused else 'активен' }}</span>
+      {% if r.ch.editorial %}<span class="badge">редакция</span>{% endif %}
+      {% if r.ch.autopilot %}<span class="badge">автопилот</span>{% endif %}
+      {% if r.ch.no_review %}<span class="badge">тех</span>{% endif %}
+      {% if not r.ch.enabled %}<span class="badge">вне топологии</span>{% endif %}
+    </div>
+    <div class="sub">публикации: {{ r.pub24 }} за 24 ч / {{ r.pub7 }} за 7 сут · очередь: {{ r.queue }} · источников: {{ r.src_n }} · лимит {{ r.ch.daily_limit }}/день, интервал {{ r.ch.min_interval_min }} мин</div>
+    <div class="sub">окна публикации: {{ (r.ch.publish_windows or ['круглые сутки']) | join(', ') }}</div>
+    <div class="sub">история источников: чтение {{ 'вкл' if r.ch.read_history else 'выкл' }} · потолок {{ r.cap }}{{ '' if r.cap_own else ' (глобально)' }} · окно {{ r.win }} мин{{ '' if r.win_own else ' (глобально)' }}</div>
+    {% if r.defer %}<div class="sub" style="opacity:.8">⏳ очередь: {{ r.defer }}</div>{% endif %}
+    <div class="actions">
+      <form method="post" action="/channels/{{ r.ch.id }}/pause">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="paused" value="{{ 'false' if r.ch.paused else 'true' }}">
+        <button class="btn ghost" type="submit">{{ 'Возобновить' if r.ch.paused else 'Пауза' }}</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

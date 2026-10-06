@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Источники — TG Content Hub{% endblock %}
+{% block content %}
+<h2 class="section-title">Источники</h2>
+<div class="list">
+  {% for r in rows %}
+  <div class="card">
+    <div class="label">@{{ r.s.username }} → @{{ r.target }}
+      <span class="badge">{{ 'пауза' if r.s.paused else 'активен' }}</span>
+      {% if r.ch_paused %}<span class="badge">канал на паузе</span>{% endif %}
+      {% if r.s.editorial_only %}<span class="badge">сырьё редакции</span>{% endif %}
+      {% if not r.s.enabled %}<span class="badge">вне топологии</span>{% endif %}
+    </div>
+    <div class="sub">посты: {{ r.p24 }} за 24 ч / {{ r.p7 }} за 7 сут · релевантность {{ r.s.relevance if r.s.relevance is not none else '—' }}</div>
+    <div class="sub">последний опрос: {{ r.last_read_at.strftime('%d.%m %H:%M') if r.last_read_at else '—' }} · курсор: {{ r.s.last_read_message_id if r.s.last_read_message_id is not none else '—' }}</div>
+    <div class="sub">история: чтение {{ 'вкл' if r.read_history else 'выкл' }} · потолок {{ r.cap }}{{ '' if r.cap_own else ' (наследуется)' }} · окно {{ r.win }} мин{{ '' if r.win_own else ' (наследуется)' }}</div>
+    <div class="actions">
+      <form method="post" action="/sources/{{ r.s.id }}/pause">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="paused" value="{{ 'false' if r.s.paused else 'true' }}">
+        <button class="btn ghost" type="submit">{{ 'Возобновить' if r.s.paused else 'Пауза' }}</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

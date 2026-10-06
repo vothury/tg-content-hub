@@ -13,7 +13,8 @@ from app.config import settings
 from app.db.session import session_scope
 from app.redis_client import get_redis
 from app.web.auth import AuthRequired, csrf_protect, require_auth
-from app.web.routers import auth_routes, content_page, dashboard, editorial_page, post_detail, posts, queue_page, settings_page
+from app.web.routers import (auth_routes, channels_page, content_page, dashboard,
+                             editorial_page, post_detail, posts, queue_page, settings_page)
 from app.web.templating import WEB_DIR
 from app.services import monitor, price_watch
 
@@ -71,6 +72,7 @@ app.include_router(settings_page.router)
 app.include_router(content_page.router)
 app.include_router(queue_page.router)
 app.include_router(editorial_page.router)
+app.include_router(channels_page.router)
 
 
 @app.get("/healthz")
