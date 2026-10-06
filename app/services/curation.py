@@ -277,8 +277,8 @@ async def _process_one_inbox(client, R, inbox: str, targets: dict) -> None:
         snap = R.SourceSnapshot(
             id=origin_src_id, username=getattr(origin_entity, "username", None),
             telegram_id=getattr(origin_entity, "id", None), last_read_message_id=None,
-            poll_interval_sec=0, backfill_limit=0, last_read_at=None, target_channel_id=None,
-            fresh_window_min=0, fallback_count=0, fallback_max_age_hours=0)
+            poll_interval_sec=0, backfill_limit=0, read_history=False,
+            last_read_at=None, target_channel_id=None, fresh_window_min=0)
         unit = type("Unit", (), {"messages": orig_msgs})()
         media_rows = await R._download_unit_media(client, snap, unit)
 
