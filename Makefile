@@ -139,10 +139,19 @@ deploy: ## деплой: guard'ы -> pull -> dos2unix изменённого -> 
 	git pull --ff-only
 	@git log -1 --oneline
 	git diff --name-only ORIG_HEAD HEAD 2>/dev/null | grep -E '\.(py|html|ya?ml|sh)$$|^[Dd]ockerfile' | xargs -r dos2unix
-	@if df -m / | awk 'NR==2{exit ($$4 >= 2048)}'; then echo "⚠ свободно <2ГБ — image prune (builder-кэш НЕ трогаем)"; docker image prune -f; df -m / | awk 'NR==2{if ($$4 < 2048) print "⚠ всё ещё мало: journalctl vacuum / старые kept вручную; builder prune — только аварией"}'; fi
+	@if df -m / | awk 'NR==2{exit ($$4 >= 2048)}'; then echo "⚠ свободно <2ГБ — запускаю make hygiene"; $(MAKE) hygiene; df -m / | awk 'NR==2{if ($$4 < 2048) print "⚠ всё ещё мало: make hygiene-deep (builder-кэш) или ревизия backlog/*.kept старше последней сборки БД"}'; fi
 	$(MAKE) down
 	$(MAKE) up
 	$(MAKE) wait-web
 	docker image prune -f
 	@df -h / | tail -1
 	@docker compose ps -a --format 'table {{.Name}}\t{{.Status}}' | head -15
+
+# --- Гигиена диска: простые команды без мини-расследований ---------------------
+# hygiene      — вакуум журнала до 100M (потолок ставится идемпотентно), prune образов/контейнеров
+# hygiene-deep — то же + buildkit-кэш (следующие сборки дольше: apt/pip скачаются заново)
+hygiene:
+	./scripts/disk_hygiene.sh
+
+hygiene-deep:
+	./scripts/disk_hygiene.sh deep
