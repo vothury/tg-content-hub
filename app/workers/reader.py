@@ -69,6 +69,7 @@ class SourceSnapshot:
     poll_interval_sec: int
     backfill_limit: int          # потолок истории/бэклога (history_max_posts)
     read_history: bool           # False = историю и бэклог простоя не читать вовсе
+    skip_backlog: bool           # одноразово: курсор на свежий пост без обработки
     last_read_at: datetime | None
     target_channel_id: int | None
     fresh_window_min: int        # возрастной гейт штатного режима
@@ -412,6 +413,7 @@ async def load_sources() -> list[SourceSnapshot]:
                 poll_interval_sec=r.poll_interval_sec or settings.reader_default_source_interval_sec,
                 backfill_limit=cap,
                 read_history=ch.read_history if ch is not None else True,
+                skip_backlog=r.skip_backlog,
                 last_read_at=r.last_read_at,
                 target_channel_id=r.target_channel_id,
                 fresh_window_min=window,
@@ -487,6 +489,18 @@ async def process_source(client: TelegramClient, snap: SourceSnapshot) -> None:
 
     entity = await resolve_entity(client, snap)
     await sync_source_meta(snap, entity)
+
+    if snap.skip_backlog:
+        latest = await client.get_messages(entity, limit=1)
+        if latest:
+            await mark_read(snap, max(m.id for m in latest))
+        async with session_scope() as session:
+            src = await session.get(Source, snap.id)
+            if src is not None:
+                src.skip_backlog = False
+                await session.commit()
+        log.info("источник #%s: бэклог пропущен по кнопке, курсор на свежий пост", snap.id)
+        return
 
     gap = (snap.last_read_at is not None and
            (_utcnow() - snap.last_read_at).total_seconds() > 2 * snap.poll_interval_sec)
@@ -566,7 +580,7 @@ async def process_media_refresh(client: TelegramClient) -> None:
             snap = SourceSnapshot(
                 id=src.id, username=src.username, telegram_id=src.telegram_id,
                 last_read_message_id=None, poll_interval_sec=0, backfill_limit=0,
-                read_history=False,
+                read_history=False, skip_backlog=False,
                 last_read_at=None, target_channel_id=src.target_channel_id,
                 fresh_window_min=0,
             )

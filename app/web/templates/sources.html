@@ -2,6 +2,7 @@
 {% block title %}Источники — TG Content Hub{% endblock %}
 {% block content %}
 <h2 class="section-title">Источники</h2>
+<style>.editrow{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.editrow input{background:#161a22;border:1px solid #2a2f3a;color:#e8eaf0;padding:4px 6px;border-radius:6px}</style>
 <div class="list">
   {% for r in rows %}
   <div class="card">
@@ -19,6 +20,22 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="paused" value="{{ 'false' if r.s.paused else 'true' }}">
         <button class="btn ghost" type="submit">{{ 'Возобновить' if r.s.paused else 'Пауза' }}</button>
+      </form>
+      <form method="post" action="/sources/{{ r.s.id }}/history" class="editrow">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="number" name="backfill_limit" value="{{ r.s.backfill_limit if r.s.backfill_limit is not none else -1 }}" title="потолок истории; -1 = наследуется" style="width:6em">
+        <input type="number" name="fresh_window_min" value="{{ r.s.fresh_window_min if r.s.fresh_window_min is not none else -1 }}" title="окно свежести, мин; -1 = наследуется" style="width:6em">
+        <button class="btn ghost" type="submit">История</button>
+      </form>
+      <form method="post" action="/sources/{{ r.s.id }}/cursor">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="action" value="reset">
+        <button class="btn ghost" type="submit" title="перечитать историю по правилам канала">Сброс курсора</button>
+      </form>
+      <form method="post" action="/sources/{{ r.s.id }}/cursor">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="action" value="skip">
+        <button class="btn ghost" type="submit" title="курсор на свежий пост без обработки бэклога">Пропустить бэклог</button>
       </form>
     </div>
   </div>

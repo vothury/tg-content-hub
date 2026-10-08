@@ -55,6 +55,9 @@ class Source(Base):
     enabled: Mapped[bool] = mapped_column(default=True)
     # Пауза владельца из UI: sources_sync не трогает (enabled = признак топологии yaml)
     paused: Mapped[bool] = mapped_column(default=False)
+    # Одноразовое действие из UI: прыжок курсора на свежий пост без обработки бэклога;
+    # reader гасит флаг сам после выполнения
+    skip_backlog: Mapped[bool] = mapped_column(default=False)
     manual: Mapped[bool] = mapped_column(default=False)  # создан курированием; sources_sync не трогает
     poll_interval_sec: Mapped[int | None] = mapped_column(Integer)
     backfill_limit: Mapped[int | None] = mapped_column(Integer)

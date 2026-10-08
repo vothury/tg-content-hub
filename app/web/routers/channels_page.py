@@ -136,3 +136,62 @@ async def source_pause(src_id: int, paused: bool = Form(True)):
             s.paused = paused
             await session.commit()
     return RedirectResponse("/sources", status_code=303)
+
+
+@router.post("/channels/{ch_id}/edit", dependencies=[Depends(csrf_protect)])
+async def channel_edit(ch_id: int,
+                       publish_windows: str = Form(""),
+                       quiet_start: str = Form(""),
+                       quiet_end: str = Form(""),
+                       daily_limit: int = Form(0),
+                       min_interval_min: int = Form(0)):
+    """Инлайн-правка окон и лимитов; пустые значения = сброс к дефолту."""
+    async with session_scope() as session:
+        ch = await session.get(TargetChannel, ch_id)
+        if ch is None:
+            return RedirectResponse("/channels", status_code=303)
+        wins = [w.strip() for w in publish_windows.replace(";", ",").split(",")
+                if w.strip()]
+        ch.publish_windows = wins or None
+        qs, qe = quiet_start.strip(), quiet_end.strip()
+        if qs and qe:
+            ch.quiet_hours = {"start": qs, "end": qe}
+        elif not qs and not qe:
+            ch.quiet_hours = None
+        if daily_limit > 0:
+            ch.daily_limit = daily_limit
+        if min_interval_min > 0:
+            ch.min_interval_min = min_interval_min
+        await session.commit()
+    return RedirectResponse("/channels", status_code=303)
+
+
+@router.post("/sources/{src_id}/history", dependencies=[Depends(csrf_protect)])
+async def source_history(src_id: int,
+                         backfill_limit: int = Form(-1),
+                         fresh_window_min: int = Form(-1)):
+    """Пер-источник переопределения истории: -1 = наследуется от канала/глобально."""
+    async with session_scope() as session:
+        s = await session.get(Source, src_id)
+        if s is None:
+            return RedirectResponse("/sources", status_code=303)
+        s.backfill_limit = None if backfill_limit < 0 else backfill_limit
+        s.fresh_window_min = None if fresh_window_min < 0 else fresh_window_min
+        await session.commit()
+    return RedirectResponse("/sources", status_code=303)
+
+
+@router.post("/sources/{src_id}/cursor", dependencies=[Depends(csrf_protect)])
+async def source_cursor(src_id: int, action: str = Form("reset")):
+    """reset = перечитать историю по правилам канала; skip = курсор на свежий пост."""
+    async with session_scope() as session:
+        s = await session.get(Source, src_id)
+        if s is None:
+            return RedirectResponse("/sources", status_code=303)
+        if action == "reset":
+            s.last_read_message_id = None
+            s.last_read_at = None
+        elif action == "skip":
+            s.skip_backlog = True
+        await session.commit()
+    return RedirectResponse("/sources", status_code=303)

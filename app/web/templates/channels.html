@@ -2,6 +2,7 @@
 {% block title %}Каналы — TG Content Hub{% endblock %}
 {% block content %}
 <h2 class="section-title">Каналы</h2>
+<style>.editrow{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.editrow input{background:#161a22;border:1px solid #2a2f3a;color:#e8eaf0;padding:4px 6px;border-radius:6px}</style>
 <div class="list">
   {% for r in rows %}
   <div class="card">
@@ -21,6 +22,15 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="paused" value="{{ 'false' if r.ch.paused else 'true' }}">
         <button class="btn ghost" type="submit">{{ 'Возобновить' if r.ch.paused else 'Пауза' }}</button>
+      </form>
+      <form method="post" action="/channels/{{ r.ch.id }}/edit" class="editrow">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="text" name="publish_windows" placeholder="окна: 08:00-11:00,17:00-21:00" value="{{ (r.ch.publish_windows or []) | join(', ') }}">
+        <input type="text" name="quiet_start" placeholder="тихо с" value="{{ r.ch.quiet_hours.start if r.ch.quiet_hours else '' }}" style="width:6em">
+        <input type="text" name="quiet_end" placeholder="тихо до" value="{{ r.ch.quiet_hours.end if r.ch.quiet_hours else '' }}" style="width:6em">
+        <input type="number" name="daily_limit" value="{{ r.ch.daily_limit }}" style="width:5em" title="публикаций в день">
+        <input type="number" name="min_interval_min" value="{{ r.ch.min_interval_min }}" style="width:5em" title="интервал, мин">
+        <button class="btn ghost" type="submit">Сохранить</button>
       </form>
     </div>
   </div>
