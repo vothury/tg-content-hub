@@ -88,8 +88,7 @@ def parse_sources_text(text: str):
             "min_interval_min": t.get("min_interval_min"),
             "quiet_hours": t.get("quiet_hours"),
             "publish_windows": t.get("publish_windows"),
-            "read_history": True if t.get("read_history") is None
-                            else bool(t.get("read_history")),
+            "read_history": t.get("read_history"),
             "history_max_posts": t.get("history_max_posts"),
             "fresh_window_min": t.get("fresh_window_min"),
             "rewrite": t.get("rewrite"),
@@ -242,7 +241,8 @@ async def apply_parsed(parsed) -> dict:
                                           daily_limit=cfg["daily_limit"] or 6, min_interval_min=cfg["min_interval_min"] or 60,
                                           quiet_hours=cfg["quiet_hours"],
                                           publish_windows=cfg["publish_windows"],
-                                          read_history=cfg["read_history"],
+                                          read_history=True if cfg["read_history"] is None
+                                                         else bool(cfg["read_history"]),
                                           history_max_posts=cfg["history_max_posts"],
                                           fresh_window_min=cfg["fresh_window_min"],
                                           rewrite_enabled=True if cfg["rewrite"] is None else bool(cfg["rewrite"]),
@@ -273,7 +273,7 @@ async def apply_parsed(parsed) -> dict:
             if cfg["min_interval_min"] and ch.min_interval_min != cfg["min_interval_min"]: ch.min_interval_min = cfg["min_interval_min"]; changed = True
             if cfg["quiet_hours"] is not None and ch.quiet_hours != cfg["quiet_hours"]: ch.quiet_hours = cfg["quiet_hours"]; changed = True
             if cfg["publish_windows"] is not None and ch.publish_windows != cfg["publish_windows"]: ch.publish_windows = cfg["publish_windows"]; changed = True
-            if ch.read_history != cfg["read_history"]: ch.read_history = cfg["read_history"]; changed = True
+            if cfg["read_history"] is not None and ch.read_history != cfg["read_history"]: ch.read_history = cfg["read_history"]; changed = True
             if cfg["history_max_posts"] is not None and ch.history_max_posts != cfg["history_max_posts"]: ch.history_max_posts = cfg["history_max_posts"]; changed = True
             if cfg["fresh_window_min"] is not None and ch.fresh_window_min != cfg["fresh_window_min"]: ch.fresh_window_min = cfg["fresh_window_min"]; changed = True
             rw = True if cfg["rewrite"] is None else bool(cfg["rewrite"])

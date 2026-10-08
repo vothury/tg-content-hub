@@ -166,6 +166,30 @@ async def channel_edit(ch_id: int,
     return RedirectResponse("/channels", status_code=303)
 
 
+@router.post("/channels/{ch_id}/history", dependencies=[Depends(csrf_protect)])
+async def channel_history(ch_id: int, read_history: bool = Form(True)):
+    """Постоянный режим канала: read_history=false = только свежие посты
+    (история при подключении и бэклог после простоев не читаются)."""
+    async with session_scope() as session:
+        ch = await session.get(TargetChannel, ch_id)
+        if ch is not None:
+            ch.read_history = read_history
+            await session.commit()
+    return RedirectResponse("/channels", status_code=303)
+
+
+@router.post("/channels/{ch_id}/skip_backlog", dependencies=[Depends(csrf_protect)])
+async def channel_skip_backlog(ch_id: int):
+    """Разово: всем источникам канала skip_backlog=true — курсоры на свежие посты."""
+    async with session_scope() as session:
+        rows = (await session.execute(
+            select(Source).where(Source.target_channel_id == ch_id))).scalars().all()
+        for s in rows:
+            s.skip_backlog = True
+        await session.commit()
+    return RedirectResponse("/channels", status_code=303)
+
+
 @router.post("/sources/{src_id}/history", dependencies=[Depends(csrf_protect)])
 async def source_history(src_id: int,
                          backfill_limit: int = Form(-1),

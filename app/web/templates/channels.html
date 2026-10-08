@@ -32,6 +32,15 @@
         <input type="number" name="min_interval_min" value="{{ r.ch.min_interval_min }}" style="width:5em" title="интервал, мин">
         <button class="btn ghost" type="submit">Сохранить</button>
       </form>
+      <form method="post" action="/channels/{{ r.ch.id }}/history">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="read_history" value="{{ 'false' if r.ch.read_history else 'true' }}">
+        <button class="btn ghost" type="submit" title="постоянный режим: при подключении и после простоев история и бэклог не читаются, в работу идут только свежие посты">{{ 'Разрешить историю' if not r.ch.read_history else 'Только свежие посты' }}</button>
+      </form>
+      <form method="post" action="/channels/{{ r.ch.id }}/skip_backlog">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="btn ghost" type="submit" title="разово: всем источникам канала курсор на свежий пост без обработки накопленного">Пропустить бэклог всем источникам</button>
+      </form>
     </div>
   </div>
   {% endfor %}
