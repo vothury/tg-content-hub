@@ -482,15 +482,9 @@ async def mark_read(snap: SourceSnapshot, last_id: int | None) -> None:
 
 
 async def process_source(client: TelegramClient, snap: SourceSnapshot) -> None:
-    if snap.last_read_at is not None:
-        elapsed = (_utcnow() - snap.last_read_at).total_seconds()
-        if elapsed < snap.poll_interval_sec:
-            return
-
-    entity = await resolve_entity(client, snap)
-    await sync_source_meta(snap, entity)
-
     if snap.skip_backlog:
+        # действие кнопки вне расписания: не ждём интервал опроса источника
+        entity = await resolve_entity(client, snap)
         latest = await client.get_messages(entity, limit=1)
         if latest:
             await mark_read(snap, max(m.id for m in latest))
@@ -501,6 +495,14 @@ async def process_source(client: TelegramClient, snap: SourceSnapshot) -> None:
                 await session.commit()
         log.info("источник #%s: бэклог пропущен по кнопке, курсор на свежий пост", snap.id)
         return
+
+    if snap.last_read_at is not None:
+        elapsed = (_utcnow() - snap.last_read_at).total_seconds()
+        if elapsed < snap.poll_interval_sec:
+            return
+
+    entity = await resolve_entity(client, snap)
+    await sync_source_meta(snap, entity)
 
     gap = (snap.last_read_at is not None and
            (_utcnow() - snap.last_read_at).total_seconds() > 2 * snap.poll_interval_sec)

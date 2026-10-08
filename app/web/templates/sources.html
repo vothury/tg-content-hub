@@ -8,6 +8,7 @@
   <div class="card">
     <div class="label">@{{ r.s.username }} → @{{ r.target }}
       <span class="badge">{{ 'пауза' if r.s.paused else 'активен' }}</span>
+      {% if r.s.skip_backlog %}<span class="badge">пропуск бэклога ожидает</span>{% endif %}
       {% if r.ch_paused %}<span class="badge">канал на паузе</span>{% endif %}
       {% if r.s.editorial_only %}<span class="badge">сырьё редакции</span>{% endif %}
       {% if not r.s.enabled %}<span class="badge">вне топологии</span>{% endif %}
