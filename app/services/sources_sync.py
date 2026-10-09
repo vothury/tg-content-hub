@@ -133,8 +133,6 @@ def parse_sources_text(text: str):
             "llm_instructions": str(s.get("llm_instructions") or "").strip() or None,
             "poll_interval_sec": s.get("poll_interval_sec"),
             "fresh_window_min": s.get("fresh_window_min"),
-            "fallback_count": s.get("fallback_count"),
-            "fallback_max_age_hours": s.get("fallback_max_age_hours"),
             "relevance": _parse_relevance(s.get("relevance"), i),
             "filters": {k: v for k, v in {
                 "min_text_len": f.get("min_text_len"),
@@ -188,8 +186,6 @@ async def apply_parsed(parsed) -> dict:
     stats = {"styles": [0, 0], "targets": [0, 0], "sources": [0, 0], "disabled": 0}
     d_interval = getattr(settings, "reader_default_source_interval_sec", 300)
     d_window = getattr(settings, "reader_fresh_window_min", 60)
-    d_fb = getattr(settings, "reader_fallback_count", 2)
-    d_fb_h = getattr(settings, "reader_fallback_max_age_hours", 48)
     async with session_scope() as session:
         for e in styles_cfg:
             sp = (await session.execute(select(StyleProfile).where(StyleProfile.name == e["name"]))).scalar_one_or_none()
@@ -331,8 +327,6 @@ async def apply_parsed(parsed) -> dict:
                              kind=e["kind"], enabled=e["enabled"], target_channel_id=tgt,
                              poll_interval_sec=e["poll_interval_sec"] or d_interval,
                              fresh_window_min=e["fresh_window_min"] or d_window,
-                             fallback_count=e["fallback_count"] if e["fallback_count"] is not None else d_fb,
-                             fallback_max_age_hours=e["fallback_max_age_hours"] if e["fallback_max_age_hours"] is not None else d_fb_h,
                              relevance=e["relevance"], filters=e["filters"],
                              editorial_only=e["editorial_only"],
                              llm_instructions=e["llm_instructions"])
@@ -346,8 +340,6 @@ async def apply_parsed(parsed) -> dict:
                 if src.target_channel_id != tgt: src.target_channel_id = tgt; changed = True
                 if e["poll_interval_sec"] and src.poll_interval_sec != e["poll_interval_sec"]: src.poll_interval_sec = e["poll_interval_sec"]; changed = True
                 if e["fresh_window_min"] and src.fresh_window_min != e["fresh_window_min"]: src.fresh_window_min = e["fresh_window_min"]; changed = True
-                if e["fallback_count"] is not None and src.fallback_count != e["fallback_count"]: src.fallback_count = e["fallback_count"]; changed = True
-                if e["fallback_max_age_hours"] is not None and src.fallback_max_age_hours != e["fallback_max_age_hours"]: src.fallback_max_age_hours = e["fallback_max_age_hours"]; changed = True
                 if src.relevance != e["relevance"]: src.relevance = e["relevance"]; changed = True
                 if src.editorial_only != e["editorial_only"]: src.editorial_only = e["editorial_only"]; changed = True
                 if src.llm_instructions != e["llm_instructions"]:

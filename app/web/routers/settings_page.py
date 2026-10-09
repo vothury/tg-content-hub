@@ -279,7 +279,7 @@ async def settings_page(request: Request, msg: str = ""):
     cand = int(cur.get(_k("MAX_CANDIDATES_PER_DAY")) or settings.max_candidates_per_day)
     mode_lines = [
         f"Опрос источников: {def_interval} с",
-        f"Свежесть: окно {settings.reader_fresh_window_min} мин; фолбэк {settings.reader_fallback_count} не старше {settings.reader_fallback_max_age_hours} ч",
+        f"Свежесть: окно {settings.reader_fresh_window_min} мин глобально; история и окна каналов — страницы «Каналы»/«Источники»",
         f"Медиа: скачивание до {def_media} МБ",
         f"Классификация: {cur.get(_k('CLASSIFY_MODEL')) or settings.classify_model}; рерайт: {cur.get(_k('REWRITE_MODEL')) or settings.rewrite_model}",
         f"Двойная проверка: {cur.get(_k('DOUBLE_CHECK_MODEL')) or settings.effective_revision_model}",

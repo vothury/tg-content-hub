@@ -72,10 +72,9 @@ class Source(Base):
 
     target_channel_id: Mapped[int | None] = mapped_column(ForeignKey("target_channels.id"), index=True)
 
-    # Политика свежести (пусто = глобальные значения из .env)
+    # Окно свежести штатного режима (пусто = наследуется от канала/глобально);
+    # потолок истории = backfill_limit (пусто = history_max_posts канала/глобально)
     fresh_window_min: Mapped[int | None] = mapped_column(Integer)
-    fallback_count: Mapped[int | None] = mapped_column(Integer)
-    fallback_max_age_hours: Mapped[int | None] = mapped_column(Integer)
 
     # Релевантность источника целевому каналу (1-10): влияет на строгость классификации
     relevance: Mapped[int | None] = mapped_column(Integer)
