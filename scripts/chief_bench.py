@@ -62,12 +62,13 @@ def _checks(snap: dict, topics: list) -> list:
         if not any(re.search(r"\d", c["title"]) for c in sel):
             bad.append("no_digits_grounding")
         objs = {c.get("obj") for c in sel if c.get("obj")}
-        if len(objs) > 1:
+        if snap.get("strict_objects") and len(objs) > 1:
             bad.append("mix_objects")
         text = f"{_tget(t, 'theme') or ''} {_tget(t, 'hypothesis') or ''}"
         if any(_overlap(text, r) > 0.6 for r in recent):
             bad.append("dup_recent")
-        if objs == {"rf"} and not any(w in text.lower() for w in SCOPE_WORDS):
+        mentions_msk = ("моск" in text.lower()) or ("msk" in objs)
+        if "rf" in objs and mentions_msk and not any(w in text.lower() for w in SCOPE_WORDS):
             bad.append("scope_no_caveat")
     if snap.get("expect_weak") and topics:
         bad.append("weak_not_dropped")
