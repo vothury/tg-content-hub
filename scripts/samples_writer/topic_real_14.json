@@ -3,7 +3,7 @@
  "hypothesis": "Сентябрьский обзор показывает перелом спроса и цен после смены условий ипотеки",
  "kind": "rewrite",
  "kb": "",
- "expect": "write",
+ "expect": "drop",
  "materials": [
   {
    "label": "web IRN 04.10.2026",

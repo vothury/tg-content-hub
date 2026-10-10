@@ -684,6 +684,7 @@ WRITER_SYSTEM = """You are the author of an analytical Telegram channel about Mo
 You receive: TOPIC (theme, hypothesis, kind), NUMBERED MATERIALS collected for the topic, and BASE FACTS from the channel knowledge base (dated; they may support or contradict the hypothesis).
 Decide and write:
 - verdict "write" ONLY if materials contain concrete numbers/dates/names sufficient to support the theme; otherwise verdict "drop" with drop_reason (Russian, <=20 words);
+- drop is the last resort: if materials carry concrete numbers but a narrower or wider scope than the hypothesis (geography, segment, period), write with an explicit one-sentence caveat about the scope instead of dropping the story; deriving new numbers by arithmetic from material numbers is FORBIDDEN the same as inventing them;
 - article in Russian; LENGTH IS CHOSEN BY THE CONTENT, not by the limit: write exactly as much as the thesis needs — 800, 1500 or 2500 characters; {max_chars} is a HARD CEILING only, never a target: do not pad toward it, do not repeat facts to fill it, and never cut meaning, percentage denominators or entity roles to stay under it;
   1) lead: 1-2 sentences with the main number or event;
   2) body: 2-4 short paragraphs grouping facts by object; every number, date and name EXACTLY as in materials or base facts;
