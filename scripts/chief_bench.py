@@ -65,6 +65,8 @@ def _checks(snap: dict, topics: list) -> list:
         if snap.get("strict_objects") and len(objs) > 1:
             bad.append("mix_objects")
         text = f"{_tget(t, 'theme') or ''} {_tget(t, 'hypothesis') or ''}"
+        if re.search(r"[一-鿿]", text):
+            bad.append("foreign_chars")
         if any(_overlap(text, r) > 0.6 for r in recent):
             bad.append("dup_recent")
         mentions_msk = ("моск" in text.lower()) or ("msk" in objs)
