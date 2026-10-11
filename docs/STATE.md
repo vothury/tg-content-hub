@@ -187,3 +187,5 @@ target-list/llm-check/llm-models/wait-web и др. (см. Makefile). Сборк�
 - Chief (A2 закрыт): голова z-ai/glm-5.3-flash (gmicloud/fp8), challenger
   anthropic/claude-haiku-5.5; xiaomi/mimo-v2.6-flash исключён из chief-роли
   (наполнительные темы из пустой ленты, cross-scope причинность, CJK-фрагменты в гипотезах).
+  Дисциплина пустой ленты стохастична у моделей (glm 2/3 чисто), поэтому в
+  editorial_chief стоит кодовый guard: тема без цифр в кластерах отклоняется независимо от модели.

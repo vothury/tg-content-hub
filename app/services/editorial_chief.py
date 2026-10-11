@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import difflib
 import logging
+import re
 
 from datetime import datetime, timedelta, timezone
 
@@ -115,6 +116,12 @@ async def run_chief_phase() -> int:
         flat = [hid for i in t["headlines"] if 0 < i <= len(clusters)
                 for hid in clusters[i - 1]["ids"]]
         if not flat:
+            continue
+        sel_titles = [clusters[i - 1]["title"] for i in t["headlines"]
+                      if 0 < i <= len(clusters)]
+        if not any(re.search(r"\d", x) for x in sel_titles):
+            log.info("chief: тема '%s' отклонена кодовым guard'ом — "
+                     "в кластерах нет цифр (наполнитель)", t["theme"])
             continue
         async with session_scope() as session:
             topic = Topic(kind=TopicKind(t["kind"]), status=TopicStatus.IN_WORK,
