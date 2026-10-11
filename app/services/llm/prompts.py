@@ -714,7 +714,7 @@ MATERIALS:
 BASE FACTS (knowledge base):
 {kb}"""
 
-EDITOR_VERSION = "editor-v1"
+EDITOR_VERSION = "editor-v2"
 
 EDITOR_SYSTEM = """You are the strict editor of an analytical Telegram channel about Moscow primary real estate.
 You receive MATERIALS, BASE FACTS and a DRAFT written by the author.
@@ -734,7 +734,7 @@ Check the DRAFT as an ordinary reader who has NOT seen the materials:
 If the DRAFT already satisfies all rules — verdict "pass" and empty text.
 Otherwise verdict "rewrite" and the final text: exactly as long as the thesis needs, hard ceiling {max_chars} characters (padding toward the ceiling is a defect just like cutting meaning), Russian, no hashtags/emojis/links, numbers exactly as in materials, body only without title.
 Think in English, briefly. Answer strictly JSON with no text outside it:
-{{"verdict": "pass|rewrite", "problems":
+{{"verdict": "pass|rewrite", "problems": ["..."], "edits": [{{"was": "...", "now": "...", "why": "R3"}}], "check": {{"R1": "clean", "R2": "fixed: ..."}}, "text": ""}}"""
 
 EDITOR_USER = """MATERIALS:
 {materials}
