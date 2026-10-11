@@ -40,13 +40,19 @@ class LLMResponse:
     latency_ms: int
     finish_reason: str | None
     cached_tokens: int = 0   # prompt caching: сколько входных токенов отдано из кэша
+    price_source: str = "catalog"   # manual (пара model_prices) | catalog | free
 
 
 class PriceBook:
-    """Кэш цен моделей из /models: цена за токен (вход, выход, cache_read)."""
+    """Кэш цен моделей из /models: цена за токен (вход, выход, cache_read).
+
+    Поверх каталога — ручной прайс-бук model_prices (пары модель+провайдер):
+    пины провайдеров могут тарифицироваться иначе каталога слага."""
 
     def __init__(self) -> None:
         self._prices: dict[str, tuple[float, float, float | None]] = {}
+        self._overrides: dict[tuple[str, str | None],
+                              tuple[float, float, float | None, str]] = {}
         self._loaded = False
 
     async def load(self, client: httpx.AsyncClient) -> None:
@@ -71,14 +77,41 @@ class PriceBook:
                 self._prices[item.get("id", "")] = (prompt_price, completion_price, cache_read)
             self._loaded = True
             log.info("прайс-кэш загружен: %d моделей", len(self._prices))
+            await self._load_overrides()
+
+    async def _load_overrides(self) -> None:
+        try:
+            from sqlalchemy import select
+
+            from app.db.models import ModelPrice
+            from app.db.session import session_scope
+            async with session_scope() as session:
+                rows = (await session.execute(select(ModelPrice))).scalars().all()
+            self._overrides = {
+                (r.model_slug, r.provider): (r.price_in_per_token,
+                                             r.price_out_per_token,
+                                             r.cache_read_per_token, r.source)
+                for r in rows
+            }
+            log.info("прайс-бук: %d ручных цен пар", len(self._overrides))
+        except Exception as exc:  # noqa: BLE001 — прайс-бук некритичен
+            log.warning("прайс-бук: не удалось загрузить ручные цены: %s", exc)
         except Exception as exc:  # noqa: BLE001 — цены некритичны
             log.warning("не удалось загрузить прайс-кэш: %s", exc)
 
     def cost(self, model: str, input_tokens: int | None, output_tokens: int | None,
-             cached_tokens: int = 0) -> float | None:
-        prices = self._prices.get(model)
+             cached_tokens: int = 0,
+             provider: str | None = None) -> tuple[float | None, str]:
+        ov = (self._overrides.get((model, provider))
+              or self._overrides.get((model, None)))
+        if ov is not None:
+            prices: tuple[float, float, float | None] = ov[:3]
+            source = ov[3]
+        else:
+            prices = self._prices.get(model) or None
+            source = "catalog"
         if not prices or input_tokens is None or output_tokens is None:
-            return None
+            return None, source
         prompt_price, completion_price, cache_read = prices
         total = input_tokens * prompt_price + output_tokens * completion_price
         if cached_tokens and cache_read is not None:
@@ -86,7 +119,7 @@ class PriceBook:
             # вычитая их долю из полной стоимости входа
             total -= cached_tokens * prompt_price
             total += cached_tokens * cache_read
-        return total
+        return total, source
 
 
 _price_book = PriceBook()
@@ -173,14 +206,19 @@ async def chat_completion(
     output_tokens = usage.get("completion_tokens")
     cached_tokens = int((usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0) or 0)
     answer_model = data.get("model", model)
+    free = str(answer_model).endswith(":free")
+    cost_usd, price_source = (
+        (0.0, "free") if free else _price_book.cost(
+            answer_model, input_tokens, output_tokens, cached_tokens,
+            data.get("provider")))
     return LLMResponse(
         content=content,
         model=answer_model,
         provider=data.get("provider"),
         input_tokens=input_tokens,
         output_tokens=output_tokens,
-        cost_usd=(0.0 if str(answer_model).endswith(":free")
-                  else _price_book.cost(answer_model, input_tokens, output_tokens, cached_tokens)),
+        cost_usd=cost_usd,
+        price_source=price_source,
         latency_ms=latency_ms,
         finish_reason=finish_reason,
         cached_tokens=cached_tokens,

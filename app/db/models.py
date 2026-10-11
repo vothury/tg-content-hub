@@ -42,6 +42,25 @@ def _enum(enum_cls: type, name: str) -> SAEnum:
     return SAEnum(enum_cls, name=name, values_callable=lambda c: [m.value for m in c])
 
 
+class ModelPrice(Base):
+    """Ручной прайс-бук: фактическая цена пары модель+провайдер (за токен)."""
+
+    __tablename__ = "model_prices"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    model_slug: Mapped[str] = mapped_column(String(255))
+    provider: Mapped[str | None] = mapped_column(String(128))
+    price_in_per_token: Mapped[float] = mapped_column(Float)
+    price_out_per_token: Mapped[float] = mapped_column(Float)
+    cache_read_per_token: Mapped[float | None] = mapped_column(Float)
+    source: Mapped[str] = mapped_column(String(32), default="manual")
+    note: Mapped[str | None] = mapped_column(Text)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (UniqueConstraint("model_slug", "provider",
+                                       name="uq_model_prices_pair"),)
+
+
 class Source(Base):
     """Источник контента: чужой публичный канал или тестовый канал-лаборатория."""
 
