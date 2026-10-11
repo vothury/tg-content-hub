@@ -43,9 +43,13 @@ def _enum(enum_cls: type, name: str) -> SAEnum:
 
 
 class ModelPrice(Base):
-    """Ручной прайс-бук: фактическая цена пары модель+провайдер (за токен)."""
+    """Ручной прайс-бук: фактическая цена пары модель+провайдер (за токен).
 
-    __tablename__ = "model_prices"
+    Таблица model_price_book отделена от существующей model_prices
+    (история цен price_watch): книга = действующие цены для учёта,
+    история = ряды наблюдений и алерты."""
+
+    __tablename__ = "model_price_book"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     model_slug: Mapped[str] = mapped_column(String(255))

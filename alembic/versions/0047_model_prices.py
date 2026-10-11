@@ -20,7 +20,7 @@ depends_on = None
 
 def upgrade() -> None:
     op.create_table(
-        "model_prices",
+        "model_price_book",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("model_slug", sa.String(length=255), nullable=False),
         sa.Column("provider", sa.String(length=128), nullable=True),
@@ -31,9 +31,9 @@ def upgrade() -> None:
                   server_default="manual"),
         sa.Column("note", sa.Text(), nullable=True),
         sa.Column("verified_at", sa.DateTime(timezone=True), nullable=True),
-        sa.UniqueConstraint("model_slug", "provider", name="uq_model_prices_pair"),
+        sa.UniqueConstraint("model_slug", "provider", name="uq_model_price_book_pair"),
     )
 
 
 def downgrade() -> None:
-    op.drop_table("model_prices")
+    op.drop_table("model_price_book")
