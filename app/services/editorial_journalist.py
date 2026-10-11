@@ -273,6 +273,10 @@ async def _browse_headlines(url: str, name: str) -> list:
             base = str(await get_setting(session, Keys.EDITORIAL_JOURNALIST_MODEL)) or \
                    str(await get_setting(session, Keys.PREFILTER_MODEL))
             model = base + ":online"  # ИСПРАВЛЕНО: убран пробел
+    from app.services.llm_pipeline import _split_model_list
+    # browse без web-доступа = ложь модели: включаем :online каждой спецификации цепи
+    model = ", ".join(s if ":online" in s else s + ":online"
+                      for s in _split_model_list(model))
     try:
         result = await _call_json(
             [{"role": "system", "content": JOURNALIST_BROWSE_SYSTEM},
