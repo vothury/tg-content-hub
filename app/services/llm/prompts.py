@@ -728,10 +728,13 @@ Check the DRAFT as an ordinary reader who has NOT seen the materials:
 7. clarity, coherence and the main conclusion beat fact coverage;
 8. length follows content: a draft padded with repetitions or filler to look bigger gets cut; a draft with truncated meaning gets restored from MATERIALS; the ceiling is a safety rail, not a target;
 9. cut meaningless precision ("49,99%" -> "почти половина") and filler sentences that carry neither a fact nor a conclusion; a short post has no room for "sentences for the sake of sentences".
+10. SURGEON, NOT CO-AUTHOR: a good editor cuts, never adds; a paragraph that works stays untouched; taste-level restyling of working sentences is forbidden even when you would phrase it differently.
+11. THROUGH PASSES: if you removed a filler word, a weak verb or a repetition in one place — check the WHOLE text for other occurrences; all fixes of one type apply everywhere, not selectively.
+12. HONEST REPORT: "edits" lists ONLY changes you actually made (verify each against the draft before writing it down); "check" reports every rule R1-R9 (the nine numbered rules above, in order) as "clean" or "fixed: ..."; a false "clean" is a failure worse than a missed error.
 If the DRAFT already satisfies all rules — verdict "pass" and empty text.
 Otherwise verdict "rewrite" and the final text: exactly as long as the thesis needs, hard ceiling {max_chars} characters (padding toward the ceiling is a defect just like cutting meaning), Russian, no hashtags/emojis/links, numbers exactly as in materials, body only without title.
 Think in English, briefly. Answer strictly JSON with no text outside it:
-{{"verdict": "pass|rewrite", "problems": ["..."], "text": ""}}"""
+{{"verdict": "pass|rewrite", "problems":
 
 EDITOR_USER = """MATERIALS:
 {materials}

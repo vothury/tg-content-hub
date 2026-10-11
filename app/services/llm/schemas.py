@@ -513,10 +513,16 @@ class EditorialArticleResult:
 
 @dataclass
 class EditorResult:
-    """Второй проход: вердикт строгого редактора по черновику (pass | rewrite + текст)."""
+    """Второй проход: вердикт строгого редактора по черновику (pass | rewrite + текст).
+
+    Контракт v2: edits — список фактически сделанных правок (was/now/why),
+    check — посторточный отчёт по правилам R1-R9; сырьё для памяти редакции (B3)
+    и калибровки редактора (B2)."""
     verdict: str = "pass"
     problems: list | None = None
     text: str = ""
+    edits: list | None = None
+    check: dict | None = None
 
     @classmethod
     def from_response(cls, content: str) -> "EditorResult":
@@ -524,6 +530,9 @@ class EditorResult:
         verdict = str(data.get("verdict") or "").strip().lower()
         if verdict not in ("pass", "rewrite"):
             raise LLMParseError("editor verdict должен быть pass|rewrite")
+        edits = [e for e in (data.get("edits") or []) if isinstance(e, dict)][:8]
+        check = data.get("check") if isinstance(data.get("check"), dict) else None
         return cls(verdict=verdict,
                    problems=[str(x) for x in (data.get("problems") or [])][:5],
-                   text=str(data.get("text") or "").strip())
+                   text=str(data.get("text") or "").strip(),
+                   edits=edits or None, check=check)

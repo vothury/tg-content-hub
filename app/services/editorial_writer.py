@@ -7,6 +7,10 @@ write|drop + черновик в JSON. write -> строка articles (status=RE
 origin=editorial, канал назначения = target_channels.editorial), тема -> READY,
 заголовки -> used. drop -> тема -> DROPPED с причиной в verdict_note.
 Публикация — только через штатное ревью (карточка бота); auto_publish в v1 фазы не_used.
+
+Маршрутизация писателя по виду темы: rewrite -> editorial.writer_model,
+hypothesis -> editorial.writer_model_hypothesis (пусто -> та же модель).
+Редактор всегда на цепи writer_model: скоуп правок зависит от tier писателя.
 """
 from __future__ import annotations
 
@@ -14,10 +18,10 @@ import logging
 
 from sqlalchemy import select
 
-from app.db.enums import (ArticleStatus, DraftOrigin, LLMStage, PostStatus,
+from app.db.enums import (ArticleStatus, DraftOrigin, EventActor, LLMStage, PostStatus,
                           SourceKind, TopicStatus)
 from app.db.models import (Article, Headline, Material, Post, PostDraftVersion,
-                           Source, TargetChannel, Topic)
+                           PostEvent, Source, TargetChannel, Topic)
 from app.db.session import session_scope
 from pathlib import Path
 
@@ -36,7 +40,6 @@ _SYNTH_MSG_BASE = 9_000_000_000   # синтетические source_message_id
 _SOURCE_USERNAME = "virtual_editorial"
 _BRAND_DIR = Path(__file__).resolve().parent / "editorial_brand"
 
-
 def _brand_block() -> str:
     """Редакционная память стиля: голос, запреты, примеры хорошо/плохо."""
     parts = []
@@ -46,15 +49,28 @@ def _brand_block() -> str:
             parts.append(f"### {name}\n{p.read_text(encoding='utf-8').strip()}")
     return "\n\n".join(parts) or "—"
 
+_EDITOR_SCOPE = {
+    "flash": ("Rule-repair is MANDATORY: fix every violation of the numbered rules and brand memory "
+              "(precision, tautology roles, filler sentences, denominator, repetition, wall) with "
+              "through-text passes; paragraph or lead rebuild allowed ONLY when a structural rule is "
+              "violated; taste-level restyling of working sentences is FORBIDDEN."),
+    "strong": ("Strict surgery: touch ONLY explicit violations of the numbered rules and brand memory; "
+               "if the draft reads clean against the rules — verdict pass with zero edits; taste-level "
+               "restyling and paragraph rebuilds are FORBIDDEN even when you would phrase it differently."),
+}
 
-async def _writer_model() -> tuple[str, dict | None]:
-    """editorial.writer_model; пусто -> модель ревизии по умолчанию."""
+async def _writer_models() -> tuple[str, str, dict | None]:
+    """editorial.writer_model (rewrite) и editorial.writer_model_hypothesis
+    (hypothesis; пусто -> та же, что writer); провайдеры общие."""
     async with session_scope() as session:
         model = (str(await get_setting(session, Keys.EDITORIAL_WRITER_MODEL) or "").strip()
                  or str(await get_setting(session, Keys.REVISION_MODEL) or "").strip())
+        hypo = (str(await get_setting(
+            session, getattr(Keys, "EDITORIAL_WRITER_MODEL_HYPOTHESIS",
+                             "editorial.writer_model_hypothesis")) or "").strip()
+                or model)
         providers = await get_providers(session, Keys.REVISION_PROVIDERS)
-    return model, providers
-
+    return model, hypo, providers
 
 async def _ensure_source(session) -> int:
     row = (await session.execute(
@@ -67,13 +83,11 @@ async def _ensure_source(session) -> int:
     await session.flush()
     return src.id
 
-
 async def _editorial_target(session):
     return (await session.execute(
         select(TargetChannel.id)
         .where(TargetChannel.editorial.is_(True), TargetChannel.enabled.is_(True))
         .order_by(TargetChannel.id).limit(1))).scalar_one_or_none()
-
 
 async def _gather(session, topic):
     """Материалы темы: заголовки + тексты tg-постов + справка базы знаний."""
@@ -103,7 +117,6 @@ async def _gather(session, topic):
     kb = facts_kb.format_context(facts_kb.search(f"{topic.theme} {topic.hypothesis or ''}"))
     return heads, listing, kb
 
-
 async def run_writer_phase() -> int:
     async with session_scope() as session:
         enabled = int(await get_setting(session, Keys.EDITORIAL_ENABLED))
@@ -123,12 +136,14 @@ async def run_writer_phase() -> int:
             .where(Topic.status == TopicStatus.IN_WORK,
                    ~Topic.id.in_(select(Article.topic_id)))
             .order_by(Topic.id).limit(ARTICLES_PER_CYCLE * 2))).scalars().all()
-    model, providers = await _writer_model()
+    model, hypo_model, providers = await _writer_models()
     written = 0
     for topic in topics[:ARTICLES_PER_CYCLE]:
         async with session_scope() as session:
             t = await session.get(Topic, topic.id)
             heads, listing, kb = await _gather(session, t)
+            w_model = hypo_model if t.kind.value == "hypothesis" else model
+            tier = "strong" if w_model != model else "flash"
             messages = [
                 {"role": "system",
                  "content": WRITER_SYSTEM.format(max_chars=max_chars)
@@ -138,7 +153,7 @@ async def run_writer_phase() -> int:
                     kind=t.kind.value, materials=listing, kb=kb)},
             ]
             try:
-                res = await _call_json(messages, model, providers, 1400,
+                res = await _call_json(messages, w_model, providers, 5000,
                                        EditorialArticleResult,
                                        stage=LLMStage.EDITORIAL_WRITE)
             except Exception as exc:  # noqa: BLE001
@@ -151,20 +166,24 @@ async def run_writer_phase() -> int:
                 await session.commit()
                 log.info("writer: тема #%s отклонена: %s", t.id, t.verdict_note)
                 continue
+            ed_report = None
             try:
                 ed = await _call_json(
                     [{"role": "system",
                       "content": EDITOR_SYSTEM.format(max_chars=max_chars)
-                      + "\n\nBRAND AND STYLE MEMORY:\n" + _brand_block()},
+                      + "\n\nBRAND AND STYLE MEMORY:\n" + _brand_block()
+                      + "\n\nEDITOR SCOPE (writer tier: " + tier + "):\n"
+                      + _EDITOR_SCOPE[tier]},
                      {"role": "user",
                       "content": EDITOR_USER.format(materials=listing, kb=kb,
                                                     draft=res.text)}],
-                    model, providers, 1200, EditorResult,
+                    model, providers, 4000, EditorResult,
                     stage=LLMStage.EDITORIAL_WRITE)
                 if ed.verdict == "rewrite" and ed.text:
                     log.info("writer: редактор переписал статью темы #%s: %s",
                              t.id, "; ".join(ed.problems or [])[:160])
                     res.text = ed.text
+                ed_report = {"edits": ed.edits or [], "check": ed.check or {}}
             except Exception as exc:  # noqa: BLE001
                 log.warning("writer: редактор не смог проверить тему #%s — черновик как есть: %s",
                             t.id, exc)
@@ -185,6 +204,9 @@ async def run_writer_phase() -> int:
             await session.flush()
             session.add(PostDraftVersion(post_id=post.id, version=1,
                                          text=final_text, origin=DraftOrigin.EDITORIAL))
+            if ed_report and (ed_report["edits"] or ed_report["check"]):
+                session.add(PostEvent(post_id=post.id, actor=EventActor.SYSTEM,
+                                      action="editor_report", details=ed_report))
             for h in heads:
                 hh = await session.get(Headline, h.id)
                 if hh is not None:
@@ -193,6 +215,7 @@ async def run_writer_phase() -> int:
             t.verdict = "confirmed"
             await session.commit()
             written += 1
-            log.info("writer: статья #%s (тема #%s): %s | post #%s -> AWAITING_REVIEW",
-                     art.id, t.id, (res.title or "")[:60], post.id)
+            log.info("writer: статья #%s (тема #%s, %s, writer=%s): %s | post #%s -> AWAITING_REVIEW",
+                     art.id, t.id, t.kind.value, w_model.split("/")[-1],
+                     (res.title or "")[:60], post.id)
     return written
