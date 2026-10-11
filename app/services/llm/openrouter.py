@@ -2,9 +2,9 @@
 
 - чат-комплишены с ретраем на транзитные ошибки;
 - токены из ответа (usage), включая кешированные (prompt caching);
-- стоимость по ценам /models (кэш в памяти, цены за токен; кешированные токены
-  считаются по цене cache_read, если провайдер её публикует, иначе стоимость
-  оценивается по полным ценам — консервативно для бюджет-предохранителей);
+- стоимость: сначала ручной прайс-бук model_price_book (фактические цены пар
+  модель+провайдер, source manual/probe), затем каталог /models как запасной слой;
+  кешированные токены считаются по цене cache_read, если провайдер её публикует;
 - session_id для sticky routing (аффинность провайдера ради prompt-кэша);
 - логирование вызовов в llm_calls выполняет вызывающий код.
 """
@@ -40,13 +40,13 @@ class LLMResponse:
     latency_ms: int
     finish_reason: str | None
     cached_tokens: int = 0   # prompt caching: сколько входных токенов отдано из кэша
-    price_source: str = "catalog"   # manual (пара model_prices) | catalog | free
+    price_source: str = "catalog"   # manual/probe (пара прайс-бука) | catalog | free
 
 
 class PriceBook:
     """Кэш цен моделей из /models: цена за токен (вход, выход, cache_read).
 
-    Поверх каталога — ручной прайс-бук model_prices (пары модель+провайдер):
+    Поверх каталога — ручной прайс-бук model_price_book (пары модель+провайдер):
     пины провайдеров могут тарифицироваться иначе каталога слага."""
 
     def __init__(self) -> None:
@@ -74,9 +74,13 @@ class PriceBook:
                                   if pricing.get("cache_read") else None)
                 except (TypeError, ValueError):
                     cache_read = None
-                self._prices[item.get("id", "")] = (prompt_price, completion_price, cache_read)
+                self._prices[item.get("id", "")] = (prompt_price, completion_price,
+                                                    cache_read)
             self._loaded = True
             log.info("прайс-кэш загружен: %d моделей", len(self._prices))
+        except Exception as exc:  # noqa: BLE001 — цены некритичны
+            log.warning("не удалось загрузить прайс-кэш: %s", exc)
+        if self._loaded:
             await self._load_overrides()
 
     async def _load_overrides(self) -> None:
@@ -96,8 +100,6 @@ class PriceBook:
             log.info("прайс-бук: %d ручных цен пар", len(self._overrides))
         except Exception as exc:  # noqa: BLE001 — прайс-бук некритичен
             log.warning("прайс-бук: не удалось загрузить ручные цены: %s", exc)
-        except Exception as exc:  # noqa: BLE001 — цены некритичны
-            log.warning("не удалось загрузить прайс-кэш: %s", exc)
 
     def cost(self, model: str, input_tokens: int | None, output_tokens: int | None,
              cached_tokens: int = 0,
@@ -182,7 +184,8 @@ async def chat_completion(
                 except ValueError:
                     retry_after = 3
                 delay = min(retry_after, 30)
-                log.warning("OpenRouter HTTP %s — повтор через %d сек", resp.status_code, delay)
+                log.warning("OpenRouter HTTP %s — повтор через %d сек",
+                            resp.status_code, delay)
                 await asyncio.sleep(delay)
                 continue
             if resp.status_code != 200:
@@ -199,7 +202,8 @@ async def chat_completion(
         content = choice["message"]["content"] or ""
         finish_reason = choice.get("finish_reason")
     except (KeyError, IndexError, TypeError) as exc:
-        raise OpenRouterError(f"неожиданная структура ответа: {json.dumps(data)[:500]}") from exc
+        raise OpenRouterError(
+            f"неожиданная структура ответа: {json.dumps(data)[:500]}") from exc
 
     usage = data.get("usage") or {}
     input_tokens = usage.get("prompt_tokens")

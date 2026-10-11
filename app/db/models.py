@@ -480,21 +480,6 @@ class AppSetting(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
-class ModelPrice(Base):
-    """История цен модели OpenRouter (снимки при изменении цены)."""
-
-    __tablename__ = "model_prices"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    model: Mapped[str] = mapped_column(String(255), index=True)
-    provider: Mapped[str] = mapped_column(String(160), default="", index=True)  # '' = агрегат (топ-провайдер каталога)
-    prompt_usd: Mapped[float] = mapped_column(Float, default=0.0)
-    completion_usd: Mapped[float] = mapped_column(Float, default=0.0)
-    request_usd: Mapped[float] = mapped_column(Float, default=0.0)
-    web_search_usd: Mapped[float] = mapped_column(Float, default=0.0)  # цена за один веб-поиск
-    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-
-
 class ModelPriceAlert(Base):
     """Предупреждение о заметном изменении цены модели."""
 
