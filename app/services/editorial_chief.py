@@ -69,7 +69,8 @@ async def run_chief_phase() -> int:
     async with session_scope() as session:
         enabled = int(await get_setting(session, Keys.EDITORIAL_ENABLED))
         budget = float(await get_setting(session, Keys.EDITORIAL_BUDGET_USD_PER_DAY))
-        max_topics = TOPICS_PER_CYCLE
+        max_topics = int(await get_setting(session, Keys.EDITORIAL_TOPICS_PER_CYCLE)
+                         or TOPICS_PER_CYCLE)
     if not enabled:
         return 0
     day = owner_now().date().isoformat()

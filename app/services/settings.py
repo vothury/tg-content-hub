@@ -17,11 +17,34 @@ from app.config import settings
 log = logging.getLogger(__name__)
 
 
+def _split_top(s: str) -> list:
+    """Запятые на глубине скобок 0: запятая внутри (пин, пин) не режет спецификатор."""
+    out, buf, depth = [], [], 0
+    for ch in s:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth = max(0, depth - 1)
+        if ch == "," and depth == 0:
+            out.append("".join(buf))
+            buf = []
+        else:
+            buf.append(ch)
+    out.append("".join(buf))
+    return [x.strip() for x in out if x.strip()]
+
+
+def _clean_item(x: str) -> str:
+    t = x.strip().strip("'\"").strip()
+    return t if t and not set(t) & set("[]{}") else ""
+
+
 def repair_list(value, depth: int = 0) -> list:
     """Приводит любое вложенное/битое представление списка к плоскому списку строк.
 
     Обрабатывает: чистый список, JSON-строку, repr-строку и «массив фрагментов»,
-    который получается, если repr списка разрезали по запятым.
+    который получается, когда repr списка разрезали по запятым; фрагменты с
+    разрезанными скобками пинов склеиваются обратно по балансу скобок.
     """
     if depth > 8 or value is None:
         return []
@@ -39,9 +62,9 @@ def repair_list(value, depth: int = 0) -> list:
                     continue
             return []
         if "," in s:                      # строка «a, b» из input или из битого сохранения
-            return repair_list([x for x in s.split(",")], depth + 1)
-        t = s.strip("'\"").strip()
-        return [t] if t and not set(t) & set("[]{}") else []
+            return [_clean_item(x) for x in _split_top(s) if _clean_item(x)]
+        t = _clean_item(s)
+        return [t] if t else []
     if isinstance(value, (list, tuple)):
         items = list(value)
         if items and all(isinstance(x, str) for x in items):
@@ -51,6 +74,15 @@ def repair_list(value, depth: int = 0) -> list:
                     return repair_list(loader(joined), depth + 1)
                 except Exception:  # noqa: BLE001
                     continue
+            merged, buf = [], ""
+            for x in items:
+                buf = f"{buf}, {x}" if buf else x
+                if buf.count("(") == buf.count(")"):
+                    merged.append(buf)
+                    buf = ""
+            if buf:
+                merged.append(buf)
+            return [_clean_item(x) for x in merged if _clean_item(x)]
         out, seen = [], set()
         for x in items:
             for t in repair_list(x, depth + 1):
@@ -103,6 +135,7 @@ class Keys:
     EDITORIAL_PUBLISHED_HOURS = "editorial.published_hours"
     EDITORIAL_WRITER_MODE = "editorial.writer_mode"
     EDITORIAL_WRITER_MODEL = "editorial.writer_model"
+    EDITORIAL_WRITER_MODEL_HYPOTHESIS = "editorial.writer_model_hypothesis"
     EDITORIAL_AUTO_PUBLISH = "editorial.auto_publish"
     EDITORIAL_POST_MAX_CHARS = "editorial.post_max_chars"
     EDITORIAL_REWRITE_MAX_PER_DAY = "editorial.rewrite_max_per_day"
@@ -188,6 +221,7 @@ _ENV_DEFAULTS: dict[str, Any] = {
     Keys.EDITORIAL_PUBLISHED_HOURS: settings.editorial_published_hours,
     Keys.EDITORIAL_WRITER_MODE: settings.editorial_writer_mode,
     Keys.EDITORIAL_WRITER_MODEL: settings.editorial_writer_model,
+    Keys.EDITORIAL_WRITER_MODEL_HYPOTHESIS: "",
     Keys.EDITORIAL_AUTO_PUBLISH: settings.editorial_auto_publish,
     Keys.EDITORIAL_POST_MAX_CHARS: settings.editorial_post_max_chars,
     Keys.EDITORIAL_REWRITE_MAX_PER_DAY: settings.editorial_rewrite_max_per_day,

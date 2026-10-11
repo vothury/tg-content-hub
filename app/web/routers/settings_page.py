@@ -18,8 +18,8 @@ router = APIRouter(dependencies=[Depends(require_auth)])
 SENSITIVE = {
     "bot_token", "openrouter_api_key", "admin_password", "secret_key",
     "telegram_api_hash", "database_url",
+    "webpush.private_key", "webpush.private_pem",
 }
-
 
 def _k(name, fallback=None):
     return getattr(Keys, name, fallback)
@@ -147,6 +147,12 @@ EDITABLE = [
      "hint": "journalist (вариант A, дешевле) или model (вариант B, editorial_writer_model)."},
     {"key": _k("EDITORIAL_WRITER_MODEL", "editorial.writer_model"), "label": "Редакция: модель автора (B)", "attr": "editorial_writer_model", "type": "text",
      "hint": "Используется только при writer_mode=model."},
+    {"key": _k("EDITORIAL_WRITER_MODEL_HYPOTHESIS", "editorial.writer_model_hypothesis"), "label": "Редакция: модель автора hypothesis-тем", "attr": "editorial_writer_model_hypothesis", "type": "text",
+     "hint": "Писатель тем вида hypothesis (синтез нескольких фактов); пусто = та же, что rewrite-автор. По wide-v6: xiaomi/mimo-v2.6-pro (xiaomi/fp8)."},
+    {"key": _k("EDITORIAL_TOPICS_PER_CYCLE", "editorial.topics_per_cycle"), "label": "Редакция: тем за цикл", "attr": "editorial_topics_per_cycle", "type": "number",
+     "hint": "Потолок тем главреда за цикл; 2 = гипотеза + rewrite-кандидат."},
+    {"key": _k("EDITORIAL_HEADLINE_RETENTION_DAYS", "editorial.headline_retention_days"), "label": "Редакция: хранение заголовков, дней", "attr": "editorial_headline_retention_days", "type": "number",
+     "hint": "Заголовки старше этого срока без темы удаляются (гигиена ленты главреда)."},
     {"key": _k("EDITORIAL_AUTO_PUBLISH", "editorial.auto_publish"), "label": "Редакция: автопубликация", "attr": "editorial_auto_publish", "type": "number",
      "hint": "0 = статья ждёт одобрения владельца; 1 = публикация по окнам без ревью."},
     {"key": _k("EDITORIAL_POST_MAX_CHARS", "editorial.post_max_chars"), "label": "Редакция: макс. знаков поста", "attr": "editorial_post_max_chars", "type": "number",
