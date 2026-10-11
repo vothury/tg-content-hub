@@ -116,6 +116,8 @@ class Keys:
     PRICE_WATCH_INTERVAL_HOURS = "price_watch.interval_hours"
     PRICE_HISTORY_MIN_CHANGE_PCT = "price_watch.history_min_change_pct"
     PRICE_WATCH_SCOPE = "price_watch.scope"
+    PRICE_WATCH_PROBE_ENABLED = "price_watch.probe_enabled"
+    PRICE_WATCH_PROBE_INTERVAL_HOURS = "price_watch.probe_interval_hours"
     OPENROUTER_MANAGEMENT_KEY = "openrouter.management_key"
     PUBLISH_DUP_RECAP_WINDOW_HOURS = "publish.dup_recap_window_hours"
     PUBLISH_RESTORE_LINKS = "publish.restore_links"

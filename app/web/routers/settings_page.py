@@ -108,6 +108,10 @@ EDITABLE = [
      "hint": "Изменения мельче этого процента в историю не пишутся: защита от раздувания таблицы на волатильных ценах."},
     {"key": _k("PRICE_WATCH_SCOPE", "price_watch.scope"), "label": "Цены моделей: разрез провайдеров", "attr": "price_watch_scope", "type": "text",
      "hint": "pinned = только провайдеры, закреплённые в настройках стадий; cheapest = самый дешёвый доступный; all = все эндпоинты; off = только агрегированная цена."},
+    {"key": _k("PRICE_WATCH_PROBE_ENABLED", "price_watch.probe_enabled"), "label": "Цены моделей: авто-проба прайс-бука", "attr": "price_watch_probe_enabled", "type": "number",
+     "hint": "1 = периодически измерять фактические цены пар дельтой credits вокруг пробных вызовов и писать в model_prices; учёт и гарды становятся биллингово-точными без ручного мониторинга."},
+    {"key": _k("PRICE_WATCH_PROBE_INTERVAL_HOURS", "price_watch.probe_interval_hours"), "label": "Цены моделей: интервал пробы, часов", "attr": "price_watch_probe_interval_hours", "type": "number",
+     "hint": "Частота освежения фактических цен (дефолт 168 = еженедельно; цикл из ~10 пар стоит около $0.005)."},
     # --- Публикация ---
     {"key": _k("PUBLISH_DUP_RECAP_WINDOW_HOURS", "publish.dup_recap_window_hours"), "label": "Публикация: окно «ранее писали», часов", "attr": "publish_dup_recap_window_hours", "type": "number",
      "hint": "Сколько часов с первой публикации темы считать её «той же темой»; старше — новая тема без блока."},

@@ -223,3 +223,17 @@ async def chat_completion(
         finish_reason=finish_reason,
         cached_tokens=cached_tokens,
     )
+
+
+async def credits_usage() -> float | None:
+    """Накопленная трата (total_usage) из /api/v1/credits — основа биллинговой правды."""
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(
+                f"{settings.openrouter_base_url}/credits",
+                headers={"Authorization": f"Bearer {settings.openrouter_api_key}"})
+            resp.raise_for_status()
+            return float(resp.json()["data"]["total_usage"])
+    except Exception as exc:  # noqa: BLE001 — кредиты некритичны
+        log.warning("credits недоступны: %s", exc)
+        return None

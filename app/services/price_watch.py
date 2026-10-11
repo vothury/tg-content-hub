@@ -457,6 +457,28 @@ async def acknowledge(ids: list[int]) -> int:
     return n
 
 
+async def _maybe_probe() -> None:
+    """Авто-прайс-бук: биллинговая проба пар по собственному расписанию."""
+    async with session_scope() as session:
+        enabled = int(await get_setting(session, Keys.PRICE_WATCH_PROBE_ENABLED) or 1)
+        hours = int(await get_setting(session, Keys.PRICE_WATCH_PROBE_INTERVAL_HOURS) or 168)
+    if not enabled:
+        return
+    raw = await get_redis().get("price_probe:last_run")
+    if raw:
+        try:
+            last = datetime.fromisoformat(raw.decode() if isinstance(raw, bytes) else raw)
+            if (datetime.now(timezone.utc) - last).total_seconds() < hours * 3600:
+                return
+        except ValueError:
+            pass
+    from app.services.price_probe import probe_cycle
+    n = await probe_cycle()
+    await get_redis().set("price_probe:last_run",
+                          datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    log.info("price_watch: проба прайс-бука завершена, пар обновлено: %d", n)
+
+
 async def loop() -> None:
     """Фоновый цикл в api: проверка раз в interval_hours + отметка живости в redis."""
     while True:
@@ -466,6 +488,10 @@ async def loop() -> None:
         except Exception as exc:  # noqa: BLE001
             error = f"{exc.__class__.__name__}: {exc}"
             log.exception("price_watch: сбой проверки")
+        try:
+            await _maybe_probe()
+        except Exception as exc:  # noqa: BLE001
+            log.exception("price_watch: сбой пробы прайс-бука")
         hours = 24
         try:
             async with session_scope() as session:
