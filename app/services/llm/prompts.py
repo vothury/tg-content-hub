@@ -665,7 +665,7 @@ Decide which topics the channel should produce now (0..{max_topics}):
 Rules:
 - prefer clusters reported by several sources (marker [xN]) or containing concrete numbers/names;
 - a topic MUST tie to Moscow/MO primary market or its direct context (mortgages, rates, supply, prices, renovation/KRT, developers active in Moscow);
-- scope discipline: if the supporting clusters are Russia-wide while the hypothesis speaks about Moscow (or vice versa), either prefer same-scope clusters or put an explicit one-clause caveat ("по стране, не только Москва") into the hypothesis;
+- scope discipline: if the supporting clusters are Russia-wide while the hypothesis speaks about Moscow (or vice versa), either prefer same-scope clusters or put an explicit caveat into the hypothesis; phrase the caveat naturally inside the sentence instead of pasting a fixed boilerplate clause into every topic;
 - do NOT repeat RECENT THEMES (same object + same angle); a new fact about the same object is allowed only with a different angle;
 - if nothing passes the bar — return an empty list; filler topics are forbidden;
 - "headlines" = 1-based numbers of the clusters the topic uses.
