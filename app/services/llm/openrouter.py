@@ -91,12 +91,17 @@ class PriceBook:
             from app.db.session import session_scope
             async with session_scope() as session:
                 rows = (await session.execute(select(ModelPrice))).scalars().all()
-            self._overrides = {
-                (r.model_slug, r.provider): (r.price_in_per_token,
-                                             r.price_out_per_token,
-                                             r.cache_read_per_token, r.source)
-                for r in rows
-            }
+            self._overrides = {}
+            for r in rows:
+                val = (r.price_in_per_token, r.price_out_per_token,
+                       r.cache_read_per_token, r.source)
+                keys = {(r.model_slug, r.provider)}
+                if r.provider:
+                    p = r.provider.strip().lower()
+                    keys.add((r.model_slug, p))
+                    keys.add((r.model_slug, p.split("/")[0]))
+                for k in keys:
+                    self._overrides[k] = val
             log.info("прайс-бук: %d ручных цен пар", len(self._overrides))
         except Exception as exc:  # noqa: BLE001 — прайс-бук некритичен
             log.warning("прайс-бук: не удалось загрузить ручные цены: %s", exc)
@@ -104,8 +109,15 @@ class PriceBook:
     def cost(self, model: str, input_tokens: int | None, output_tokens: int | None,
              cached_tokens: int = 0,
              provider: str | None = None) -> tuple[float | None, str]:
-        ov = (self._overrides.get((model, provider))
-              or self._overrides.get((model, None)))
+        ov = None
+        if provider:
+            s = str(provider).strip().lower()
+            for cand in (provider, s, s.split("/")[0], s.split()[0] if s else s):
+                ov = self._overrides.get((model, cand))
+                if ov is not None:
+                    break
+        if ov is None:
+            ov = self._overrides.get((model, None))
         if ov is not None:
             prices: tuple[float, float, float | None] = ov[:3]
             source = ov[3]
