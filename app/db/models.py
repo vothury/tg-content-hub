@@ -62,7 +62,7 @@ class ModelPrice(Base):
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (UniqueConstraint("model_slug", "provider",
-                                       name="uq_model_prices_pair"),)
+                                       name="uq_model_price_book_pair"),)
 
 
 class Source(Base):

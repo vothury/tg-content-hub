@@ -204,6 +204,8 @@ _ENV_DEFAULTS: dict[str, Any] = {
     Keys.PRICE_WATCH_INTERVAL_HOURS: settings.price_watch_interval_hours,
     Keys.PRICE_HISTORY_MIN_CHANGE_PCT: settings.price_history_min_change_pct,
     Keys.PRICE_WATCH_SCOPE: settings.price_watch_scope,
+    Keys.PRICE_WATCH_PROBE_ENABLED: 1,
+    Keys.PRICE_WATCH_PROBE_INTERVAL_HOURS: 168,
     Keys.OPENROUTER_MANAGEMENT_KEY: settings.openrouter_management_key,
     Keys.PUBLISH_DUP_RECAP_WINDOW_HOURS: settings.publish_dup_recap_window_hours,
     Keys.PUBLISH_RESTORE_LINKS: settings.publish_restore_links,
