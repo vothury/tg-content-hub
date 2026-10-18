@@ -142,7 +142,8 @@ async def run_writer_phase() -> int:
         async with session_scope() as session:
             t = await session.get(Topic, topic.id)
             heads, listing, kb = await _gather(session, t)
-            w_model = hypo_model if t.kind.value == "hypothesis" else model
+            rich = sum(ch.isdigit() for ch in listing) >= 8   # материалы с цифрами
+            w_model = hypo_model if (t.kind.value == "hypothesis" and rich) else model
             tier = "strong" if w_model != model else "flash"
             messages = [
                 {"role": "system",
