@@ -15,6 +15,7 @@ hypothesis -> editorial.writer_model_hypothesis (пусто -> та же мод�
 from __future__ import annotations
 
 import logging
+import re
 
 from sqlalchemy import select
 
@@ -142,7 +143,8 @@ async def run_writer_phase() -> int:
         async with session_scope() as session:
             t = await session.get(Topic, topic.id)
             heads, listing, kb = await _gather(session, t)
-            rich = sum(ch.isdigit() for ch in listing) >= 8   # материалы с цифрами
+            bare = re.sub(r"\d{1,2}\.\d{1,2}\.\d{2,4}", "", listing)  # даты меток — не богатство материалов
+            rich = sum(ch.isdigit() for ch in bare) >= 8
             w_model = hypo_model if (t.kind.value == "hypothesis" and rich) else model
             tier = "strong" if w_model != model else "flash"
             messages = [

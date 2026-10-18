@@ -358,7 +358,7 @@ async def _fetch_web() -> int:  # ИСПРАВЛЕНО: имя функции с
                         result = await _call_json(
                             [{"role": "system", "content": JOURNALIST_WEB_SYSTEM},
                              {"role": "user", "content": JOURNALIST_WEB_USER.format(listing=listing)}],
-                            model, providers, 1200, HeadlinePickResult)
+                            model, providers, 2000, HeadlinePickResult)
                         break
                     except Exception as exc:
                         if attempt == 2:
