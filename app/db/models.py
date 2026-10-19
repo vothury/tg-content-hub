@@ -283,6 +283,8 @@ class Article(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     topic_id: Mapped[int] = mapped_column(ForeignKey("editorial_topics.id"), unique=True)
     draft_text: Mapped[str | None] = mapped_column(Text)
+    # Досье для карточки ревью: рубрика/новизна/опора/материалы/отчёт редактора
+    review: Mapped[dict | None] = mapped_column(JSONB)
     version: Mapped[int] = mapped_column(default=1)
     status: Mapped[ArticleStatus] = mapped_column(
         _enum(ArticleStatus, "article_status"), default=ArticleStatus.DRAFT, index=True)

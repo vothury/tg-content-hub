@@ -2,53 +2,100 @@
 {% block title %}Редакция — TG Content Hub{% endblock %}
 {% block content %}
 <h2 class="section-title">Виртуальная редакция</h2>
+<div class="sub" style="margin-bottom:10px">
+  <a class="btn {{ '' if tab == 'review' else 'ghost' }}" href="/editorial?tab=review">Ревью ({{ counters.awaiting }})</a>
+  <a class="btn {{ '' if tab == 'topics' else 'ghost' }}" href="/editorial?tab=topics">Темы</a>
+  <a class="btn {{ '' if tab == 'flow' else 'ghost' }}" href="/editorial?tab=flow">Поток</a>
+  <a class="btn {{ '' if tab == 'config' else 'ghost' }}" href="/editorial?tab=config">Конфиг</a>
+  · запланировано: {{ counters.scheduled }} · опубликовано сегодня: {{ counters.published_today }} · дропнуто сегодня: {{ counters.dropped_today }} · потрачено {{ cfg.spent }} $ из {{ cfg.budget }} $
+</div>
+
+{% if tab == 'review' %}
+<div class="list">
+  {% for c in cards %}
+  <div class="card">
+    <div class="label">#{{ c.post_id }} · {{ c.created_at|dt }} · {{ c.kind }} · писатель: {{ c.review.writer.model if c.review and c.review.writer else '—' }} ({{ c.review.writer.tier if c.review and c.review.writer else '—' }}) <span class="badge">{{ c.status }}</span></div>
+    <div class="label">{{ c.title }}</div>
+    <div class="sub">{{ c.lead }}</div>
+    {% if c.review %}
+    <div class="sub">оценки: рубрика {{ 'чисто' if not c.review.rubric else c.review.rubric | join(', ') }} · новизна: перекрытие {{ c.review.novelty.pct }}%{{ ' (ближайшая: ' ~ c.review.novelty.nearest ~ ')' if c.review.novelty.nearest }} · опора гипотезы {{ c.review.support.found }}/{{ c.review.support.total }} · материалы {{ c.review.materials.heads }} шт / {{ c.review.materials.sources }} ист · редактор {{ c.review.editor.edits }} правок{{ ', чинил: ' ~ c.review.editor.fixed | join(', ') if c.review.editor.fixed }}</div>
+    {% else %}
+    <div class="sub">оценки: досье нет (статья написана до внедрения досье)</div>
+    {% endif %}
+    <details><summary class="sub">материалы ({{ c.materials|length }})</summary>
+      {% for m in c.materials %}
+      <div class="sub">· {% if m.url %}<a href="{{ m.url }}" target="_blank" rel="noopener">{{ m.title }}</a>{% else %}{{ m.title }}{% endif %}</div>
+      {% endfor %}
+      {% if c.review and c.review.kb %}<div class="sub">БЗ: {{ c.review.kb }}</div>{% endif %}
+    </details>
+    <div class="actions">
+      <form method="post" action="/editorial/approve/{{ c.post_id }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="btn" type="submit">Одобрить</button>
+      </form>
+      <form method="post" action="/editorial/reject/{{ c.post_id }}" class="editrow">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="text" name="reason" placeholder="причина отклонения">
+        <button class="btn ghost" type="submit">Отклонить</button>
+      </form>
+      <a class="btn ghost" href="/posts/{{ c.post_id }}">Открыть пост</a>
+    </div>
+  </div>
+  {% else %}
+  <div class="card">На ревью пусто — новые статьи появятся после циклов редакции</div>
+  {% endfor %}
+</div>
+
+{% elif tab == 'topics' %}
+<div class="list">
+  {% for t in topics %}
+  <div class="card">
+    <span class="badge">{{ t.kind.value }}</span>
+    <span class="sub">{{ t.created_at|dt }} → {{ t.updated_at|dt }}</span>
+    <div class="label">{{ t.theme }}</div>
+    {% if t.hypothesis %}<div class="sub">Гипотеза: {{ t.hypothesis }}</div>{% endif %}
+    <div class="sub">статус {{ t.status.value }}{% if t.verdict %} · вердикт {{ t.verdict }}{% if t.verdict_note %}: {{ t.verdict_note }}{% endif %}{% endif %}</div>
+  </div>
+  {% else %}
+  <div class="card">Тем пока нет — главред начнёт с ближайшего цикла</div>
+  {% endfor %}
+</div>
+
+{% elif tab == 'flow' %}
+<div class="card">
+  <div class="label">Поток заголовков</div>
+  <div class="sub">всего собрано: {{ head_count }}</div>
+</div>
+<div class="section-title">Последние заголовки</div>
+<div class="list">
+  {% for h in headlines %}
+  <div class="card"><span class="badge">{{ h.source_kind }}</span> <span class="badge">{{ h.status }}</span>
+    <span class="sub">{{ h.source_name or '—' }} · {{ h.fetched_at|dt }}</span>
+    <div class="label">{% if h.url %}<a href="{{ h.url }}" target="_blank" rel="noopener">{{ h.title }}</a>{% else %}{{ h.title }}{% endif %}</div>
+  </div>
+  {% else %}<div class="card">Заголовков пока нет — первый цикл журналиста наполнит ленту</div>{% endfor %}
+</div>
+<div class="section-title">Web-источники</div>
+<div class="list">
+  {% for w in web_sources %}
+  <div class="card"><span class="badge">{{ 'рерайт-источник' if w.rewrite_source else 'лента' }}</span>
+    <span class="sub">{{ w.name }} · {{ w.url }} · {{ 'вкл' if w.enabled else 'выкл' }} · проверен {{ w.last_checked_at|dt if w.last_checked_at else '—' }}</span></div>
+  {% else %}<div class="card">Нет web-источников (секция editorial_web в sources.yaml)</div>{% endfor %}
+</div>
+
+{% else %}
 <div class="card">
   <div class="label">Конфигурация редакции
     <span class="badge">{{ 'включена' if cfg.enabled else 'выключена' }}</span>
     <span class="badge">автопубликация: {{ 'вкл' if cfg.auto_publish else 'выкл' }}</span>
     <span class="badge">browse: {{ 'вкл' if cfg.browse_enabled else 'выкл' }}</span>
   </div>
-  <div class="sub">режим: циклы {{ cfg.cycle_times }} · тем за цикл {{ cfg.topics_per_cycle }} · окна публикации редакции {{ cfg.publish_windows or 'круглые сутки' }} · статьи готовы в течение {{ cfg.prepared_hours }} ч · публикуются в течение {{ cfg.published_hours }}</div>
+  <div class="sub">режим: циклы {{ cfg.cycle_times }} · тем за цикл {{ cfg.topics_per_cycle }} · окна публикации редакции {{ cfg.publish_windows or 'круглые сутки' }} · статьи готовы в течение {{ cfg.prepared_hours }} ч · публикуются в течение {{ cfg.published_hours }} ч после готовности</div>
   <div class="sub">модели: главред {{ cfg.chief_model }} · журналист {{ cfg.journalist_model }} · писатель rewrite {{ cfg.writer_model }} · писатель hypothesis {{ cfg.writer_hypo }} · редактор = цепь writer_model (glm) со скоупом по tier писателя · хвосты ротации: {{ cfg.fallback }}</div>
   <div class="sub">канал: @{{ cfg.channel_username or '—' }}{{ ' (НА ПАУЗЕ)' if cfg.channel_paused else '' }} · автопилот {{ 'вкл' if cfg.channel_autopilot else 'выкл' }} · лимит {{ cfg.channel_daily_limit }}/день · окна канала: {{ cfg.channel_windows }}</div>
   <div class="sub">дисциплина: ≤ {{ cfg.max_chars }} знаков · рерайтов ≤ {{ cfg.rewrite_max }}/день · хранение заголовков {{ cfg.retention }} дн · бюджет {{ cfg.budget }} $/день · потрачено сегодня {{ cfg.spent }} $</div>
   <div class="sub">web-сырьё: browse-модель {{ cfg.browse_model }} ({{ 'вкл — модель открывает страницы сама' if cfg.browse_enabled else 'выкл — только серверный парсинг feed/селекторов до переезда на playwright' }})</div>
+  <div class="sub"><a href="/settings">Настройки</a> · <a href="/channels">Каналы</a> · <a href="/sources">Источники</a></div>
 </div>
-<div class="card">
-  <div class="label">Поток заголовков</div>
-  <div class="sub">всего собрано: {{ head_count }}</div>
-</div>
-
-<div class="section-title">Последние заголовки</div>
-<div class="list">
-  {% for h in headlines %}
-  <div class="card"><span class="badge">{{ h.source_kind }}</span>
-    <span class="sub">{{ h.source_name or '—' }} · {{ h.fetched_at|dt }}</span>
-    <div class="label">{% if h.url %}<a href="{{ h.url }}" target="_blank" rel="noopener">{{ h.title }}</a>{% else %}{{ h.title }}{% endif %}</div>
-  </div>
-  {% else %}<div class="card">Заголовков пока нет — первый цикл журналиста наполнит ленту</div>{% endfor %}
-</div>
-
-<div class="section-title">Web-источники</div>
-<div class="list">
-  {% for w in web_sources %}
-  <div class="card"><span class="badge">{{ 'рерайт-источник' if w.rewrite_source else 'лента' }}</span>
-    <span class="sub">{{ w.name }} · {{ w.url }} · {{ 'вкл' if w.enabled else 'выкл' }}</span></div>
-  {% else %}<div class="card">Нет web-источников (секция editorial_web в sources.yaml)</div>{% endfor %}
-</div>
-
-<div class="section-title">Темы главреда</div>
-<div class="list">
-  {% for t in topics %}
-  <div class="card">
-    <span class="badge">{{ t.kind.value }}</span>
-    <span class="badge st-{{ 'published' if t.status.value == 'published' else ('failed' if t.status.value == 'dropped' else 'scheduled') }}">{{ t.status.value }}</span>
-    <div class="label">{{ t.theme }}</div>
-    {% if t.hypothesis %}<div class="sub">Гипотеза: {{ t.hypothesis }}</div>{% endif %}
-    {% if t.verdict %}<div class="sub">Вердикт: {{ t.verdict }}{% if t.verdict_note %} — {{ t.verdict_note }}{% endif %}</div>{% endif %}
-    {% set a = articles.get(t.id) %}
-    {% if a %}<div class="sub">Статья: {{ a.status.value }} (v{{ a.version }})</div>{% endif %}
-  </div>
-  {% else %}<div class="card">Тем пока нет — главред начнёт с Шага 3</div>{% endfor %}
-</div>
+{% endif %}
 {% endblock %}

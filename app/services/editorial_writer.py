@@ -14,7 +14,9 @@ hypothesis -> editorial.writer_model_hypothesis (пусто -> та же мод�
 """
 from __future__ import annotations
 
+import difflib
 import logging
+import re
 import re
 
 from sqlalchemy import select
@@ -72,6 +74,37 @@ async def _writer_models() -> tuple[str, str, dict | None]:
                 or model)
         providers = await get_providers(session, Keys.REVISION_PROVIDERS)
     return model, hypo, providers
+
+async def _review_dossier(session, topic, heads, listing, kb,
+                          final_text, ed_report, w_model, tier) -> dict:
+    """Досье карточки ревью: всё считается кодом в момент написания статьи."""
+    from app.services.editorial_rubric import rubric_checks
+    title_line, _, body = final_text.partition("\n\n")
+    fails = rubric_checks(title_line, body)
+    recent = (await session.execute(
+        select(Topic.theme).order_by(Topic.id.desc()).limit(15))).scalars().all()
+    pct, nearest = 0, ""
+    for r in recent:
+        ratio = difflib.SequenceMatcher(None, topic.theme.lower(), r.lower()).ratio()
+        if ratio > pct:
+            pct, nearest = ratio, r
+    anchors = re.findall(r"\d+[.,]?\d*|«[^»]+»", topic.hypothesis or "")
+    found = [a for a in anchors if a in listing]
+    sources = sorted({h.source_name or "—" for h in heads})
+    fixed = []
+    if ed_report:
+        fixed = [k for k, v in (ed_report.get("check") or {}).items()
+                 if "исправлено" in str(v).lower() or "fixed" in str(v).lower()]
+    return {
+        "rubric": fails,
+        "novelty": {"pct": round(pct * 100), "nearest": nearest if pct > 0.3 else ""},
+        "support": {"found": len(found), "total": len(anchors)},
+        "materials": {"heads": len(heads), "sources": len(sources)},
+        "editor": {"edits": len((ed_report or {}).get("edits") or []), "fixed": fixed},
+        "writer": {"model": w_model.split("/")[-1], "tier": tier},
+        "kb": (kb or "")[:300],
+    }
+
 
 async def _ensure_source(session) -> int:
     row = (await session.execute(
@@ -192,8 +225,10 @@ async def run_writer_phase() -> int:
                             t.id, exc)
             final_text = (f"{res.title.strip()}\n\n{res.text.strip()}"
                           if res.title.strip() else res.text.strip())
+            review = await _review_dossier(session, t, heads, listing, kb,
+                                           final_text, ed_report, w_model, tier)
             art = Article(topic_id=t.id, draft_text=final_text,
-                          status=ArticleStatus.REVIEW)
+                          status=ArticleStatus.REVIEW, review=review)
             session.add(art)
             await session.flush()
             src_id = await _ensure_source(session)
