@@ -16,7 +16,7 @@
   <div class="card">
     <div class="label">#{{ c.post_id }} · {{ c.created_at|dt }} · {{ c.kind }} · писатель: {{ c.review.writer.model if c.review and c.review.writer else '—' }} ({{ c.review.writer.tier if c.review and c.review.writer else '—' }}) <span class="badge">{{ c.status }}</span></div>
     <div class="label">{{ c.title }}</div>
-    <div class="sub">{{ c.lead }}</div>
+    <div class="sub" style="white-space:pre-wrap;margin:6px 0">{{ c.text }}</div>
     {% if c.review %}
     <div class="sub">оценки: рубрика {{ 'чисто' if not c.review.rubric else c.review.rubric | join(', ') }} · новизна: перекрытие {{ c.review.novelty.pct }}%{{ ' (ближайшая: ' ~ c.review.novelty.nearest ~ ')' if c.review.novelty.nearest }} · опора гипотезы {{ c.review.support.found }}/{{ c.review.support.total }} · материалы {{ c.review.materials.heads }} шт / {{ c.review.materials.sources }} ист · редактор {{ c.review.editor.edits }} правок{{ ', чинил: ' ~ c.review.editor.fixed | join(', ') if c.review.editor.fixed }}</div>
     {% else %}

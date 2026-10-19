@@ -143,6 +143,7 @@ async def _review_cards() -> list:
                 "kind": topic.kind.value if topic else "—",
                 "title": title_line or "(без заголовка)",
                 "lead": (body or "")[:220],
+                "text": text,
                 "review": art.review if art else None,
                 "materials": [{"title": t, "url": u} for t, u in mats],
             })
