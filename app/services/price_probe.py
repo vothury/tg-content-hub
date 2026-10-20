@@ -9,6 +9,10 @@
 Метод дельты /api/v1/credits retired: биллинг обновляется с лагом, дельта вокруг
 вызова за секунды равна нулю. Строки source='manual' авто-освежение НЕ трогает:
 верифицированные владельцем цены неприкасаемы.
+
+Формат эндпоинта (диагностика 20.10): цены плоские на верхнем уровне
+(prompt, completion — за токен), провайдер+квантование в полях provider/
+quantization/key; матчинг пина — штатным price_watch._choose_endpoints.
 """
 from __future__ import annotations
 
@@ -21,35 +25,11 @@ from app.config import settings as cfg
 from app.db.models import ModelPrice
 from app.db.session import session_scope
 from app.services.llm_pipeline import _parse_model_spec, _split_model_list
-from app.services.price_watch import (POOLED, _fetch_endpoints, _watched_targets)
+from app.services.price_watch import (POOLED, _choose_endpoints, _fetch_endpoints,
+                                      _label, _watched_targets)
 from app.services.settings import Keys, get_setting
 
 log = logging.getLogger("price_probe")
-
-
-def _match_endpoint(eps: list, pin: str) -> dict | None:
-    """Эндпоинт, соответствующий пину: провайдер + квантование/тир в метке."""
-    prov, _, tag = pin.partition("/")
-    prov = prov.strip().lower()
-    tag = tag.strip().lower()
-    for e in eps or []:
-        name = str(e.get("provider_name") or e.get("name") or "").lower()
-        quant = " ".join(str(q).lower() for q in (e.get("quantizations") or []))
-        label = str(e.get("name") or "").lower()
-        if prov and prov not in name and prov not in label:
-            continue
-        if tag and tag not in quant and tag not in label:
-            continue
-        pr = e.get("pricing") or {}
-        try:
-            p_in = float(pr.get("prompt") or 0)
-            p_out = float(pr.get("completion") or 0)
-        except (TypeError, ValueError):
-            continue
-        if p_in <= 0 or p_out <= 0:
-            continue
-        return e
-    return None
 
 
 async def _upsert(slug: str, provider: str | None, p_in: float, p_out: float,
@@ -89,6 +69,10 @@ async def probe_cycle() -> int:
             if isinstance(prov, dict):
                 providers.update(str(x) for x in (prov.get("order") or []))
             providers = {p for p in providers if p and "/free" not in p}
+            # голый пин избыточен, есть ли пин с квантованием того же провайдера:
+            # иначе две строки книги схлопнутся в один нормализованный ключ
+            providers = {p for p in providers
+                         if not any(q != p and q.startswith(p + "/") for q in providers)}
             if not providers:
                 continue   # без пина правда = каталог, книгу не трогаем
             try:
@@ -97,21 +81,28 @@ async def probe_cycle() -> int:
                 log.warning("price_probe: %s эндпоинты недоступны (%s: %s)",
                             slug, exc.__class__.__name__, exc)
                 continue
+            if not eps:
+                log.warning("price_probe: %s список эндпоинтов пуст — права ключа "
+                            "или недоступность API; пары пропущены", slug)
+                continue
             for p in sorted(providers):
-                e = _match_endpoint(eps, p)
-                if e is None:
+                chosen = _choose_endpoints(eps, "pinned", {p})
+                if not chosen:
                     log.warning("price_probe: пара %s (%s) — эндпоинт не найден",
                                 slug, p)
                     continue
-                pr = e.get("pricing") or {}
-                p_in = float(pr.get("prompt") or 0)
-                p_out = float(pr.get("completion") or 0)
+                e = chosen[0]
                 try:
-                    cache_read = float(pr["cache_read"]) if pr.get("cache_read") else None
+                    p_in = float(e.get("prompt") or 0)       # плоские поля эндпоинта:
+                    p_out = float(e.get("completion") or 0)  # цены за токен на верхнем уровне
                 except (TypeError, ValueError):
-                    cache_read = None
-                await _upsert(slug, p, p_in, p_out, cache_read, "endpoint")
-                log.info("price_probe: %s (%s) in=$%.3g/1M out=$%.3g/1M (endpoint)",
-                         slug, p, p_in * 1e6, p_out * 1e6)
+                    p_in = p_out = 0.0
+                if p_in <= 0 or p_out <= 0:
+                    log.warning("price_probe: пара %s (%s) — эндпоинт без цены",
+                                slug, p)
+                    continue
+                await _upsert(slug, p, p_in, p_out, None, "endpoint")
+                log.info("price_probe: %s (%s) in=$%.3g/1M out=$%.3g/1M (endpoint %s)",
+                         slug, p, p_in * 1e6, p_out * 1e6, _label(e))
                 n += 1
     return n
