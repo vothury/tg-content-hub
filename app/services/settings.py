@@ -138,6 +138,8 @@ class Keys:
     EDITORIAL_WRITER_MODE = "editorial.writer_mode"
     EDITORIAL_WRITER_MODEL = "editorial.writer_model"
     EDITORIAL_WRITER_MODEL_HYPOTHESIS = "editorial.writer_model_hypothesis"
+    EDITORIAL_GATE_MODEL = "editorial.gate_model"
+    EDITORIAL_GATE_MODE = "editorial.gate_mode"
     EDITORIAL_AUTO_PUBLISH = "editorial.auto_publish"
     EDITORIAL_POST_MAX_CHARS = "editorial.post_max_chars"
     EDITORIAL_REWRITE_MAX_PER_DAY = "editorial.rewrite_max_per_day"
@@ -226,6 +228,8 @@ _ENV_DEFAULTS: dict[str, Any] = {
     Keys.EDITORIAL_WRITER_MODE: settings.editorial_writer_mode,
     Keys.EDITORIAL_WRITER_MODEL: settings.editorial_writer_model,
     Keys.EDITORIAL_WRITER_MODEL_HYPOTHESIS: "",
+    Keys.EDITORIAL_GATE_MODEL: "",
+    Keys.EDITORIAL_GATE_MODE: "off",
     Keys.EDITORIAL_AUTO_PUBLISH: settings.editorial_auto_publish,
     Keys.EDITORIAL_POST_MAX_CHARS: settings.editorial_post_max_chars,
     Keys.EDITORIAL_REWRITE_MAX_PER_DAY: settings.editorial_rewrite_max_per_day,

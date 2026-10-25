@@ -536,3 +536,21 @@ class EditorResult:
                    problems=[str(x) for x in (data.get("problems") or [])][:5],
                    text=str(data.get("text") or "").strip(),
                    edits=edits or None, check=check)
+
+
+@dataclass
+class GateResult:
+    """B1: вердикт Editor-in-Chief по готовой статье (approve|revise|reject)."""
+    verdict: str = "reject"
+    notes: list | None = None
+    reason: str = ""
+
+    @classmethod
+    def from_response(cls, content: str) -> "GateResult":
+        data = extract_json(content)
+        verdict = str(data.get("verdict") or "").strip().lower()
+        if verdict not in ("approve", "revise", "reject"):
+            raise LLMParseError("gate verdict должен быть approve|revise|reject")
+        return cls(verdict=verdict,
+                   notes=[str(x) for x in (data.get("notes") or [])][:5],
+                   reason=str(data.get("reason") or "").strip())
