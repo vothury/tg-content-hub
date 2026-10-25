@@ -91,6 +91,9 @@ class PriceBook:
             from app.db.session import session_scope
             async with session_scope() as session:
                 rows = (await session.execute(select(ModelPrice))).scalars().all()
+            # квантованные пины применяются последними: их цена выигрывает
+            # нормализованный ключ (gmicloud) у голых строк того же провайдера
+            rows = sorted(rows, key=lambda r: (r.provider or "").count("/"))
             self._overrides = {}
             for r in rows:
                 val = (r.price_in_per_token, r.price_out_per_token,
