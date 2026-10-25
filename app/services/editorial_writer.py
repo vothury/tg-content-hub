@@ -89,7 +89,9 @@ async def _review_dossier(session, topic, heads, listing, kb,
         if ratio > pct:
             pct, nearest = ratio, r
     anchors = re.findall(r"\d+[.,]?\d*|«[^»]+»", topic.hypothesis or "")
-    found = [a for a in anchors if a in listing]
+    low_listing = listing.lower()
+    found = [a for a in anchors
+             if a.lower() in low_listing or a.strip("«»").lower() in low_listing]
     sources = sorted({h.source_name or "—" for h in heads})
     fixed = []
     if ed_report:
@@ -101,7 +103,7 @@ async def _review_dossier(session, topic, heads, listing, kb,
         "support": {"found": len(found), "total": len(anchors)},
         "materials": {"heads": len(heads), "sources": len(sources)},
         "editor": {"edits": len((ed_report or {}).get("edits") or []), "fixed": fixed},
-        "writer": {"model": w_model.split("/")[-1], "tier": tier},
+        "writer": {"model": w_model.split(" (")[0].split("/")[-1], "tier": tier},
         "kb": (kb or "")[:300],
     }
 
