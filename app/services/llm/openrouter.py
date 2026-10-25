@@ -87,10 +87,10 @@ class PriceBook:
         try:
             from sqlalchemy import select
 
-            from app.db.models import ModelPrice
+            from app.db.models import ModelPriceBook
             from app.db.session import session_scope
             async with session_scope() as session:
-                rows = (await session.execute(select(ModelPrice))).scalars().all()
+                rows = (await session.execute(select(ModelPriceBook))).scalars().all()
             # квантованные пины применяются последними: их цена выигрывает
             # нормализованный ключ (gmicloud) у голых строк того же провайдера
             rows = sorted(rows, key=lambda r: (r.provider or "").count("/"))

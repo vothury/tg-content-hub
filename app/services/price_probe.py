@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 
 from app.config import settings as cfg
-from app.db.models import ModelPrice
+from app.db.models import ModelPriceBook
 from app.db.session import session_scope
 from app.services.llm_pipeline import _parse_model_spec, _split_model_list
 from app.services.price_watch import (POOLED, _choose_endpoints, _fetch_endpoints,
@@ -36,13 +36,13 @@ async def _upsert(slug: str, provider: str | None, p_in: float, p_out: float,
                   cache_read: float | None, source: str) -> None:
     async with session_scope() as session:
         row = (await session.execute(
-            select(ModelPrice).where(ModelPrice.model_slug == slug,
-                                     ModelPrice.provider == provider)
+            select(ModelPriceBook).where(ModelPriceBook.model_slug == slug,
+                                         ModelPriceBook.provider == provider)
         )).scalar_one_or_none()
         if row is not None and row.source == "manual":
             return   # верифицированная владельцем цена неприкасаема
         if row is None:
-            row = ModelPrice(model_slug=slug, provider=provider)
+            row = ModelPriceBook(model_slug=slug, provider=provider)
             session.add(row)
         row.price_in_per_token = p_in
         row.price_out_per_token = p_out

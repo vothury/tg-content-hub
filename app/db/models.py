@@ -43,11 +43,28 @@ def _enum(enum_cls: type, name: str) -> SAEnum:
 
 
 class ModelPrice(Base):
-    """Ручной прайс-бук: фактическая цена пары модель+провайдер (за токен).
+    """История цен price_watch: ряд наблюдений по точке (модель, провайдер).
 
-    Таблица model_price_book отделена от существующей model_prices
-    (история цен price_watch): книга = действующие цены для учёта,
-    история = ряды наблюдений и алерты."""
+    Таблица model_prices существовала до книги цен и используется price_watch
+    (_last_price/_track) вместе с алертами; не путать с ModelPriceBook."""
+
+    __tablename__ = "model_prices"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    model: Mapped[str] = mapped_column(String(255))
+    provider: Mapped[str] = mapped_column(String(160), default="")
+    prompt_usd: Mapped[float] = mapped_column(Float)
+    completion_usd: Mapped[float] = mapped_column(Float)
+    request_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    web_search_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ModelPriceBook(Base):
+    """Ручной/авто прайс-бук: фактическая цена пары модель+провайдер (за токен).
+
+    Книга = действующие цены для учёта стоимости вызовов и гардов;
+    история model_prices = ряды наблюдений и алерты price_watch."""
 
     __tablename__ = "model_price_book"
 
