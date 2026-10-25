@@ -554,3 +554,24 @@ class GateResult:
         return cls(verdict=verdict,
                    notes=[str(x) for x in (data.get("notes") or [])][:5],
                    reason=str(data.get("reason") or "").strip())
+
+
+@dataclass
+class MediaCheckResult:
+    """M1: vision-вердикт по кандидату-иллюстрации (релевантность + водяной знак)."""
+    relevant: bool = False
+    confidence: float = 0.0
+    reason: str = ""
+    watermark: bool = False
+
+    @classmethod
+    def from_response(cls, content: str) -> "MediaCheckResult":
+        data = extract_json(content)
+        try:
+            conf = float(data.get("confidence") or 0)
+        except (TypeError, ValueError):
+            conf = 0.0
+        return cls(relevant=bool(data.get("relevant", False)),
+                   confidence=max(0.0, min(1.0, conf)),
+                   reason=str(data.get("reason") or "").strip()[:160],
+                   watermark=bool(data.get("watermark", False)))

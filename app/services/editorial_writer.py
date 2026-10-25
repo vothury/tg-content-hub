@@ -29,6 +29,7 @@ from pathlib import Path
 
 from app.services import facts_kb
 from app.services.editorial_gate import gate_step
+from app.services.editorial_media import media_step
 from app.services.editorial_journalist import _call_json
 from app.services.llm.prompts import EDITOR_SYSTEM, EDITOR_USER, WRITER_SYSTEM, WRITER_USER
 from app.services.llm.schemas import EditorialArticleResult, EditorResult
@@ -258,5 +259,6 @@ async def run_writer_phase() -> int:
             log.info("writer: статья #%s (тема #%s, %s, writer=%s): %s | post #%s -> AWAITING_REVIEW",
                      art.id, t.id, t.kind.value, w_model.split("/")[-1],
                      (res.title or "")[:60], post.id)
+            await media_step(post.id, art.id, final_text, heads)
             await gate_step(post.id, art.id, t.id, listing, kb, final_text)
     return written

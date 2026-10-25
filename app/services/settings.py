@@ -140,6 +140,10 @@ class Keys:
     EDITORIAL_WRITER_MODEL_HYPOTHESIS = "editorial.writer_model_hypothesis"
     EDITORIAL_GATE_MODEL = "editorial.gate_model"
     EDITORIAL_GATE_MODE = "editorial.gate_mode"
+    EDITORIAL_MEDIA_MODE = "editorial.media_mode"
+    EDITORIAL_MEDIA_MODEL = "editorial.media_model"
+    EDITORIAL_MEDIA_FALLBACK_MODELS = "editorial.media_fallback_models"
+    EDITORIAL_MEDIA_MAX_PHOTOS = "editorial.media_max_photos"
     EDITORIAL_AUTO_PUBLISH = "editorial.auto_publish"
     EDITORIAL_POST_MAX_CHARS = "editorial.post_max_chars"
     EDITORIAL_REWRITE_MAX_PER_DAY = "editorial.rewrite_max_per_day"
@@ -230,6 +234,11 @@ _ENV_DEFAULTS: dict[str, Any] = {
     Keys.EDITORIAL_WRITER_MODEL_HYPOTHESIS: "",
     Keys.EDITORIAL_GATE_MODEL: "",
     Keys.EDITORIAL_GATE_MODE: "off",
+    Keys.EDITORIAL_MEDIA_MODE: "off",
+    Keys.EDITORIAL_MEDIA_MODEL: "xiaomi/mimo-v2.6-flash (xiaomi/fp8)",
+    Keys.EDITORIAL_MEDIA_FALLBACK_MODELS: ["inclusionai/ling-3.0-flash-vl",
+                                           "qwen/qwen3.7-flash"],
+    Keys.EDITORIAL_MEDIA_MAX_PHOTOS: 3,
     Keys.EDITORIAL_AUTO_PUBLISH: settings.editorial_auto_publish,
     Keys.EDITORIAL_POST_MAX_CHARS: settings.editorial_post_max_chars,
     Keys.EDITORIAL_REWRITE_MAX_PER_DAY: settings.editorial_rewrite_max_per_day,

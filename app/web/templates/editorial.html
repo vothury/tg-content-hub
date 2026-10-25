@@ -20,7 +20,8 @@
     {% if c.review %}
     <div class="sub">оценки: рубрика {{ 'чисто' if not c.review.rubric else c.review.rubric | join(', ') }} · новизна: перекрытие {{ c.review.novelty.pct }}%{{ ' (ближайшая: ' ~ c.review.novelty.nearest ~ ')' if c.review.novelty.nearest }} · опора гипотезы {{ c.review.support.found }}/{{ c.review.support.total }} · материалы {{ c.review.materials.heads }} шт / {{ c.review.materials.sources }} ист · редактор {{ c.review.editor.edits }} правок{{ ', чинил: ' ~ c.review.editor.fixed | join(', ') if c.review.editor.fixed }}</div>
     {% if c.review.gate %}<div class="sub">гейт: {{ c.review.gate.verdict }}{{ ' — ' ~ c.review.gate.reason if c.review.gate.reason }}{{ ' · заметки: ' ~ c.review.gate.notes|join('; ') if c.review.gate.notes }} ({{ c.review.gate.mode }})</div>{% endif %}
-
+    {% if c.review.media %}<div class="sub">{{ c.review.media.summary }}</div>
+	{% endif %}
     {% else %}
     <div class="sub">оценки: досье нет (статья написана до внедрения досье)</div>
     {% endif %}

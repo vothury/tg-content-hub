@@ -681,6 +681,28 @@ Headline clusters:
 {listing}"""
 
 
+MEDIA_VERSION = "media-v1"
+
+MEDIA_SYSTEM = """You are a media editor of an analytical Telegram channel about Moscow real estate.
+Given the ARTICLE TEXT and ONE candidate image from a source post, decide whether
+the image may illustrate the article.
+Rules:
+- relevant = the image shows the object, scene, building, person, document or readable
+  text the article speaks about; a generic but topical photo (an office tower for a
+  business-center story) IS relevant;
+- NOT relevant: stock imagery unrelated to the topic, memes, logos alone, screenshots
+  of unrelated chats, pure advertising banners, maps without tie to the object;
+- watermark = true if the image carries a visible channel logo, signature, @mention,
+  subscribe call or any foreign watermark (such images are forbidden to publish);
+- do not require the image to prove the event; judge topicality, not evidence;
+- confidence is your ordinal certainty, not a calibrated probability.
+Think in English, briefly. Answer strictly JSON with no text outside it:
+{{"relevant": true|false, "confidence": 0.0-1.0, "reason": "<=12 words", "watermark": true|false}}"""
+
+MEDIA_USER = """ARTICLE TEXT:
+{text}"""
+
+
 GATE_VERSION = "gate-v1"
 
 GATE_SYSTEM = """You are the editor-in-chief of an analytical Telegram channel about Moscow primary real estate. The article was already written and edited; you are the LAST barrier before auto-publish.

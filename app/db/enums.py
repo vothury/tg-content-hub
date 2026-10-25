@@ -41,6 +41,7 @@ class LLMStage(str, enum.Enum):
     EDITORIAL_GATHER = "editorial_gather"
     EDITORIAL_WRITE = "editorial_write"
     EDITORIAL_GATE = "editorial_gate"
+    EDITORIAL_MEDIA = "editorial_media"
     DEDUP_CONFIRM = "dedup_confirm"
 
 
