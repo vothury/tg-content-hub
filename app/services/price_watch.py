@@ -57,10 +57,10 @@ async def _models_from_settings() -> list:
             raw = await get_setting(session, key)
             if raw is None:
                 continue
-            items = [str(x) for x in raw] if isinstance(raw, list) else str(raw).split(",")
+            items = [str(x) for x in raw] if isinstance(raw, list) else [str(raw)]
             parts: list = []
             for it in items:
-                parts.extend(str(it).split(","))   # элемент списка сам может быть строкой-списком
+                parts.extend(_split_model_list(str(it)))   # paren-aware: запятые внутри пинов не режут спецификацию
             for it in parts:
                 slug = _clean_slug(it)
                 if slug and slug not in POOLED and slug not in out:
