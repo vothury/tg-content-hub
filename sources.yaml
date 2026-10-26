@@ -59,7 +59,7 @@ targets:
     double_check_fact_strictness: 5      # важность точности фактов 1-10
     daily_limit: 30
     min_interval_min: 30
-    classify_model: "inclusionai/ling-3.0-flash-sante:free, nvidia/nemotron-3.5-lightning:free, poolside/laguna-s-2.1:free, openrouter/free, openrouter/free" # провайдеры добавляются в скобках
+    classify_model: "nvidia/nemotron-3.5-lightning:free, poolside/laguna-s-2.1:free, openrouter/free, openrouter/free" # провайдеры добавляются в скобках
     llm_instructions: >
       Юмор, мемы, ироничные и шуточные подписи, развлекательные видео ПО ТЕМЕ КИНО —
       норма для этого канала. НЕ отклоняй их за «несерьёзность», «лёгкость», «это мем»,
@@ -90,7 +90,7 @@ targets:
     daily_limit: 30
     min_interval_min: 30
     # стиль не указан -> профиль default
-    classify_model: "inclusionai/ling-3.0-flash-sante:free, nvidia/nemotron-3.5-lightning:free, poolside/laguna-s-2.1:free, openrouter/free, openrouter/free"
+    classify_model: "nvidia/nemotron-3.5-lightning:free, poolside/laguna-s-2.1:free, openrouter/free, openrouter/free"
     llm_instructions: >
       Это фотоканал: пост «медиа + короткая подпись (имя, дата, место)» — полноценный формат;
       не требуй новостей и не занижай оценку за краткость подписи.
@@ -132,12 +132,15 @@ targets:
   - username: testim_novostroyki
     title: "Тест Новостройки Москвы"
     description: "Аналитика недвижимости Москвы и ближнего Подмосковья: разборы, синтез сигналов, тренды"
-    editorial: true            # канал виртуальной редакции
-    rewrite: true
-    autopilot: false
-    double_check: false
-    daily_limit: 3
-    min_interval_min: 60
+    editorial: true            # канал виртуальной редакции — обязателен, уже стоит
+    rewrite: true              # на редакционные посты не влияет (они минуют стадию rewrite);
+                               # можно поставить false для ясности — поведение не изменится
+    autopilot: false           # ДЕРЖАТЬ false: автопилот редакции = editorial.gate_mode,
+                               # канальный автопилот здесь не участвует
+    double_check: false        # ДЕРЖАТЬ false: факт-контроль редакции = гейт EiC
+    daily_limit: 3             # предохранитель автопилота: не больше 3 публикаций в день
+    min_interval_min: 60       # предохранитель: пауза между публикациями
+    quiet_hours: {"start": "20:30", "end": "07:30"}
 
 # --- Источники (откуда читаем) -------------------------------------------------
 #   kind       — test (канал-лаборатория) | external (внешний канал)

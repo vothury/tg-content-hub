@@ -18,6 +18,8 @@ from datetime import datetime, timezone
 from app.db.enums import (DraftOrigin, EventActor, LLMStage, PostStatus,
                           PublishMode, TopicStatus)
 from app.db.models import Article, Post, PostDraftVersion, PostEvent, Topic
+from sqlalchemy import func, select
+
 from app.db.session import session_scope
 from app.services.editorial_journalist import _call_json
 from app.services.llm.prompts import (EDITOR_SYSTEM, EDITOR_USER,
@@ -116,7 +118,10 @@ async def _revise_once(post_id: int, listing: str, kb: str,
             return None
         p.draft_text = new_final
         p.original_text = new_final
-        p.draft_version += 1
+        top = (await session.execute(
+            select(func.max(PostDraftVersion.version))
+            .where(PostDraftVersion.post_id == post_id))).scalar() or 0
+        p.draft_version = int(top) + 1
         session.add(PostDraftVersion(post_id=post_id, version=p.draft_version,
                                      text=new_final, origin=DraftOrigin.EDITORIAL))
         session.add(PostEvent(post_id=post_id, actor=EventActor.SYSTEM,

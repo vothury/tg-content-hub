@@ -243,6 +243,7 @@ async def run_writer_phase() -> int:
                         target_channel_id=tgt_id, autopilot=False)
             session.add(post)
             await session.flush()
+            post.draft_version = 1
             session.add(PostDraftVersion(post_id=post.id, version=1,
                                          text=final_text, origin=DraftOrigin.EDITORIAL))
             if ed_report and (ed_report["edits"] or ed_report["check"]):

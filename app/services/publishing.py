@@ -263,7 +263,8 @@ def _until_next_window(channel: TargetChannel, now_local: datetime):
         inside = (ta <= cur < tb) if ta <= tb else (cur >= ta or cur < tb)
         if inside:
             return None
-        delta = (datetime.combine(now_local.date(), ta) - now_local).total_seconds()
+        delta = (datetime.combine(now_local.date(), ta,
+                                  tzinfo=now_local.tzinfo) - now_local).total_seconds()
         if delta < 0:
             delta += 86400
         if best is None or delta < best:
