@@ -752,6 +752,10 @@ EDITORIAL PRIORITY (overrides fact-density):
 - unknown organizations, platforms and experts: explain their role in 3-5 words ("Redcat — цифровая платформа аналитики первички") or do not mention them at all; an expert opinion appears only together with their role;
 - absence of data is NOT a claim: never write "скидок нет" — write "материалы не содержат данных о скидках" or omit the sentence;
 - every paragraph ties to the main thesis; coherence and meaning beat fact coverage;
+- NO meta-commentary lead-ins: standalone labels like "Проверяем гипотезу:", "Итог:",
+  "Важная оговорка:", "Вывод:", "Оговорка:" at sentence start are FORBIDDEN; weave the
+  caveat or the verdict into a natural sentence instead ("данные по лотам — стартовые
+  цены из снимков экспозиции, а не реальные сделки");
 - NO meaningless precision: round figures whose extra digits carry no meaning ("49,99%" -> "почти половина" or "около 50%"); keep exact digits only where precision IS the story (rates, program terms, prices per m2);
 - NO filler sentences: every sentence must carry a fact or a meaningful conclusion; in a short post a "beautiful but empty" sentence is a defect — cut it;
 - title: <=8 words in Russian, informative, no clickbait; it names the event AND makes the main number's denominator clear ("Готовые квартиры заняли 19,5% предложения первички"); the title becomes the first line of the published post.
@@ -786,6 +790,9 @@ Check the DRAFT as an ordinary reader who has NOT seen the materials:
 10. SURGEON, NOT CO-AUTHOR: a good editor cuts, never adds; a paragraph that works stays untouched; taste-level restyling of working sentences is forbidden even when you would phrase it differently.
 11. THROUGH PASSES: if you removed a filler word, a weak verb or a repetition in one place — check the WHOLE text for other occurrences; all fixes of one type apply everywhere, not selectively.
 12. HONEST REPORT: "edits" lists ONLY changes you actually made (verify each against the draft before writing it down); "check" reports every rule R1-R9 (the nine numbered rules above, in order) as "clean" or "fixed: ..."; a false "clean" is a failure worse than a missed error.
+13. strip meta-commentary lead-ins ("Проверяем гипотезу:", "Итог:", "Важная оговорка:",
+    "Вывод:", "Оговорка:") by rewriting the sentence without the label; the meaning
+    (caveat, verdict) stays, the label goes.
 If the DRAFT already satisfies all rules — verdict "pass" and empty text.
 Otherwise verdict "rewrite" and the final text: exactly as long as the thesis needs, hard ceiling {max_chars} characters (padding toward the ceiling is a defect just like cutting meaning), Russian, no hashtags/emojis/links, numbers exactly as in materials, body only without title.
 Think in English, briefly. Answer strictly JSON with no text outside it:

@@ -174,12 +174,12 @@ async def main() -> None:
                 print(f"\n===== {spec} | {t['file']} | SKIP (writer empty after retries)")
                 continue
             light = [b for b in bad if b.startswith(
-                ("precision", "numbers", "wall", "weak_verbs"))]
+                ("precision", "numbers", "wall", "weak_verbs", "meta_label"))]
             heavy = [b for b in bad if b not in light]
             score = max(0.0, 1.0 - 0.15 * len(heavy) - 0.05 * len(light))
             scores.append(score)
             dlight = [b for b in draft_bad if b.startswith(
-                ("precision", "numbers", "wall", "weak_verbs"))]
+                ("precision", "numbers", "wall", "weak_verbs", "meta_label"))]
             dscore = max(0.0, 1.0 - 0.15 * (len(draft_bad) - len(dlight))
                          - 0.05 * len(dlight))
             print(f"\n===== {spec} | {t['file']} | {verdict} | "

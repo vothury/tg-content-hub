@@ -53,4 +53,8 @@ def rubric_checks(title: str, body: str) -> list:
     wb = len(WEAK_VERBS.findall(body))
     if wb:
         bad.append(f"weak_verbs:{wb}")
+    meta = len(re.findall(r"(?m)^(Проверяем гипотезу|Итог|Важная оговорка|Оговорка|Вывод)\s*:",
+                          body))
+    if meta:
+        bad.append(f"meta_label:{meta}")
     return bad
