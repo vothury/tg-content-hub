@@ -50,10 +50,15 @@ async def _first_fallback() -> str:
 
 
 def _data_url(path: str) -> str | None:
+    from app.config import settings as _cfg
+    root = Path(_cfg.media_dir)
+    if not root.is_absolute():
+        root = Path("/app") / root
     p = Path(path)
     if not p.is_absolute():
-        p = Path("/app") / p
+        p = root / p
     if not p.exists():
+        log.warning("media: файл кандидата не найден на диске: %s", p)
         return None
     mime = _MIME.get(p.suffix.lower(), "image/jpeg")
     return f"data:{mime};base64," + base64.b64encode(p.read_bytes()).decode()

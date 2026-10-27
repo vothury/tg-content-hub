@@ -716,7 +716,7 @@ Check strictly, as a reader with the materials in hand:
 6. the draft reads coherent for a reader who has NOT seen the materials.
 Verdicts:
 - "approve": no material violations; taste preferences are NOT violations;
-- "revise": violations fixable by one editor pass — list them in "notes" (<=5, Russian, concrete, each tied to a rule number above);
+- "revise": violations fixable by one editor pass over the FULL article (headline included) — list them in "notes" (<=5, Russian, each <=20 words, tied to a rule number above); never request new facts or materials;
 - "reject": fatal (invented facts, wrong object, empty materials, hypothesis silently ignored) — state it in "reason".
 Think in English, briefly. Answer strictly JSON with no text outside it:
 {{"verdict": "approve|revise|reject", "notes": ["..."], "reason": ""}}"""

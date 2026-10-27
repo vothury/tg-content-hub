@@ -52,7 +52,7 @@ async def _run_gate(topic, listing: str, kb: str, draft: str) -> GateResult:
          {"role": "user", "content": GATE_USER.format(
              theme=topic.theme, hypothesis=topic.hypothesis or "—",
              kind=topic.kind.value, materials=listing, kb=kb, draft=draft)}],
-        model, providers, 1500, GateResult, stage=LLMStage.EDITORIAL_GATE)
+        model, providers, 2500, GateResult, stage=LLMStage.EDITORIAL_GATE)
 
 
 async def _approve(post_id: int, details: dict) -> None:
@@ -101,7 +101,9 @@ async def _revise_once(post_id: int, listing: str, kb: str,
             [{"role": "system",
               "content": EDITOR_SYSTEM.format(max_chars=max_chars)
               + "\n\nGATE NOTES (обязательны к отработке, каждая):\n- "
-              + "\n- ".join(notes)},
+              + "\n- ".join(notes)
+              + "\n\nRETURN THE FULL ARTICLE: first line = headline (rewrite it if a note "
+                "targets the headline), then an empty line, then the body."},
              {"role": "user", "content": EDITOR_USER.format(
                  materials=listing, kb=kb, draft=draft)}],
             model, providers, 4000, EditorResult, stage=LLMStage.EDITORIAL_WRITE)
@@ -111,7 +113,10 @@ async def _revise_once(post_id: int, listing: str, kb: str,
     if not ed.text:
         return None
     title_line = draft.split("\n\n", 1)[0]
-    new_final = f"{title_line}\n\n{ed.text.strip()}"
+    new_final = ed.text.strip()          # редактор вернул статью целиком, заголовок включён
+    first_line = new_final.split("\n", 1)[0].strip()
+    if not first_line or len(first_line) > 140:
+        new_final = f"{title_line}\n\n{new_final}"   # страховка: редактор отдал тело без заголовка
     async with session_scope() as session:
         p = await session.get(Post, post_id)
         if p is None:
