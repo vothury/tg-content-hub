@@ -128,6 +128,12 @@ async def _set_status_awaiting(post_id: int, note: str) -> None:
         await session.commit()
 
 
+async def _rich_enabled() -> bool:
+    async with session_scope() as session:
+        v = await get_setting(session, Keys.PUBLISH_RICH_MESSAGES)
+    return True if v is None else bool(int(v))
+
+
 async def _media_settings():
     async with session_scope() as session:
         max_mb = int(await get_setting(session, Keys.PUBLISH_MAX_MEDIA_MB))
@@ -708,6 +714,26 @@ async def _send_to_channel(bot: Bot, chat_id: int, post: Post,
         raise OversizedMedia("медиа не скачаны (лимит размера/сбой загрузки), "
                              "пропуск oversized выключен")
     try:
+        if files and len(text) > CAPTION_LIMIT and await _rich_enabled():
+            try:
+                from app.services.tg_rich import send_rich
+                rich_id = await send_rich(bot, chat_id, text, entities, media, root)
+                if rich_id:
+                    log.info("пост %s: опубликован rich-сообщением (текст целиком + медиа)",
+                             post.id)
+                    return rich_id, text, links
+            except Exception as exc:  # noqa: BLE001
+                log.warning("пост %s: sendRichMessage не удался (%s) — схема титул+тело",
+                            post.id, exc.__class__.__name__)
+            title, _, body = text.partition("\n\n")
+            cap_entities = [e for e in (entities or [])
+                            if e.offset + e.length <= len(title)] or None
+            files[0].caption = title
+            files[0].caption_entities = cap_entities
+            sent = await bot.send_media_group(chat_id, media=files)
+            await bot.send_message(chat_id, body,
+                                   entities=_shift_entities(entities, len(title) + 2))
+            return sent[0].message_id, text, links
         if files:
             sent = await bot.send_media_group(chat_id, media=files)
             published_id = sent[0].message_id

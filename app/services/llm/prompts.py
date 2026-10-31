@@ -756,6 +756,14 @@ EDITORIAL PRIORITY (overrides fact-density):
   "Важная оговорка:", "Вывод:", "Оговорка:" at sentence start are FORBIDDEN; weave the
   caveat or the verdict into a natural sentence instead ("данные по лотам — стартовые
   цены из снимков экспозиции, а не реальные сделки");
+- first mention of any residential complex, developer or analytics company carries a
+  generic word plus the name: "ЖК ПЕЙВ", "девелопер Forma", "аналитическая компания
+  «Метриум»"; bare abbreviations or bare names in title or lead are FORBIDDEN —
+  clarity beats brevity ("1-комн. ЖК ПЕЙВ" is the reference shape of a title);
+- the reader has never seen your materials: words "материалы", "исходники",
+  "гипотеза проверялась" are FORBIDDEN in the post body; rephrase caveats
+  reader-facing: "открытых данных о зависимости от локации нет", "по доступным цифрам
+  судить о всём рынке рано";
 - NO meaningless precision: round figures whose extra digits carry no meaning ("49,99%" -> "почти половина" or "около 50%"); keep exact digits only where precision IS the story (rates, program terms, prices per m2);
 - NO filler sentences: every sentence must carry a fact or a meaningful conclusion; in a short post a "beautiful but empty" sentence is a defect — cut it;
 - title: <=8 words in Russian, informative, no clickbait; it names the event AND makes the main number's denominator clear ("Готовые квартиры заняли 19,5% предложения первички"); the title becomes the first line of the published post.
@@ -793,6 +801,10 @@ Check the DRAFT as an ordinary reader who has NOT seen the materials:
 13. strip meta-commentary lead-ins ("Проверяем гипотезу:", "Итог:", "Важная оговорка:",
     "Вывод:", "Оговорка:") by rewriting the sentence without the label; the meaning
     (caveat, verdict) stays, the label goes.
+14. reader-facing clarity: add the missing generic word on first mention ("ЖК ПЕЙВ",
+    "девелопер Forma"); rewrite any sentence referring to "материалы"/"исходники" into
+    reader-facing wording ("открытых данных о … нет", "по доступным цифрам судить рано");
+    the post never mentions its own analysis inputs, only facts, attributions and caveats.
 If the DRAFT already satisfies all rules — verdict "pass" and empty text.
 Otherwise verdict "rewrite" and the final text: exactly as long as the thesis needs, hard ceiling {max_chars} characters (padding toward the ceiling is a defect just like cutting meaning), Russian, no hashtags/emojis/links, numbers exactly as in materials, body only without title.
 Think in English, briefly. Answer strictly JSON with no text outside it:

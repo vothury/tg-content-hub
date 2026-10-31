@@ -150,13 +150,37 @@ async def _review_cards() -> list:
     return cards
 
 
+async def _published_cards() -> list:
+    async with session_scope() as session:
+        src = await _editorial_source_id(session)
+        posts = (await session.execute(
+            select(Post).where(Post.source_id == src,
+                               Post.status == PostStatus.PUBLISHED)
+            .order_by(Post.id.desc()).limit(30))).scalars().all() if src else []
+        out = []
+        for p in posts:
+            art_id = (p.source_message_id or 0) - _SYNTH_MSG_BASE
+            art = await session.get(Article, art_id) if art_id > 0 else None
+            topic = await session.get(Topic, art.topic_id) if art else None
+            text = p.published_text or p.draft_text or p.original_text or ""
+            out.append({
+                "post_id": p.id,
+                "published_at": p.published_at or p.created_at,
+                "kind": topic.kind.value if topic else "—",
+                "title": text.split("\n", 1)[0] or "(без заголовка)",
+                "review": art.review if art else None,
+            })
+    return out
+
+
 @router.get("/editorial")
 async def editorial_page(request: Request, tab: str = "review"):
-    if tab not in ("review", "topics", "flow", "config"):
+    if tab not in ("review", "published", "topics", "flow", "config"):
         tab = "review"
     cfg = await _editorial_cfg()
     counters = await _counters()
     cards = await _review_cards() if tab == "review" else []
+    published = await _published_cards() if tab == "published" else []
     topics = headlines = web_sources = []
     async with session_scope() as session:
         if tab == "topics":
@@ -181,6 +205,7 @@ async def editorial_page(request: Request, tab: str = "review"):
         "cfg": cfg,
         "counters": counters,
         "cards": cards,
+        "published": published,
         "topics": topics,
         "headlines": headlines,
         "web_sources": web_sources,

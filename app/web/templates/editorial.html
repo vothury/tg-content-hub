@@ -4,6 +4,7 @@
 <h2 class="section-title">Виртуальная редакция</h2>
 <div class="sub" style="margin-bottom:10px">
   <a class="btn {{ '' if tab == 'review' else 'ghost' }}" href="/editorial?tab=review">Ревью ({{ counters.awaiting }})</a>
+  <a class="btn {{ '' if tab == 'published' else 'ghost' }}" href="/editorial?tab=published">Опубликовано</a>
   <a class="btn {{ '' if tab == 'topics' else 'ghost' }}" href="/editorial?tab=topics">Темы</a>
   <a class="btn {{ '' if tab == 'flow' else 'ghost' }}" href="/editorial?tab=flow">Поток</a>
   <a class="btn {{ '' if tab == 'config' else 'ghost' }}" href="/editorial?tab=config">Конфиг</a>
@@ -46,6 +47,20 @@
   </div>
   {% else %}
   <div class="card">На ревью пусто — новые статьи появятся после циклов редакции</div>
+  {% endfor %}
+</div>
+
+{% elif tab == 'published' %}
+<div class="list">
+  {% for c in published %}
+  <div class="card">
+    <div class="label">#{{ c.post_id }} · опубликован {{ c.published_at|dt }} · {{ c.kind }} <span class="badge">PUBLISHED</span></div>
+    <div class="label">{{ c.title }}</div>
+    {% if c.review %}<div class="sub">оценки: рубрика {{ 'чисто' if not c.review.rubric else c.review.rubric | join(', ') }} · новизна {{ c.review.novelty.pct }}% · {{ c.review.media.summary if c.review.media else 'медиа: —' }} · гейт: {{ c.review.gate.verdict if c.review.gate else '—' }}</div>{% endif %}
+    <div class="actions"><a class="btn ghost" href="/posts/{{ c.post_id }}">Открыть пост</a></div>
+  </div>
+  {% else %}
+  <div class="card">Опубликованных статей редакции пока нет</div>
   {% endfor %}
 </div>
 

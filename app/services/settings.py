@@ -129,6 +129,7 @@ class Keys:
     PUBLISH_COMPRESS_TARGET_MB = "publish.compress_target_mb"
     PUBLISH_COMPRESS_MAX_SIDE = "publish.compress_max_side"
     PUBLISH_SKIP_OVERSIZED = "publish.skip_oversized"
+    PUBLISH_RICH_MESSAGES = "publish.rich_messages"
     PUBLISH_STRIP_SOURCE_DECOR = "publish.strip_source_decor"
     CURATION_ENABLED = "curation.enabled"
     CURATION_INBOX_CHANNELS = "curation.inbox_channels"
@@ -223,6 +224,7 @@ _ENV_DEFAULTS: dict[str, Any] = {
     Keys.PUBLISH_COMPRESS_TARGET_MB: settings.publish_compress_target_mb,
     Keys.PUBLISH_COMPRESS_MAX_SIDE: settings.publish_compress_max_side,
     Keys.PUBLISH_SKIP_OVERSIZED: settings.publish_skip_oversized,
+    Keys.PUBLISH_RICH_MESSAGES: 1,
     Keys.PUBLISH_STRIP_SOURCE_DECOR: settings.publish_strip_source_decor,
     Keys.CURATION_ENABLED: settings.curation_enabled,
     Keys.CURATION_INBOX_CHANNELS: settings.curation_inbox_channels,

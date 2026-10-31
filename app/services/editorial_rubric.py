@@ -57,4 +57,6 @@ def rubric_checks(title: str, body: str) -> list:
                           body))
     if meta:
         bad.append(f"meta_label:{meta}")
+    if re.search(r"материал(ы|ов|ам|ах|ами)|исходник", body, re.I):
+        bad.append("meta_materials")
     return bad

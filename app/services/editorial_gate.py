@@ -163,16 +163,17 @@ async def gate_step(post_id: int, art_id: int, topic_id: int,
                "reason": g.reason or "", "mode": mode}
     log.info("gate: пост #%s — %s%s", post_id, g.verdict.upper(),
              f" ({g.reason})" if g.reason else "")
-    if mode == "shadow":
-        async with session_scope() as session:
-            art = await session.get(Article, art_id)
-            if art is not None:
-                review = dict(art.review or {})
-                review["gate"] = details
-                art.review = review
+    async with session_scope() as session:
+        art = await session.get(Article, art_id)
+        if art is not None:
+            review = dict(art.review or {})
+            review["gate"] = details          # досье показывает вердикт в любом режиме
+            art.review = review
+        if mode == "shadow":
             session.add(PostEvent(post_id=post_id, actor=EventActor.SYSTEM,
                                   action="gate_verdict", details=details))
-            await session.commit()
+        await session.commit()
+    if mode == "shadow":
         return
     # enforce
     if g.verdict == "approve":
