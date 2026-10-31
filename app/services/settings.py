@@ -118,6 +118,9 @@ class Keys:
     PRICE_WATCH_SCOPE = "price_watch.scope"
     PRICE_WATCH_PROBE_ENABLED = "price_watch.probe_enabled"
     PRICE_WATCH_PROBE_INTERVAL_HOURS = "price_watch.probe_interval_hours"
+    PRICE_WATCH_AUTOPICK_ENABLED = "price_watch.autopick_enabled"
+    PRICE_WATCH_AUTOPICK_THRESHOLD_PCT = "price_watch.autopick_threshold_pct"
+    LLM_PROVIDER_BLACKLIST = "llm.provider_blacklist"
     OPENROUTER_MANAGEMENT_KEY = "openrouter.management_key"
     PUBLISH_DUP_RECAP_WINDOW_HOURS = "publish.dup_recap_window_hours"
     PUBLISH_RESTORE_LINKS = "publish.restore_links"
@@ -234,6 +237,9 @@ _ENV_DEFAULTS: dict[str, Any] = {
     Keys.EDITORIAL_WRITER_MODEL_HYPOTHESIS: "",
     Keys.EDITORIAL_GATE_MODEL: "",
     Keys.EDITORIAL_GATE_MODE: "off",
+    Keys.PRICE_WATCH_AUTOPICK_ENABLED: 1,
+    Keys.PRICE_WATCH_AUTOPICK_THRESHOLD_PCT: 30,
+    Keys.LLM_PROVIDER_BLACKLIST: [],
     Keys.EDITORIAL_MEDIA_MODE: "off",
     Keys.EDITORIAL_MEDIA_MODEL: "xiaomi/mimo-v2.6-flash (xiaomi/fp8)",
     Keys.EDITORIAL_MEDIA_FALLBACK_MODELS: ["inclusionai/ling-3.0-flash-vl",

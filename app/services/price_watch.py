@@ -22,7 +22,7 @@ from app.config import settings
 from app.db.models import LLMCall, ModelPrice, ModelPriceAlert
 from app.db.session import session_scope
 from app.redis_client import get_redis
-from app.services.settings import Keys, get_providers, get_setting
+from app.services.settings import Keys, get_providers, get_setting, set_setting
 
 log = logging.getLogger("price_watch")
 
@@ -479,6 +479,73 @@ async def _maybe_probe() -> None:
     log.info("price_watch: проба прайс-бука завершена, пар обновлено: %d", n)
 
 
+async def _maybe_autopick() -> None:
+    """Раз в неделю: дешёвый живой эндпоинт вместо текущего первого пина стадии.
+
+    Чёрный список llm.provider_blacklist и uptime < 99% исключают кандидата;
+    порог price_watch.autopick_threshold_pct защищает от переключений на копейки.
+    Порядок провайдеров стадии перезаписывается: новый пин первым, старые — страховка.
+    """
+    async with session_scope() as session:
+        enabled = int(await get_setting(session, Keys.PRICE_WATCH_AUTOPICK_ENABLED) or 1)
+        threshold = float(await get_setting(
+            session, Keys.PRICE_WATCH_AUTOPICK_THRESHOLD_PCT) or 30)
+        blacklist = {str(x).strip().lower()
+                     for x in (await get_setting(session, Keys.LLM_PROVIDER_BLACKLIST) or [])}
+        mgmt = str(await get_setting(session, Keys.OPENROUTER_MANAGEMENT_KEY) or "").strip()
+    if not enabled:
+        return
+    raw = await get_redis().get("price_autopick:last_run")
+    if raw:
+        try:
+            last = datetime.fromisoformat(raw.decode() if isinstance(raw, bytes) else raw)
+            if (datetime.now(timezone.utc) - last).total_seconds() < 7 * 86400:
+                return
+        except ValueError:
+            pass
+    key = mgmt or settings.openrouter_api_key
+    async with session_scope() as session:
+        pairs = [(m, p) for m, p in STAGE_PAIRS if getattr(Keys, m, None) and getattr(Keys, p, None)]
+    for mname, pname in pairs:
+        mk, pk = getattr(Keys, mname), getattr(Keys, pname)
+        async with session_scope() as session:
+            prov = await get_providers(session, pk)
+        order = list((prov or {}).get("order") or [])
+        if not order:
+            continue
+        slug, _ = _parse_model_spec(str(order[0]))
+        cur_pin = str(order[0])
+        eps = await _fetch_endpoints(slug, key)
+        cur = next((e for e in eps if e.get("key") == cur_pin.strip().lower()), None)
+        if cur is None:
+            continue
+        cur_price = cur["prompt"] + cur["completion"]
+        best = None
+        for e in eps:
+            k = str(e.get("key") or "").lower()
+            if not k or k in blacklist or k == cur_pin.strip().lower():
+                continue
+            if float(e.get("uptime") or 0) < 99.0:
+                continue
+            price = e["prompt"] + e["completion"]
+            if price <= 0:
+                continue
+            if best is None or price < best[1]:
+                best = (k, price)
+        if best is None:
+            continue
+        gain = (cur_price - best[1]) / cur_price * 100.0 if cur_price else 0.0
+        if gain < threshold:
+            continue
+        new_order = [best[0]] + [x for x in order if str(x).strip().lower() != best[0]]
+        async with session_scope() as session:
+            await set_setting(session, pk, {"order": new_order, "allow_fallbacks": True})
+        log.warning("price_watch: автопин %s: %s -> %s (дешевле на %.0f%%); "
+                    "прежние пины остались страховкой", mk, cur_pin, best[0], gain)
+    await get_redis().set("price_autopick:last_run",
+                          datetime.now(timezone.utc).isoformat(timespec="seconds"))
+
+
 async def loop() -> None:
     """Фоновый цикл в api: проверка раз в interval_hours + отметка живости в redis."""
     while True:
@@ -492,6 +559,10 @@ async def loop() -> None:
             await _maybe_probe()
         except Exception as exc:  # noqa: BLE001
             log.exception("price_watch: сбой пробы прайс-бука")
+        try:
+            await _maybe_autopick()
+        except Exception as exc:  # noqa: BLE001
+            log.exception("price_watch: сбой автопина провайдеров")
         hours = 24
         try:
             async with session_scope() as session:

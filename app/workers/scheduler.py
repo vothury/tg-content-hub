@@ -28,6 +28,19 @@ async def main() -> None:
         while True:
             try:
                 await process_ready_jobs(bot)
+        try:
+            from app.redis_client import get_redis as _gr
+            from app.services.times import owner_now as _on
+            _day = _on().date().isoformat()
+            if _on().hour == 4 and await _gr().get("hygiene:media_clean_day") != _day:
+                proc = await asyncio.create_subprocess_exec(
+                    "python", "-m", "app.tools.clean_media_volume")
+                await proc.wait()
+                await _gr().set("hygiene:media_clean_day", _day, ex=2 * 86400)
+                log.info("scheduler: ежедневная очистка медиа-тома, код %s",
+                         proc.returncode)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("scheduler: сбой ежедневной гигиены медиа: %s", exc)
             except Exception:  # noqa: BLE001
                 log.exception("сбой цикла планировщика")
             await monitor.heartbeat("scheduler")    

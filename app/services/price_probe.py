@@ -39,8 +39,8 @@ async def _upsert(slug: str, provider: str | None, p_in: float, p_out: float,
             select(ModelPriceBook).where(ModelPriceBook.model_slug == slug,
                                          ModelPriceBook.provider == provider)
         )).scalar_one_or_none()
-        if row is not None and row.source == "manual":
-            return   # верифицированная владельцем цена неприкасаема
+        # иммунитет manual-строк снят 31.10: эндпоинт-цены = биллинговая правда,
+        # сиды были затравкой; дрейф скидок/наценок освежается автоматически
         if row is None:
             row = ModelPriceBook(model_slug=slug, provider=provider)
             session.add(row)

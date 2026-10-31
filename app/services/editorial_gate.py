@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timezone
 
 from app.db.enums import (DraftOrigin, EventActor, LLMStage, PostStatus,
@@ -53,6 +54,14 @@ async def _run_gate(topic, listing: str, kb: str, draft: str) -> GateResult:
              theme=topic.theme, hypothesis=topic.hypothesis or "—",
              kind=topic.kind.value, materials=listing, kb=kb, draft=draft)}],
         model, providers, 2500, GateResult, stage=LLMStage.EDITORIAL_GATE)
+
+
+_HARD_RULE_RE = re.compile(r"(?:правило|R)\s*([1-4])\b", re.I)
+
+
+def _hard_notes(notes: list) -> list:
+    """Замечания по правилам 1-4 (факты, связи, масштаб, гипотеза) — блокируют публикацию."""
+    return [n for n in (notes or []) if _HARD_RULE_RE.search(n)]
 
 
 async def _approve(post_id: int, details: dict) -> None:
@@ -102,6 +111,8 @@ async def _revise_once(post_id: int, listing: str, kb: str,
               "content": EDITOR_SYSTEM.format(max_chars=max_chars)
               + "\n\nGATE NOTES (обязательны к отработке, каждая):\n- "
               + "\n- ".join(notes)
+              + "\n\nGATE NOTES OVERRIDE SCOPE: apply each note exactly even if it looks "
+                "like taste-level restyling — the gate is the last barrier before publish."
               + "\n\nRETURN THE FULL ARTICLE: first line = headline (rewrite it if a note "
                 "targets the headline), then an empty line, then the body."},
              {"role": "user", "content": EDITOR_USER.format(
@@ -201,6 +212,13 @@ async def gate_step(post_id: int, art_id: int, topic_id: int,
         await _approve(post_id, details2)
     elif g2.verdict == "reject":
         await _reject(post_id, topic_id, g2.reason, details2)
+    elif g2.verdict == "revise" and not _hard_notes(g2.notes) \
+            and not _sig_guard_hit(new_final):
+        # петля сходится: после круга правки жёстких замечаний (правила 1-4) нет —
+        # мягкие стилевые ноты не держат пост в ручной очереди
+        details2["soft_notes_accepted"] = g2.notes
+        log.info("gate: пост #%s — круг 2 revise только с мягкими нотами, одобрен", post_id)
+        await _approve(post_id, details2)
     else:
         async with session_scope() as session:
             session.add(PostEvent(post_id=post_id, actor=EventActor.SYSTEM,
