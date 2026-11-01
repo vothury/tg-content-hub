@@ -163,9 +163,14 @@ async def _published_cards() -> list:
             art = await session.get(Article, art_id) if art_id > 0 else None
             topic = await session.get(Topic, art.topic_id) if art else None
             text = p.published_text or p.draft_text or p.original_text or ""
+            pub_at = (await session.execute(
+                select(PublishJob.published_at).where(
+                    PublishJob.post_id == p.id,
+                    PublishJob.state == PublishJobState.DONE)
+                .order_by(PublishJob.id.desc()).limit(1))).scalar_one_or_none()
             out.append({
                 "post_id": p.id,
-                "published_at": p.published_at or p.created_at,
+                "published_at": pub_at or p.created_at,
                 "kind": topic.kind.value if topic else "—",
                 "title": text.split("\n", 1)[0] or "(без заголовка)",
                 "review": art.review if art else None,

@@ -3,6 +3,8 @@
 Каждые несколько секунд просматривает задачи публикации: «сейчас», очередь
 и подошедшие по расписанию. Учитывает лимиты канала (день, интервал, тихие часы)
 и публикует через Bot API идемпотентно.
+Плюс ежедневная (04:00 по времени владельца) очистка медиа-тома (D1)
+с redis-флагом, чтобы не повторять её в тот же день.
 """
 import asyncio
 
@@ -14,6 +16,24 @@ from app.services.publishing import process_ready_jobs, recover_in_progress_jobs
 from app.services import monitor
 
 log = setup_logging("scheduler")
+
+
+async def _daily_media_clean() -> None:
+    """D1: ежедневная очистка медиа-тома по защитному списку БД (в 04:00 владельца)."""
+    from app.redis_client import get_redis
+    from app.services.times import owner_now
+
+    now = owner_now()
+    if now.hour != 4:
+        return
+    day = now.date().isoformat()
+    if await get_redis().get("hygiene:media_clean_day") == day:
+        return
+    proc = await asyncio.create_subprocess_exec(
+        "python", "-m", "app.tools.clean_media_volume")
+    await proc.wait()
+    await get_redis().set("hygiene:media_clean_day", day, ex=2 * 86400)
+    log.info("scheduler: ежедневная очистка медиа-тома, код %s", proc.returncode)
 
 
 async def main() -> None:
@@ -28,22 +48,13 @@ async def main() -> None:
         while True:
             try:
                 await process_ready_jobs(bot)
-        try:
-            from app.redis_client import get_redis as _gr
-            from app.services.times import owner_now as _on
-            _day = _on().date().isoformat()
-            if _on().hour == 4 and await _gr().get("hygiene:media_clean_day") != _day:
-                proc = await asyncio.create_subprocess_exec(
-                    "python", "-m", "app.tools.clean_media_volume")
-                await proc.wait()
-                await _gr().set("hygiene:media_clean_day", _day, ex=2 * 86400)
-                log.info("scheduler: ежедневная очистка медиа-тома, код %s",
-                         proc.returncode)
-        except Exception as exc:  # noqa: BLE001
-            log.exception("scheduler: сбой ежедневной гигиены медиа: %s", exc)
+                try:
+                    await _daily_media_clean()
+                except Exception as exc:  # noqa: BLE001
+                    log.exception("scheduler: сбой ежедневной гигиены медиа: %s", exc)
             except Exception:  # noqa: BLE001
                 log.exception("сбой цикла планировщика")
-            await monitor.heartbeat("scheduler")    
+            await monitor.heartbeat("scheduler")
             await asyncio.sleep(settings.scheduler_poll_interval_sec)
     finally:
         await bot.session.close()
